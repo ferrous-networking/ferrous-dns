@@ -102,26 +102,43 @@ fn parse_cert_info(cert_path: &str) -> (Option<String>, Option<String>, bool) {
         return (None, None, false);
     };
 
-    let Ok(pems) = x509_parser::pem::Pem::iter_from_buffer(&data).collect::<Result<Vec<_>, _>>()
+    with_first_certificate(cert_path, &data, |cert| {
+        let subject = cert.subject().to_string();
+        let not_after = cert.validity().not_after.to_rfc2822().ok();
+        let valid = cert.validity().is_valid();
+        (Some(subject), not_after, valid)
+    })
+    .unwrap_or((None, None, false))
+}
+
+/// The `notAfter` of the first certificate in the PEM file at `cert_path`, in
+/// Unix seconds; `None` when the file is missing or holds no certificate.
+pub fn certificate_not_after(cert_path: &str) -> Option<i64> {
+    let data = std::fs::read(cert_path).ok()?;
+    with_first_certificate(cert_path, &data, |cert| {
+        cert.validity().not_after.timestamp()
+    })
+}
+
+/// Reads the first certificate of a PEM chain: the server's own.
+fn with_first_certificate<T>(
+    cert_path: &str,
+    data: &[u8],
+    read: impl FnOnce(&x509_parser::certificate::X509Certificate) -> T,
+) -> Option<T> {
+    let Ok(pems) = x509_parser::pem::Pem::iter_from_buffer(data).collect::<Result<Vec<_>, _>>()
     else {
         warn!("Failed to parse PEM from {}", cert_path);
-        return (None, None, false);
+        return None;
     };
 
-    let Some(pem) = pems.first() else {
-        return (None, None, false);
-    };
+    let pem = pems.first()?;
 
     match x509_parser::parse_x509_certificate(&pem.contents) {
-        Ok((_, cert)) => {
-            let subject = cert.subject().to_string();
-            let not_after = cert.validity().not_after.to_rfc2822().ok();
-            let valid = cert.validity().is_valid();
-            (Some(subject), not_after, valid)
-        }
+        Ok((_, cert)) => Some(read(&cert)),
         Err(e) => {
             warn!(error = %e, "Failed to parse X.509 certificate");
-            (None, None, false)
+            None
         }
     }
 }

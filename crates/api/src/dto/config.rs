@@ -21,6 +21,9 @@ pub struct ConfigResponse {
     pub writable: bool,
     /// A saved change is waiting for a server restart to take effect.
     pub restart_required: bool,
+    /// When the certificate the web server loaded at start expires, in Unix
+    /// seconds; `null` while it serves plain HTTP.
+    pub web_certificate_expires_at: Option<i64>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]

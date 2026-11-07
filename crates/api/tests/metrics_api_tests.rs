@@ -10,6 +10,7 @@ use ferrous_dns_application::ports::{
     UpstreamStatus,
 };
 use ferrous_dns_application::response_counter::ResponseTotals;
+use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_domain::{QueryStats, RecordType, UpstreamStrategy};
 use std::collections::HashMap;
 
@@ -86,6 +87,7 @@ fn inputs<'a>(
         shed: ShedTotals::default(),
         responses: ResponseTotals::default(),
         dns_listening: true,
+        certificates: &[],
         version: "9.9.9",
     }
 }
@@ -189,4 +191,43 @@ fn render_reports_whether_the_dns_listener_is_serving() {
     assert!(up.contains("# TYPE ferrousdns_dns_listening gauge"));
     assert!(up.contains("\nferrousdns_dns_listening 1\n"), "{up}");
     assert!(down.contains("\nferrousdns_dns_listening 0\n"), "{down}");
+}
+
+#[test]
+fn render_reports_each_loaded_certificates_expiry_by_listener() {
+    let (cache, upstreams) = (sample_cache(), sample_upstreams());
+    let certificates = [
+        (TlsListener::Web, 1_900_000_000),
+        (TlsListener::Dot, 1_800_000_000),
+    ];
+
+    let body = render_metrics(&MetricsInputs {
+        certificates: &certificates,
+        ..inputs(&cache, &upstreams)
+    })
+    .unwrap();
+
+    assert!(body.contains("# TYPE ferrousdns_tls_cert_not_after_seconds gauge"));
+    for line in [
+        "ferrousdns_tls_cert_not_after_seconds{listener=\"web\"} 1900000000",
+        "ferrousdns_tls_cert_not_after_seconds{listener=\"dot\"} 1800000000",
+    ] {
+        assert!(body.contains(line), "missing `{line}` in:\n{body}");
+    }
+    assert!(
+        !body.contains("listener=\"doq\""),
+        "no certificate, no series"
+    );
+}
+
+#[test]
+fn render_has_no_certificate_series_without_tls() {
+    let (cache, upstreams) = (sample_cache(), sample_upstreams());
+
+    let body = render_metrics(&inputs(&cache, &upstreams)).unwrap();
+
+    assert!(
+        !body.contains("ferrousdns_tls_cert_not_after_seconds{"),
+        "{body}"
+    );
 }

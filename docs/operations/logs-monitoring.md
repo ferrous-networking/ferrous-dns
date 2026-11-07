@@ -89,7 +89,7 @@ scrape_configs:
       - targets: ["dns1.lan:8080", "dns2.lan:8080"]
 ```
 
-Without web TLS, leave out `scheme` and `tls_config`. The generated certificate expires after a year: when you replace it, refresh this copy too, or the scrape fails.
+Without web TLS, leave out `scheme` and `tls_config`. The generated certificate expires after a year: when you replace it, refresh this copy too, or the scrape fails. `FerrousDnsCertificateExpiring` below warns 21 days ahead.
 
 ### Alert rules
 
@@ -109,6 +109,7 @@ promtool test rules ferrous-dns-alerts.test.yml   # the unit tests beside it in 
 |:------|:-----------|:--------|
 | `FerrousDnsDown` | Prometheus cannot scrape the server for 2 minutes | The process, the host, the network path |
 | `FerrousDnsListenerDown` | The DNS listener has not been serving for 2 minutes, while the web server still answers | The port taken by another process, or a bind address the host no longer has. The first log lines after the start say which |
+| `FerrousDnsCertificateExpiring` | A certificate the web, DoT or DoQ listener serves expires within 21 days, or has expired, for 1 hour | [Renew it](tls-reverse-proxy.md#renewing-certificates) and restart: the server reads certificates only at start. Refresh every copy of the web one, the proxy's and Prometheus's `ca_file` |
 | `FerrousDnsUpstreamDown` | One upstream server has failed its health checks for 5 minutes | The upstream itself and its pool in **Settings**. Other servers in the pool carry the load |
 | `FerrousDnsPoolDown` | Every server of a pool has been down for 1 minute | Clients get SERVFAIL for everything that pool answers. Check the uplink |
 | `FerrousDnsServfailRatioHigh` | More than 5% of replies are SERVFAIL for 10 minutes | Upstreams timing out, DNSSEC failures in `strict` mode, a conditional pool down. The Query Log shows which names |

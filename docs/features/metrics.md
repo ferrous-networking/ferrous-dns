@@ -37,8 +37,11 @@ Every name is prefixed `ferrousdns_`, and counters carry the OpenMetrics `_total
 | Metric | Type | Meaning |
 |:-------|:-----|:--------|
 | `dns_listening` | gauge | 1 while the plain DNS listener (UDP and TCP) is serving; 0 before it has bound at start, and after it stops. [`GET /health`](../operations/logs-monitoring.md#health-check) answers `503` at 0 |
+| `tls_cert_not_after_seconds{listener=…}` | gauge | When the certificate a TLS listener loaded at start expires, in Unix seconds. `listener` is `web`, `dot` or `doq`; a listener without a certificate has no series, and DoH has none of its own |
 
 A server whose DNS listener is down but whose web server is up still answers scrapes, so Prometheus's `up` stays 1. Alert on `ferrousdns_dns_listening == 0` instead.
+
+Certificates are read once, at start, so `tls_cert_not_after_seconds` is what the listener serves. A certificate renewed on disk shows up after the restart that loads it. `ferrousdns_tls_cert_not_after_seconds - time()` is the time left.
 
 ### Responses
 

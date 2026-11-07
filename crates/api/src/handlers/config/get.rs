@@ -8,6 +8,7 @@ use crate::{
     state::AppState,
 };
 use axum::{extract::State, Json};
+use ferrous_dns_application::tls_certificates::TlsListener;
 use tracing::{debug, instrument};
 
 #[utoipa::path(
@@ -138,6 +139,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
         config_path,
         writable,
         restart_required: state.is_restart_pending(),
+        web_certificate_expires_at: state.loaded_certificates.not_after(TlsListener::Web),
     })
 }
 

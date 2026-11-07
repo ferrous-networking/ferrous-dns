@@ -24,7 +24,7 @@ In **Settings → Security**, generate a self-signed certificate. `POST /ferrous
 enabled = true
 ```
 
-The generated certificate is issued to `localhost` and `ferrous-dns`, and is valid for one year. **Settings → Security** shows when it expires. Before then, generate a new one, restart, and refresh the proxy's copy (step 2).
+The generated certificate is issued to `localhost` and `ferrous-dns`, and is valid for one year. **Settings → Security** shows when it expires, and every dashboard page shows a warning once the certificate the server is serving has less than 21 days left. Before then, generate a new one, restart, and refresh the proxy's copy (step 2).
 
 ### 2. Give the proxy a copy of the certificate
 
@@ -146,6 +146,8 @@ All three configurations were run in front of the server with web TLS on and its
 ### Dashboard and DoH
 
 The proxy renews its public certificate by itself: Caddy and Traefik through ACME, nginx through certbot's timer. Ferrous DNS does not need a restart for that. Only the self-signed certificate between the proxy and the server has to be replaced, once a year (step 1 above), along with every copy of it: the proxy's, and Prometheus's [`ca_file`](logs-monitoring.md#metrics).
+
+`/metrics` exports when each certificate the server loaded expires, as `ferrousdns_tls_cert_not_after_seconds{listener="web"|"dot"|"doq"}`, and the [`FerrousDnsCertificateExpiring`](logs-monitoring.md#alert-rules) rule fires 21 days ahead. The value is the certificate loaded at start: one renewed on disk counts once the server has restarted.
 
 ### DoT and DoQ
 

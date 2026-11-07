@@ -17,6 +17,7 @@ use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, UpstreamGroupHealth, UpstreamStatus,
 };
 use ferrous_dns_application::response_counter::{ResponseTotals, RCODE_LABELS};
+use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_domain::{DomainError, QueryStats};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::encoding::EncodeLabelSet;
@@ -59,6 +60,11 @@ struct RcodeLabels {
     rcode: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ListenerLabels {
+    listener: String,
+}
+
 /// Maps an aggregate status to a 1/0 "up" value, or `None` when unknown
 /// (no health data yet) so we don't emit a misleading `down`.
 fn aggregate_up(status: AggregateStatus) -> Option<i64> {
@@ -87,6 +93,9 @@ pub struct MetricsInputs<'a> {
     pub responses: ResponseTotals,
     /// `GET /health`'s flag: every plain DNS worker has bound.
     pub dns_listening: bool,
+    /// When the certificate each TLS listener loaded at start expires, in
+    /// Unix seconds; a listener without one is absent.
+    pub certificates: &'a [(TlsListener, i64)],
     pub version: &'a str,
 }
 
@@ -104,6 +113,7 @@ pub fn render_metrics(inputs: &MetricsInputs) -> Result<String, DomainError> {
         shed,
         responses,
         dns_listening,
+        certificates,
         version,
     } = *inputs;
     let mut registry = Registry::with_prefix("ferrousdns");
@@ -204,6 +214,20 @@ pub fn render_metrics(inputs: &MetricsInputs) -> Result<String, DomainError> {
         "dns_listening",
         "Plain DNS listener serving (1) or not (0); GET /health answers 503 at 0",
         listening,
+    );
+
+    let not_after = Family::<ListenerLabels, Gauge>::default();
+    for (listener, expires) in certificates {
+        not_after
+            .get_or_create(&ListenerLabels {
+                listener: listener.label().to_string(),
+            })
+            .set(*expires);
+    }
+    registry.register(
+        "tls_cert_not_after_seconds",
+        "Expiry (notAfter, Unix seconds) of the certificate each TLS listener loaded at start",
+        not_after,
     );
 
     let cache_entries = Gauge::<i64>::default();
@@ -394,6 +418,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
     };
 
     debug!("Rendering Prometheus metrics");
+    let certificates = state.loaded_certificates.expiries();
     let rendered = render_metrics(&MetricsInputs {
         cache: &cache,
         upstreams: &upstreams,
@@ -402,6 +427,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         shed: state.dns.shed.totals(),
         responses: state.dns.responses.totals(),
         dns_listening: state.is_dns_listening(),
+        certificates: &certificates,
         version: env!("CARGO_PKG_VERSION"),
     });
 

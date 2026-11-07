@@ -1,11 +1,13 @@
 //! What the server is serving reaches `GET /metrics` from `AppState`, read at
-//! scrape time: the DNS listener flag `/health` uses.
+//! scrape time: the DNS listener flag `/health` uses, and the certificates the
+//! TLS listeners loaded.
 
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
 use ferrous_dns_api::metrics_routes;
+use ferrous_dns_application::tls_certificates::TlsListener;
 use helpers::TestApp;
 use http_body_util::BodyExt;
 use std::sync::atomic::Ordering;
@@ -35,4 +37,20 @@ async fn the_dns_listener_gauge_follows_the_health_flag() {
     assert!(scrape(&app)
         .await
         .contains("\nferrousdns_dns_listening 0\n"));
+}
+
+#[tokio::test]
+async fn a_loaded_certificate_is_scraped_under_its_listener() {
+    let app = TestApp::new().await;
+    assert!(!scrape(&app)
+        .await
+        .contains("ferrousdns_tls_cert_not_after_seconds{"));
+
+    app.state
+        .loaded_certificates
+        .record(TlsListener::Doq, 1_900_000_000);
+
+    assert!(scrape(&app)
+        .await
+        .contains("ferrousdns_tls_cert_not_after_seconds{listener=\"doq\"} 1900000000"));
 }

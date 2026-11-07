@@ -470,6 +470,7 @@ mod tests {
             shed: shed.totals(),
             responses: Default::default(),
             dns_listening: true,
+            certificates: &[],
             version: "test",
         })
         .unwrap();
