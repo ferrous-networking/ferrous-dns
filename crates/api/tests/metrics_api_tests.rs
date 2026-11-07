@@ -3,7 +3,7 @@
 //! These exercise the pure `render_metrics` function with hand-built snapshots,
 //! so no `AppState` or database is required.
 
-use ferrous_dns_api::render_metrics;
+use ferrous_dns_api::{render_metrics, MetricsInputs};
 use ferrous_dns_application::drop_counter::ShedTotals;
 use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth,
@@ -73,17 +73,31 @@ fn sample_stats() -> QueryStats {
     }
 }
 
+/// A healthy scrape with no query stats; tests override what they check.
+fn inputs<'a>(
+    cache: &'a CacheMetricsSnapshot,
+    upstreams: &'a [UpstreamGroupHealth],
+) -> MetricsInputs<'a> {
+    MetricsInputs {
+        cache,
+        upstreams,
+        query_stats: None,
+        blocklist_domains: 0,
+        shed: ShedTotals::default(),
+        responses: ResponseTotals::default(),
+        dns_listening: true,
+        version: "9.9.9",
+    }
+}
+
 #[test]
 fn render_includes_cache_counters_and_gauges() {
-    let body = render_metrics(
-        &sample_cache(),
-        &sample_upstreams(),
-        Some(&sample_stats()),
-        1234,
-        &ShedTotals::default(),
-        &ResponseTotals::default(),
-        "9.9.9",
-    )
+    let (cache, upstreams, stats) = (sample_cache(), sample_upstreams(), sample_stats());
+    let body = render_metrics(&MetricsInputs {
+        query_stats: Some(&stats),
+        blocklist_domains: 1234,
+        ..inputs(&cache, &upstreams)
+    })
     .unwrap();
 
     // Cache atomics are monotonic since boot → counters (encoder appends `_total`).
@@ -100,15 +114,11 @@ fn render_includes_cache_counters_and_gauges() {
 
 #[test]
 fn render_includes_upstream_and_query_series() {
-    let body = render_metrics(
-        &sample_cache(),
-        &sample_upstreams(),
-        Some(&sample_stats()),
-        0,
-        &ShedTotals::default(),
-        &ResponseTotals::default(),
-        "9.9.9",
-    )
+    let (cache, upstreams, stats) = (sample_cache(), sample_upstreams(), sample_stats());
+    let body = render_metrics(&MetricsInputs {
+        query_stats: Some(&stats),
+        ..inputs(&cache, &upstreams)
+    })
     .unwrap();
 
     assert!(body.contains("ferrousdns_upstream_up{"));
@@ -125,15 +135,11 @@ fn render_includes_upstream_and_query_series() {
 
 #[test]
 fn render_omits_query_gauges_when_stats_missing() {
-    let body = render_metrics(
-        &sample_cache(),
-        &sample_upstreams(),
-        None,
-        5,
-        &ShedTotals::default(),
-        &ResponseTotals::default(),
-        "9.9.9",
-    )
+    let (cache, upstreams) = (sample_cache(), sample_upstreams());
+    let body = render_metrics(&MetricsInputs {
+        blocklist_domains: 5,
+        ..inputs(&cache, &upstreams)
+    })
     .unwrap();
 
     // Live metrics still present even without query stats.
@@ -146,17 +152,13 @@ fn render_omits_query_gauges_when_stats_missing() {
 
 #[test]
 fn render_includes_responses_by_rcode() {
-    let body = render_metrics(
-        &sample_cache(),
-        &sample_upstreams(),
-        None,
-        0,
-        &ShedTotals::default(),
-        &ResponseTotals {
+    let (cache, upstreams) = (sample_cache(), sample_upstreams());
+    let body = render_metrics(&MetricsInputs {
+        responses: ResponseTotals {
             by_rcode: [90, 1, 4, 3, 0, 2, 5],
         },
-        "9.9.9",
-    )
+        ..inputs(&cache, &upstreams)
+    })
     .unwrap();
 
     assert!(body.contains("# TYPE ferrousdns_responses counter"));
@@ -171,4 +173,20 @@ fn render_includes_responses_by_rcode() {
     ] {
         assert!(body.contains(line), "missing `{line}` in:\n{body}");
     }
+}
+
+#[test]
+fn render_reports_whether_the_dns_listener_is_serving() {
+    let (cache, upstreams) = (sample_cache(), sample_upstreams());
+
+    let up = render_metrics(&inputs(&cache, &upstreams)).unwrap();
+    let down = render_metrics(&MetricsInputs {
+        dns_listening: false,
+        ..inputs(&cache, &upstreams)
+    })
+    .unwrap();
+
+    assert!(up.contains("# TYPE ferrousdns_dns_listening gauge"));
+    assert!(up.contains("\nferrousdns_dns_listening 1\n"), "{up}");
+    assert!(down.contains("\nferrousdns_dns_listening 0\n"), "{down}");
 }

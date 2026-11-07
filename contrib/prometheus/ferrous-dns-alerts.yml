@@ -16,6 +16,16 @@ groups:
         annotations:
           summary: "Ferrous DNS on {{ $labels.instance }} does not answer scrapes"
 
+      # /health answers 503 then, but the scrape still succeeds and `up` stays 1.
+      # The listener is down for a moment at every start, hence the `for`.
+      - alert: FerrousDnsListenerDown
+        expr: ferrousdns_dns_listening == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The DNS listener on {{ $labels.instance }} is not serving"
+
       # family="all" is the server as a whole: up while any of its addresses is.
       - alert: FerrousDnsUpstreamDown
         expr: ferrousdns_upstream_up{family="all"} == 0

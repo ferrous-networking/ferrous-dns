@@ -55,7 +55,7 @@ Lines worth a look, all logged at `WARN`:
 
 ## Health check
 
-`GET /ferrous/api/v1/health` needs no authentication. It answers `200` with `{"status":"ok","version":"…"}` while the DNS listener is up, and `503` when it is not. It does not test upstreams or the database: use it to tell a load balancer or an uptime monitor whether the process is serving, and use the alerts below for the rest.
+`GET /ferrous/api/v1/health` needs no authentication. It answers `200` with `{"status":"ok","version":"…"}` while the DNS listener is up, and `503` when it is not. It does not test upstreams or the database: use it to tell a load balancer or an uptime monitor whether the process is serving, and use the alerts below for the rest. `/metrics` exports the same flag as `ferrousdns_dns_listening`.
 
 `ferrous-dns --healthcheck` calls it with the same config and exits `0` or `1`. The Docker image's `HEALTHCHECK` runs it, and so can any script:
 
@@ -108,6 +108,7 @@ promtool test rules ferrous-dns-alerts.test.yml   # the unit tests beside it in 
 | Alert | Fires when | Look at |
 |:------|:-----------|:--------|
 | `FerrousDnsDown` | Prometheus cannot scrape the server for 2 minutes | The process, the host, the network path |
+| `FerrousDnsListenerDown` | The DNS listener has not been serving for 2 minutes, while the web server still answers | The port taken by another process, or a bind address the host no longer has. The first log lines after the start say which |
 | `FerrousDnsUpstreamDown` | One upstream server has failed its health checks for 5 minutes | The upstream itself and its pool in **Settings**. Other servers in the pool carry the load |
 | `FerrousDnsPoolDown` | Every server of a pool has been down for 1 minute | Clients get SERVFAIL for everything that pool answers. Check the uplink |
 | `FerrousDnsServfailRatioHigh` | More than 5% of replies are SERVFAIL for 10 minutes | Upstreams timing out, DNSSEC failures in `strict` mode, a conditional pool down. The Query Log shows which names |
