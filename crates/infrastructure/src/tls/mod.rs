@@ -120,7 +120,8 @@ pub fn certificate_not_after(cert_path: &str) -> Option<i64> {
     })
 }
 
-/// Reads the first certificate of a PEM chain: the server's own.
+/// Reads the first certificate of a PEM chain: the server's own. Other blocks,
+/// such as a private key bundled ahead of it, are skipped, as rustls does.
 fn with_first_certificate<T>(
     cert_path: &str,
     data: &[u8],
@@ -132,7 +133,7 @@ fn with_first_certificate<T>(
         return None;
     };
 
-    let pem = pems.first()?;
+    let pem = pems.iter().find(|pem| pem.label == "CERTIFICATE")?;
 
     match x509_parser::parse_x509_certificate(&pem.contents) {
         Ok((_, cert)) => Some(read(&cert)),
