@@ -55,7 +55,7 @@ RUN apk upgrade --no-cache && \
     tzdata && \
     addgroup -g 1000 ferrous && \
     adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
-    mkdir -p /data/config && \
+    mkdir -p /data/config /data/db && \
     chown -R ferrous:ferrous /data
 
 COPY --from=builder /app/target/release/ferrous-dns /usr/local/bin/ferrous-dns
