@@ -45,12 +45,9 @@ fn restore_host_settings(config: &mut Config, sc: &SnapshotConfig) -> Result<(),
     config.server.dns_port = sc.server.dns_port;
     config.server.web_port = sc.server.web_port;
     config.server.bind_address = parse(&sc.server.bind_address)?;
-    config.server.web_bind_address = sc
-        .server
-        .web_bind_address
-        .as_deref()
-        .map(parse)
-        .transpose()?;
+    if let Some(web_bind_address) = &sc.server.web_bind_address {
+        config.server.web_bind_address = web_bind_address.as_deref().map(parse).transpose()?;
+    }
     config.server.web_tls.enabled = sc.server.tls_enabled;
     config.server.web_tls.tls_cert_path = sc.server.tls_cert_path.clone();
     config.server.web_tls.tls_key_path = sc.server.tls_key_path.clone();

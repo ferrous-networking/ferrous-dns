@@ -3,7 +3,7 @@ use ferrous_dns_domain::config::{
     ResponseIpFilterConfig, TunnelingDetectionConfig,
 };
 use ferrous_dns_domain::UpstreamPool;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Full configuration snapshot exported by the backup use case.
 ///
@@ -43,14 +43,26 @@ pub struct SnapshotServerConfig {
     pub dns_port: u16,
     pub web_port: u16,
     pub bind_address: String,
-    /// Absent from older backups, whose web server always shared `bind_address`.
-    #[serde(default)]
-    pub web_bind_address: Option<String>,
+    /// `Some(None)` when the exporting server had none, so the web server shares
+    /// `bind_address`. `None` when the backup predates the key, which keeps
+    /// this server's own value.
+    #[serde(default, deserialize_with = "present")]
+    pub web_bind_address: Option<Option<String>>,
     pub pihole_compat: bool,
     /// TLS cert/key paths are exported (paths ok, content not).
     pub tls_cert_path: String,
     pub tls_key_path: String,
     pub tls_enabled: bool,
+}
+
+/// Tells a key that is present, `null` included, from a missing one, which
+/// `#[serde(default)]` leaves at `None`.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

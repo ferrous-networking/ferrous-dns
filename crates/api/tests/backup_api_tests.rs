@@ -445,6 +445,40 @@ async fn test_import_keeps_this_servers_host_settings_when_asked() {
     assert_eq!(cfg.logging.level, "debug");
 }
 
+/// A backup that differs from this server only in what is kept changes
+/// nothing, so it asks for no restart; restored, the same backup does.
+#[tokio::test]
+async fn test_import_keeping_host_settings_asks_for_no_restart_when_only_they_differ() {
+    let TestApp { router, config, .. } = test_app().await;
+    let (_, mut backup) = do_export(router.clone()).await;
+    let server = &mut backup["config"]["server"];
+    server["dns_port"] = json!(5353);
+    server["bind_address"] = json!("10.0.0.2");
+    server["web_bind_address"] = json!("10.0.0.2");
+    server["tls_cert_path"] = json!("/etc/dns-a/cert.pem");
+    backup["config"]["auth"]["webauthn_rp_id"] = json!("dns-a.example");
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let before = serde_json::to_value(&*config.read().await).unwrap();
+
+    let response = router
+        .clone()
+        .oneshot(import_request_to(
+            "/config/import?keep_host_settings=true",
+            &payload,
+        ))
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let kept: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(kept["restart_required"], false, "{kept}");
+    assert_eq!(serde_json::to_value(&*config.read().await).unwrap(), before);
+
+    let response = router.oneshot(import_request(&payload)).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let restored: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(restored["restart_required"], true, "{restored}");
+}
+
 #[tokio::test]
 async fn test_import_restores_the_backups_host_settings_by_default() {
     let TestApp { router, config, .. } = test_app().await;
@@ -608,7 +642,10 @@ async fn test_import_is_idempotent() {
     let snapshot: ferrous_dns_application::use_cases::BackupSnapshot =
         serde_json::from_slice(&payload).unwrap();
     let summary1 = import_uc
-        .execute(snapshot.clone(), Default::default())
+        .execute(
+            snapshot.clone(),
+            ferrous_dns_application::use_cases::ImportOptions::default(),
+        )
         .await
         .unwrap();
     assert_eq!(summary1.groups_skipped, 1);
@@ -616,7 +653,10 @@ async fn test_import_is_idempotent() {
 
     // A second import yields the same result.
     let summary2 = import_uc
-        .execute(snapshot, Default::default())
+        .execute(
+            snapshot,
+            ferrous_dns_application::use_cases::ImportOptions::default(),
+        )
         .await
         .unwrap();
     assert_eq!(summary2.groups_skipped, 1);

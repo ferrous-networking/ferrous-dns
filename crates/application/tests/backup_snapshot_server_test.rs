@@ -1,6 +1,6 @@
 //! Backward/forward compatibility of the backup `[server]` snapshot fields:
-//! backups made before `web_bind_address` existed carry no such key, and the
-//! field must round-trip when present.
+//! backups made before `web_bind_address` existed carry no such key, which
+//! must read apart from an explicit `null`, and the field must round-trip.
 
 use ferrous_dns_application::use_cases::backup::snapshot::SnapshotServerConfig;
 
@@ -28,12 +28,20 @@ fn an_older_backup_without_web_bind_address_parses_to_none() {
 }
 
 #[test]
+fn a_null_web_bind_address_parses_apart_from_a_missing_one() {
+    let parsed: SnapshotServerConfig =
+        serde_json::from_value(server_json(serde_json::json!({"web_bind_address": null}))).unwrap();
+    assert_eq!(parsed.web_bind_address, Some(None));
+    assert!(serde_json::to_value(&parsed).unwrap()["web_bind_address"].is_null());
+}
+
+#[test]
 fn web_bind_address_round_trips() {
     let parsed: SnapshotServerConfig = serde_json::from_value(server_json(
         serde_json::json!({"web_bind_address": "127.0.0.1"}),
     ))
     .unwrap();
-    assert_eq!(parsed.web_bind_address.as_deref(), Some("127.0.0.1"));
+    assert_eq!(parsed.web_bind_address, Some(Some("127.0.0.1".to_string())));
 
     let reserialized = serde_json::to_value(&parsed).unwrap();
     assert_eq!(reserialized["web_bind_address"], "127.0.0.1");
