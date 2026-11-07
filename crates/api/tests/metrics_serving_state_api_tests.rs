@@ -26,7 +26,7 @@ async fn scrape(app: &TestApp) -> String {
 }
 
 #[tokio::test]
-async fn the_dns_listener_gauge_follows_the_health_flag() {
+async fn test_the_dns_listener_gauge_follows_the_health_flag() {
     let app = TestApp::new().await;
     assert!(scrape(&app)
         .await
@@ -40,7 +40,7 @@ async fn the_dns_listener_gauge_follows_the_health_flag() {
 }
 
 #[tokio::test]
-async fn a_loaded_certificate_is_scraped_under_its_listener() {
+async fn test_a_loaded_certificate_is_scraped_under_its_listener() {
     let app = TestApp::new().await;
     assert!(!scrape(&app)
         .await
