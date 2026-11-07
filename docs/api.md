@@ -350,6 +350,8 @@ Returns the full current configuration including server, DNS, blocking, logging,
 
 `restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /ferrous/api/v1/config` (anything but upstream pools), `POST /ferrous/api/v1/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
 
+`web_certificate_expires_at` is when the certificate the web server loaded at start expires, in Unix seconds, or `null` while it serves plain HTTP. A certificate replaced on disk counts after the restart that loads it. The dashboard's certificate banner follows it.
+
 ### Update Config
 
 ```http

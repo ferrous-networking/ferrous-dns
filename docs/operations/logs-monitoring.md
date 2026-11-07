@@ -125,4 +125,4 @@ The ratio alerts use the since-start counters (`ferrousdns_responses_total`, `fe
 --8<-- "contrib/prometheus/ferrous-dns-alerts.yml"
 ```
 
-These rules passed their `promtool` tests and were run against a live server. With 50 queries a second of cache misses and the only upstream stopped, `FerrousDnsPoolDown` fired after its minute. `FerrousDnsServfailRatioHigh`, `FerrousDnsUpstreamDown` and `FerrousDnsCacheHitRatioLow` were pending, waiting out their own windows.
+These rules passed their `promtool` tests. The original set was also run against a live server: with 50 queries a second of cache misses and the only upstream stopped, `FerrousDnsPoolDown` fired after its minute, and `FerrousDnsServfailRatioHigh`, `FerrousDnsUpstreamDown` and `FerrousDnsCacheHitRatioLow` were pending, waiting out their own windows. For `FerrousDnsListenerDown` and `FerrousDnsCertificateExpiring`, the series they read were checked against a live server.

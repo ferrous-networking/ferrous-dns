@@ -272,6 +272,8 @@ Navigate to **Settings > Security > HTTPS / TLS** to:
 - **Upload certificates** — drag and drop PEM certificate and key files
 - **Generate a self-signed certificate** — instant HTTPS with one click (browsers will show a security warning, but the connection is encrypted)
 
+Once the certificate the web server is serving has less than 21 days left, every dashboard page shows a warning, and the [`FerrousDnsCertificateExpiring`](../operations/logs-monitoring.md#alert-rules) rule fires for Prometheus.
+
 !!! tip "Quick setup"
     Click **Generate Self-Signed Certificate** for immediate HTTPS without needing external certificates. For production, use [Let's Encrypt](https://letsencrypt.org/) or your CA.
 
