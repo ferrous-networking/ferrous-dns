@@ -145,37 +145,53 @@ function showRestartBanner() {
 // The same lead time as the FerrousDnsCertificateExpiring alert rule.
 const CERTIFICATE_WARNING_DAYS = 21;
 
-// Whole days until `expiresAtMs`, negative once it has passed.
+// Inside the warning window: the same `< 21 days` the alert rule uses.
+function certificateExpiresSoon(expiresAtMs) {
+    return expiresAtMs - Date.now() < CERTIFICATE_WARNING_DAYS * 86400000;
+}
+
+// Calendar days from today to the local day `expiresAtMs` falls on, so the
+// count agrees with the date shown beside it; negative once that day is past.
 function daysUntil(expiresAtMs) {
-    return Math.floor((expiresAtMs - Date.now()) / 86400000);
+    const day = ms => {
+        const d = new Date(ms);
+        return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+    return Math.round((day(expiresAtMs) - day(Date.now())) / 86400000);
 }
 
 // `expiresAt` is the served web certificate's notAfter, in Unix seconds.
 function showCertificateBanner(expiresAt) {
-    const days = daysUntil(expiresAt * 1000);
-    if (days >= CERTIFICATE_WARNING_DAYS || document.getElementById('global-certificate-banner')) return;
+    const expiresAtMs = expiresAt * 1000;
+    if (!certificateExpiresSoon(expiresAtMs) || document.getElementById('global-certificate-banner')) return;
     const main = document.querySelector('main');
     if (!main) return;
-    const expired = days < 0;
+    const expired = expiresAtMs <= Date.now();
+    const days = daysUntil(expiresAtMs);
     const [bg, border, text] = expired ? ['#FEE2E2', '#EF4444', '#991B1B'] : ['#FEF3C7', '#F59E0B', '#92400E'];
     const banner = document.createElement('div');
     banner.id = 'global-certificate-banner';
     banner.style.cssText = `background:${bg};border:1px solid ${border};border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px`;
     banner.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${border}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><p style="font-size:14px;color:${text};margin:0;font-weight:500"></p>`;
-    const date = new Date(expiresAt * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const when = expired ? `expired on ${date}` : days === 0 ? `expires today, ${date}` : `expires in ${days} day${days === 1 ? '' : 's'}, on ${date}`;
+    const date = new Date(expiresAtMs).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const when = expired ? `expired on ${date}`
+        : days === 0 ? `expires today, ${date}`
+        : days === 1 ? `expires tomorrow, ${date}`
+        : `expires in ${days} days, on ${date}`;
     const message = banner.querySelector('p');
-    message.append(`The dashboard's TLS certificate ${when}. Replace it under `);
+    message.append(`This server's web TLS certificate ${when}. Replace it under `);
     const link = document.createElement('a');
     link.href = '/settings.html#security';
     link.textContent = 'Settings → Security';
     link.style.cssText = `color:${text};text-decoration:underline`;
-    link.addEventListener('click', () => {
-        // Already on Settings: the hash alone does not switch the tab.
-        const app = document.querySelector('[x-data]')?._x_dataStack?.[0];
-        if (app && 'currentTab' in app) app.currentTab = 'security';
+    link.addEventListener('click', event => {
+        // Already on Settings, where the hash may not change: tell the page anyway.
+        if (document.body.dataset.page !== 'settings') return;
+        event.preventDefault();
+        history.replaceState(null, '', '#security');
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
-    message.append(link, ', then restart the server.');
+    message.append(link, ', restart the server, and update any copy of it a reverse proxy or Prometheus checks against.');
     // A page can place it in a slot of its own; otherwise it goes on top, like the restart banner.
     const slot = document.getElementById('certificate-banner-slot');
     if (slot) slot.append(banner);
