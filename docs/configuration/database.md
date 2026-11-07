@@ -194,7 +194,7 @@ The copy is written to `<PATH>.partial`, readable by its owner only because it h
       - ferrous-data:/data/
     ```
 
-    To keep it elsewhere in the volume, change `[database] path` in `/data/config/ferrous-dns.toml` or set `FERROUS_DATABASE`. The directory must exist. The server opens an empty database at a new path, so stop it and move the file, with its `-wal` and `-shm`, first. `FERROUS_DATABASE=/data/db/ferrous.db`, the old documented default, is ignored.
+    To keep it elsewhere in the volume, change `[database] path` in `/data/config/ferrous-dns.toml` or set `FERROUS_DATABASE`. The image creates `/data/db` for this; any other directory must exist and be writable by uid 1000. The server opens an empty database at a new path, so stop it and move the file, with its `-wal` and `-shm`, first. `FERROUS_DATABASE=/data/db/ferrous.db`, the old documented default, is ignored.
 
 === "Binary"
 

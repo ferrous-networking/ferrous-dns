@@ -119,7 +119,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
 | `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
-| `FERROUS_DATABASE`    | —                                     | SQLite database path; unset, `[database] path` applies (`/data/ferrous-dns.db` in the Docker image) |
+| `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db` in the Docker image) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
 > **mDNS client names** (`mdns_enabled`, off by default) listens on UDP **5353** for multicast announcements and names clients after the host name their device announces. It requires host networking (`network_mode: host`) — multicast does not traverse Docker bridge port mapping.

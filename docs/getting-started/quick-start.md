@@ -141,7 +141,7 @@ servers = [
 enabled = true
 
 [database]
-path = "/data/ferrous.db"
+path = "/data/ferrous-dns.db"
 log_queries = true
 
 [logging]
