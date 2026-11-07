@@ -45,7 +45,7 @@ pub struct EncryptedDnsConfig {
 
     /// Address the dedicated DoH listener binds to; falls back to
     /// `[server].bind_address`. Ignored when `doh_port` is absent, since
-    /// `/dns-query` is then co-hosted on the web listener.
+    /// `/dns-query` is then co-hosted on the web listener and binds its address.
     #[serde(default, deserialize_with = "deserialize_optional_bind_host")]
     pub doh_bind_address: Option<IpAddr>,
 

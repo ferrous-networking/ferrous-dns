@@ -74,7 +74,7 @@ Turn the Prometheus endpoint on in the config, and restart:
 metrics_enabled = true
 ```
 
-`/metrics` is served on the web port with no authentication, so anyone who reaches the port can read query volumes and the upstream list. Keep the port on a network your Prometheus is on, or block it on the [reverse proxy](tls-reverse-proxy.md). With the [firewall rule](tls-reverse-proxy.md#4-keep-the-dashboard-port-off-the-network) in place, let the Prometheus host through it. The full list of series is in [Metrics & Monitoring](../features/metrics.md).
+`/metrics` is served on the web port with no authentication, so anyone who reaches the port can read query volumes and the upstream list. Keep the port on a network your Prometheus is on, or block it on the [reverse proxy](tls-reverse-proxy.md). With the [firewall rule](tls-reverse-proxy.md#4-keep-the-dashboard-port-off-the-network) in place, let the Prometheus host through it. With [`web_bind_address`](../configuration/server.md#web-bind-address) on loopback, a Prometheus on another host cannot reach the port: scrape through the proxy, or keep the shared address and use the firewall rule. The full list of series is in [Metrics & Monitoring](../features/metrics.md).
 
 A scrape job for a server with web TLS on, checking its self-signed certificate against a copy of it:
 

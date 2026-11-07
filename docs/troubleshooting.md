@@ -218,6 +218,7 @@ curl -s http://<server-ip>:8080/ | head -20
 If no response:
 
 - Verify `web_port` in `ferrous-dns.toml` (default: `8080`)
+- Check `web_bind_address`: on loopback, the dashboard answers only on the host itself
 - Check if the port is open: `sudo ss -tulnp | grep :8080`
 - Check Docker port mappings if running in a container
 

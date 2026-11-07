@@ -26,7 +26,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 
 ### Dual-stack (IPv4 + IPv6) {#dual-stack}
 
-`bind_address = "[::]"` makes every listener — Do53 (UDP and TCP), DoT, DoH, DoQ, and the web dashboard — serve IPv4 and IPv6 clients on a single dual-stack socket:
+`bind_address = "[::]"` makes every listener — Do53 (UDP and TCP), DoT, DoH, DoQ, and the web dashboard — serve IPv4 and IPv6 clients on a single dual-stack socket, unless it has a [bind address of its own](#per-listener-bind):
 
 ```toml
 [server]
@@ -66,7 +66,7 @@ See [Encrypted DNS](#encrypted-dns) for the full list of options.
 
 ### Dashboard on its own address {#web-bind-address}
 
-`web_bind_address` moves the dashboard and the REST API, over HTTP or HTTPS, off `bind_address`, while every DNS listener stays where it is. The usual case is a reverse proxy on the same host: DNS serves the network, and the web server listens on loopback only.
+`web_bind_address` moves the dashboard and the REST API, over HTTP or HTTPS, off `bind_address`, while every DNS listener stays where it is. The usual case is a reverse proxy on the same host, or in Docker with host networking: DNS serves the network, and the web server listens on loopback only. In a container on a bridge network, loopback is the container's own, so a proxy in another container cannot reach it there: leave the key unset.
 
 ```toml
 [server]
@@ -238,7 +238,7 @@ tls_key_path  = "/data/key.pem"
 | `dot_bind_address` | — | Address for the DoT listener; inherits `[server].bind_address` when omitted |
 | `doh_enabled` | `false` | Enable DoH endpoint (`/dns-query`) |
 | `doh_port` | — | Dedicated plain-HTTP port for DoH (behind a reverse proxy); omit to co-host on `web_port` |
-| `doh_bind_address` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted |
+| `doh_bind_address` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted, since `/dns-query` then binds wherever the dashboard does (`web_bind_address`, else `bind_address`) |
 | `doq_enabled` | `false` | Enable DoQ listener |
 | `doq_port` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `doq_bind_address` | — | Address for the DoQ listener; inherits `[server].bind_address` when omitted |

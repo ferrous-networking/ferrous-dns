@@ -33,7 +33,7 @@ No host config file is needed to start: on first run the entrypoint copies the b
 | `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
-| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
+| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address (`server.bind_address`; `web_bind_address` is left as it is) |
 | `FERROUS_DATABASE`    | `/data/db/ferrous.db`                 | SQLite database path                |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
@@ -279,7 +279,7 @@ These flags override the matching values from the config file:
 
 `--backup-database <PATH>` is another: with the server running, it writes a checked copy of the database to `PATH`, which must not exist yet, and exits. In Docker, run it through the entrypoint so the `FERROUS_*` variables apply: `docker exec ferrous-dns /entrypoint.sh --backup-database /data/backups/ferrous.db`. See [Backups](../configuration/database.md#backups).
 
-`--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web port. When the server listens on every address it calls `127.0.0.1`, then `::1` if nothing answers there; it never goes through an `HTTP_PROXY` from the environment. It follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
+`--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web server: `web_port` on `web_bind_address`, else on `bind_address`. When that is every address it calls `127.0.0.1`, then `::1` if nothing answers there; it never goes through an `HTTP_PROXY` from the environment. It follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
 
 !!! note "Log level"
     The log level is set by `logging.level` in the config file (or the `--log-level` flag). `RUST_LOG` is **not** consulted.
