@@ -446,6 +446,17 @@ fn mean_ms(sum_us: i64, n: i64) -> f64 {
     }
 }
 
+/// Percentage of the answered queries served from cache. A blocked query is
+/// neither a hit nor a miss: it never reached the cache.
+fn cache_hit_rate(hits: u64, misses: u64) -> f64 {
+    let answered = hits + misses;
+    if answered > 0 {
+        (hits as f64 / answered as f64) * 100.0
+    } else {
+        0.0
+    }
+}
+
 #[instrument(skip(pool))]
 pub(super) async fn get_stats(
     pool: &SqlitePool,
@@ -463,6 +474,7 @@ pub(super) async fn get_stats(
                     COALESCE(SUM(dnssec_bogus), 0) AS dnssec_bogus,
                     COALESCE(SUM(dns64_synthesized), 0) AS dns64_synthesized,
                     COALESCE(SUM(cache_hits), 0) AS cache_hits,
+                    COALESCE(SUM(cache_misses), 0) AS cache_misses,
                     COALESCE(SUM(local_dns), 0) AS local_dns,
                     COALESCE(SUM(timed), 0) AS timed,
                     COALESCE(SUM(response_us_sum), 0) AS response_us_sum,
@@ -510,11 +522,7 @@ pub(super) async fn get_stats(
     let col = |name: &str| row.get::<i64, _>(name);
     let total = col("total") as u64;
     let cache_hits = col("cache_hits") as u64;
-    let cache_hit_rate = if total > 0 {
-        (cache_hits as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
+    let cache_hit_rate = cache_hit_rate(cache_hits, col("cache_misses") as u64);
 
     let mut queries_by_type = std::collections::HashMap::new();
     for type_row in type_rows {
@@ -639,8 +647,7 @@ pub(super) async fn get_cache_stats(
 ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
     // Refreshes are internal lookups, so only they are counted across sources.
     let row = sqlx::query(
-        "SELECT COALESCE(SUM(CASE WHEN query_source = 'client' THEN total END), 0) AS total_queries,
-                COALESCE(SUM(CASE WHEN query_source = 'client' THEN cache_hits END), 0) AS hits,
+        "SELECT COALESCE(SUM(CASE WHEN query_source = 'client' THEN cache_hits END), 0) AS hits,
                 COALESCE(SUM(cache_refreshes), 0) AS refreshes,
                 COALESCE(SUM(CASE WHEN query_source = 'client' THEN cache_misses END), 0) AS misses
          FROM query_log_minute
@@ -654,13 +661,7 @@ pub(super) async fn get_cache_stats(
     let total_hits = row.get::<i64, _>("hits") as u64;
     let total_misses = row.get::<i64, _>("misses") as u64;
     let total_refreshes = row.get::<i64, _>("refreshes") as u64;
-    let total_queries = row.get::<i64, _>("total_queries") as u64;
-
-    let hit_rate = if total_queries > 0 {
-        (total_hits as f64 / total_queries as f64) * 100.0
-    } else {
-        0.0
-    };
+    let hit_rate = cache_hit_rate(total_hits, total_misses);
 
     let refresh_rate = if total_hits > 0 {
         (total_refreshes as f64 / total_hits as f64) * 100.0

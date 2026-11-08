@@ -32,6 +32,7 @@ The landing page shows a real-time overview of your DNS server:
 - **Top blocked domains** — most frequently blocked domains
 - **Top clients** — most active clients by query count
 - **Block filter stats** — blocklist size, total entries
+- **Cache Performance** — cache hits over the last 24 hours and the hit rate: the share of answered queries served from cache. Blocked queries never reach the cache, so they count in neither
 - **Upstream** — each pool with its strategy and the health of every server; click a server to see its resolved addresses, their latency and the last error
 - **Cache Refreshes** — the five cache entries renewed most, plus how many entries expired and how many were stored since the server started, and how many expire within the next 60 seconds
 
@@ -135,7 +136,7 @@ is otherwise only written to the log.
 
 - **System Status** — hostname, kernel, CPU load, memory usage, uptime
 - **Upstream Health** — per-pool and per-server health status with latency metrics
-- **Cache Overview** — entries, hit rate, evictions, compactions, optimistic refreshes
+- **Cache Overview** — entries, hit rate (the Dashboard's 24-hour figure), evictions, compactions, optimistic refreshes
 - **DNS Configuration** — upstream pools, strategies, DNSSEC, cache settings
 - **Rate Limiting** — enable/disable rate limiting, configure QPS, burst, whitelist, slip ratio, dry-run mode, TCP/DoT connection limits
 - **DNS Settings** — non-FQDN blocking, private PTR blocking, local domain, Local DNS server (your router, also used to look up upstream hostnames)

@@ -190,7 +190,7 @@
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                     <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
                         <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Cache hit rate</div>
-                        <div style="font-size:16px;font-weight:700;color:var(--color-success)" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--color-success)" x-text="(stats.cache_hit_rate || 0).toFixed(1) + '%'">0%</div>
                     </div>
                     <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
                         <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Throughput</div>
@@ -302,7 +302,7 @@
                 </div>
                 <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
                     <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Hit rate</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--color-success)" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--color-success)" x-text="(stats.cache_hit_rate || 0).toFixed(1) + '%'">0%</div>
                 </div>
                 <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
                     <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Evictions</div>

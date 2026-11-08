@@ -22,6 +22,8 @@ pub struct StatsResponse {
     pub queries_dnssec_bogus: u64,
     pub clients: u64,
     pub uptime: u64,
+    /// Percentage of answered client queries served from cache, the same
+    /// figure as `/cache/stats`. Blocked queries count in neither part.
     pub cache_hit_rate: f64,
     pub avg_query_time_ms: f64,
     pub avg_cache_time_ms: f64,
