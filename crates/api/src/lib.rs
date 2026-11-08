@@ -13,5 +13,6 @@ pub use openapi::ApiDoc;
 pub use routes::create_api_router_with_openapi;
 pub use state::{
     AppState, AuthUseCases, BackupUseCases, BlockingUseCases, ClientUseCases, DnsUseCases,
-    GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
+    DohIdUseCases, GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases,
+    ServiceUseCases,
 };

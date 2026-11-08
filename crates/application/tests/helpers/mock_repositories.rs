@@ -1722,3 +1722,142 @@ impl MalwareExemptionPort for MockMalwareExemptions {
         Ok(())
     }
 }
+
+use ferrous_dns_application::ports::DohIdRepository;
+use ferrous_dns_domain::DohId;
+
+#[derive(Clone)]
+pub struct MockDohIdRepository {
+    entries: Arc<RwLock<Vec<DohId>>>,
+    next_id: Arc<RwLock<i64>>,
+}
+
+impl MockDohIdRepository {
+    pub fn new() -> Self {
+        Self {
+            entries: Arc::new(RwLock::new(Vec::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+}
+
+impl Default for MockDohIdRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl DohIdRepository for MockDohIdRepository {
+    async fn create(
+        &self,
+        name: String,
+        client_id: String,
+        group_id: i64,
+        comment: Option<String>,
+    ) -> Result<DohId, DomainError> {
+        let mut entries = self.entries.write().await;
+
+        if entries.iter().any(|e| e.name.as_ref() == name.as_str()) {
+            return Err(DomainError::DohIdConflict(format!(
+                "DoH ID name '{name}' already exists"
+            )));
+        }
+        if entries
+            .iter()
+            .any(|e| e.client_id.as_ref() == client_id.as_str())
+        {
+            return Err(DomainError::DohIdConflict(format!(
+                "DoH client ID '{client_id}' already exists"
+            )));
+        }
+
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let entry = DohId {
+            id: Some(id),
+            name: Arc::from(name.as_str()),
+            client_id: Arc::from(client_id.as_str()),
+            group_id,
+            comment: comment.as_deref().map(Arc::from),
+            created_at: Some("2026-01-01 00:00:00".to_string()),
+            updated_at: Some("2026-01-01 00:00:00".to_string()),
+        };
+
+        entries.push(entry.clone());
+        Ok(entry)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<DohId>, DomainError> {
+        let entries = self.entries.read().await;
+        Ok(entries.iter().find(|e| e.id == Some(id)).cloned())
+    }
+
+    async fn get_by_client_id(&self, client_id: &str) -> Result<Option<DohId>, DomainError> {
+        let entries = self.entries.read().await;
+        Ok(entries
+            .iter()
+            .find(|e| e.client_id.as_ref() == client_id)
+            .cloned())
+    }
+
+    async fn get_all(&self) -> Result<Vec<DohId>, DomainError> {
+        Ok(self.entries.read().await.clone())
+    }
+
+    async fn update(
+        &self,
+        id: i64,
+        name: String,
+        client_id: Option<String>,
+        group_id: i64,
+        comment: Option<String>,
+    ) -> Result<DohId, DomainError> {
+        let mut entries = self.entries.write().await;
+
+        if entries
+            .iter()
+            .any(|e| e.id != Some(id) && e.name.as_ref() == name.as_str())
+        {
+            return Err(DomainError::DohIdConflict(format!(
+                "DoH ID name '{name}' already exists"
+            )));
+        }
+        if let Some(ref cid) = client_id {
+            if entries
+                .iter()
+                .any(|e| e.id != Some(id) && e.client_id.as_ref() == cid.as_str())
+            {
+                return Err(DomainError::DohIdConflict(format!(
+                    "DoH client ID '{cid}' already exists"
+                )));
+            }
+        }
+
+        let entry = entries
+            .iter_mut()
+            .find(|e| e.id == Some(id))
+            .ok_or(DomainError::DohIdNotFound(id))?;
+
+        entry.name = Arc::from(name.as_str());
+        if let Some(cid) = client_id {
+            entry.client_id = Arc::from(cid.as_str());
+        }
+        entry.group_id = group_id;
+        entry.comment = comment.as_deref().map(Arc::from);
+
+        Ok(entry.clone())
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut entries = self.entries.write().await;
+        let len_before = entries.len();
+        entries.retain(|e| e.id != Some(id));
+        if entries.len() == len_before {
+            return Err(DomainError::DohIdNotFound(id));
+        }
+        Ok(())
+    }
+}

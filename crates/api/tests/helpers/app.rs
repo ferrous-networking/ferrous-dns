@@ -8,7 +8,7 @@ use super::{build_test_auth_use_cases, build_test_backup_use_cases, MockTlsCerti
 use axum::Router;
 use ferrous_dns_api::{
     create_api_router_with_openapi, AppState, BackupUseCases, BlockingUseCases, ClientUseCases,
-    DnsUseCases, GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases,
+    DnsUseCases, DohIdUseCases, GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases,
     ServiceUseCases,
 };
 use ferrous_dns_application::drop_counter::ShedCounters;
@@ -29,6 +29,7 @@ use ferrous_dns_infrastructure::dns::{
 use ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository;
 use ferrous_dns_infrastructure::repositories::client_repository::SqliteClientRepository;
 use ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository;
+use ferrous_dns_infrastructure::repositories::doh_id_repository::SqliteDohIdRepository;
 use ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository;
 use ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
@@ -166,6 +167,7 @@ impl TestAppBuilder {
                 .await
                 .unwrap();
         let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
+        let doh_id_repo = Arc::new(SqliteDohIdRepository::new(pool.clone()));
         let blocklist_source_repo = Arc::new(SqliteBlocklistSourceRepository::new(pool.clone()));
         let whitelist_source_repo = Arc::new(SqliteWhitelistSourceRepository::new(pool.clone()));
         let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
@@ -321,6 +323,18 @@ impl TestAppBuilder {
                     subnet_repo.clone(),
                     null_engine.clone(),
                 )),
+            },
+            doh_ids: DohIdUseCases {
+                get_doh_ids: Arc::new(GetDohIdsUseCase::new(doh_id_repo.clone())),
+                create_doh_id: Arc::new(CreateDohIdUseCase::new(
+                    doh_id_repo.clone(),
+                    group_repo.clone(),
+                )),
+                update_doh_id: Arc::new(UpdateDohIdUseCase::new(
+                    doh_id_repo.clone(),
+                    group_repo.clone(),
+                )),
+                delete_doh_id: Arc::new(DeleteDohIdUseCase::new(doh_id_repo)),
             },
             blocking: BlockingUseCases {
                 get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(

@@ -99,6 +99,15 @@ pub enum DomainError {
     #[error("Subnet conflicts with existing: {0}")]
     SubnetConflict(String),
 
+    #[error("DoH ID not found: {0}")]
+    DohIdNotFound(i64),
+
+    #[error("Invalid DoH ID: {0}")]
+    InvalidDohId(String),
+
+    #[error("DoH ID conflict: {0}")]
+    DohIdConflict(String),
+
     #[error("Client not found: {0}")]
     ClientNotFound(String),
 
