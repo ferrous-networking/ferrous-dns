@@ -337,12 +337,20 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             block_source TEXT,
             coalesced TEXT,
             cookie TEXT,
+            doh_client_id TEXT,
             created_at DATETIME NOT NULL DEFAULT (datetime('now'))
         )",
     )
     .execute(&pool)
     .await
     .expect("Failed to create query_log table");
+
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/20261106000001_create_doh_ids.sql"
+    ))
+    .execute(&pool)
+    .await
+    .expect("Failed to create doh_ids table");
 
     sqlx::raw_sql(include_str!(
         "../../../../migrations/20260923000001_create_query_log_rollups.sql"
