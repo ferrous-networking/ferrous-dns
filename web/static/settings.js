@@ -204,6 +204,10 @@
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
+                // The certificate banner links here, from other pages and from this one.
+                const openLinkedTab = () => { if (location.hash === '#security') this.currentTab = 'security'; };
+                openLinkedTab();
+                window.addEventListener('hashchange', openLinkedTab);
                 startRatePolling(rate => { this.queryRate = rate; });
                 await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus(), this.loadClientGroups()]);
                 scheduleLucide(100);
@@ -1154,6 +1158,23 @@
                     const r = await apiFetch(`${API_BASE}/tls/status`);
                     if (r.ok) this.tlsStatus = await r.json();
                 } catch (e) { console.error('Load TLS status:', e); }
+            },
+            // Days left on the certificate file on disk, or null without one.
+            certExpiresAtMs() {
+                const expires = Date.parse(this.tlsStatus.cert_not_after || '');
+                return Number.isNaN(expires) ? null : expires;
+            },
+            certExpiryStyle() {
+                const expires = this.certExpiresAtMs();
+                if (expires === null || !certificateExpiresSoon(expires)) return {};
+                return { color: expires <= Date.now() ? 'var(--color-error)' : 'var(--color-warning)', fontWeight: '600' };
+            },
+            certExpiryNote() {
+                const expires = this.certExpiresAtMs();
+                if (expires === null || !certificateExpiresSoon(expires)) return '';
+                if (expires <= Date.now()) return ' (expired)';
+                const days = daysUntil(expires);
+                return days === 0 ? ' (expires today)' : days === 1 ? ' (expires tomorrow)' : ` (${days} days left)`;
             },
             async saveWebTlsConfig() {
                 try {

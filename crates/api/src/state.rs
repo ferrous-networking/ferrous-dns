@@ -4,6 +4,7 @@ use ferrous_dns_application::ports::{
     UpstreamReloadPort,
 };
 use ferrous_dns_application::response_counter::ResponseCounters;
+use ferrous_dns_application::tls_certificates::LoadedCertificates;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, AssignScheduleProfileUseCase, AuthenticatePasskeyUseCase,
     BacktestBlocklistsUseCase, BlockServiceUseCase, ChangePasswordUseCase, ConfirmTotpUseCase,
@@ -211,6 +212,9 @@ pub struct AppState {
     /// Whether the plain DNS listener is serving: set once every worker has
     /// bound, cleared if they all exit. `GET /health` answers 503 without it.
     pub dns_listening: Arc<AtomicBool>,
+    /// The certificates the web, DoT and DoQ listeners loaded at start: what
+    /// they serve until the next restart, whatever is on disk by then.
+    pub loaded_certificates: Arc<LoadedCertificates>,
 }
 
 impl AppState {

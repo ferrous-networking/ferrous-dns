@@ -8,7 +8,7 @@
 | The config file | `/etc/ferrous-dns/config.toml` | `/data/config/ferrous-dns.toml` | Every setting, the upstream pools, the local DNS records, the admin password hash, the DNS cookie secret |
 | TLS files | `/var/lib/ferrous-dns/tls/` | `/data/cert.pem`, `/data/key.pem` | The dashboard and DoT/DoQ certificates and keys |
 
-The database path is whatever `[database] path` says in your config. With the image's bundled config that is `ferrous-dns.db` in the working directory `/data`, so `/data/ferrous-dns.db`. `FERROUS_DATABASE` overrides it only when set to something other than its default, `/data/db/ferrous.db`.
+The database path is whatever `[database] path` says in your config. With the image's bundled config that is `ferrous-dns.db` in the working directory `/data`, so `/data/ferrous-dns.db`. `FERROUS_DATABASE` overrides it when set, except for `/data/db/ferrous.db`: that old documented default is ignored.
 
 The dashboard's **Settings → Backup → Download Backup** file is not a backup of the server. It carries the settings, groups, blocklist sources and local records, without secrets, users, clients or the query log. It is the tool for copying a setup to a [second instance](redundancy.md), not for getting a dead one back.
 

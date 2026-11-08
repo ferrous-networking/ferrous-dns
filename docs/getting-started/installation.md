@@ -34,7 +34,7 @@ No host config file is needed to start: on first run the entrypoint copies the b
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
 | `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address (`server.bind_address`; `web_bind_address` is left as it is) |
-| `FERROUS_DATABASE`    | `/data/db/ferrous.db`                 | SQLite database path                |
+| `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db`) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
 Access the dashboard at `http://localhost:8080`
@@ -317,6 +317,10 @@ Answers relayed from an upstream carry Ferrous DNS's own OPT record. The upstrea
 ### Docker health check
 
 The image's health check now probes the running server through `ferrous-dns --healthcheck` instead of running `ferrous-dns --version`, so a container whose DNS listener could not start reports `unhealthy`. A compose file that copied the old `healthcheck:` block keeps running `--version`: replace its `test` with `["CMD", "/entrypoint.sh", "--healthcheck"]`, or delete the block to use the image's. See [Health check](#health-check).
+
+### Docker database path
+
+The image no longer sets `FERROUS_DATABASE`. Its old default, `/data/db/ferrous.db`, was documented but never applied: the database is `/data/ferrous-dns.db`, from `[database] path` in the bundled config, and it stays there, so nothing moves. A compose file or `docker run` that still sets `FERROUS_DATABASE=/data/db/ferrous.db` keeps working; the entrypoint ignores that value as before and now says so at startup. Remove the line to silence the notice. Any other value still points the server at that path, where it opens an empty database unless you move the file there first: see [Database File Location](../configuration/database.md#database-file-location).
 
 ### One-time query log rebuild
 

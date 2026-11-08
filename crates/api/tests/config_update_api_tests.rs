@@ -5,6 +5,7 @@ use axum::{
 };
 use ferrous_dns_api::create_api_router_with_openapi;
 use ferrous_dns_application::ports::{ConfigFilePersistence, UpstreamReloadPort};
+use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_application::use_cases::{ConfigOverrides, ReloadConfigUseCase};
 use ferrous_dns_domain::{Config, DomainError, UpstreamPool};
 use ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence;
@@ -638,6 +639,30 @@ async fn test_get_config_reports_no_restart_after_pool_only_change() {
         json["restart_required"], false,
         "hot-applied pools must not leave a restart pending"
     );
+}
+
+/// Every page reads it to warn before the served certificate expires.
+#[tokio::test]
+async fn test_get_config_reports_when_the_served_web_certificate_expires() {
+    let pool = create_test_db().await;
+    let app = test_app(pool).await.0;
+
+    let (_, json) = get_config(app.router.clone()).await;
+    assert_eq!(
+        json["web_certificate_expires_at"],
+        Value::Null,
+        "plain HTTP serves no certificate"
+    );
+
+    app.state
+        .loaded_certificates
+        .record(TlsListener::Dot, 1_800_000_000);
+    app.state
+        .loaded_certificates
+        .record(TlsListener::Web, 1_900_000_000);
+
+    let (_, json) = get_config(app.router).await;
+    assert_eq!(json["web_certificate_expires_at"], 1_900_000_000);
 }
 
 #[tokio::test]

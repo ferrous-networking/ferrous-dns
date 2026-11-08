@@ -24,7 +24,7 @@ In **Settings → Security**, generate a self-signed certificate. `POST /ferrous
 enabled = true
 ```
 
-The generated certificate is issued to `localhost` and `ferrous-dns`, and is valid for one year. **Settings → Security** shows when it expires. Before then, generate a new one, restart, and refresh the proxy's copy (step 2).
+The generated certificate is issued to `localhost` and `ferrous-dns`, and is valid for one year. **Settings → Security** shows when it expires, and every dashboard page shows a warning once the certificate the server is serving has less than 21 days left. Before then, generate a new one, restart, and refresh the proxy's copy (step 2). DoT and DoQ certificates in files of their own have no dashboard warning: rely on the alert rule for them.
 
 ### 2. Give the proxy a copy of the certificate
 
@@ -155,6 +155,8 @@ All three configurations were run in front of the server with web TLS on and its
 
 ## Renewing certificates
 
+`/metrics` exports when each certificate the server loaded expires, as `ferrousdns_tls_cert_not_after_seconds{listener="web"|"dot"|"doq"}`, and the [`FerrousDnsCertificateExpiring`](logs-monitoring.md#alert-rules) rule fires 21 days ahead. The value is the certificate loaded at start: one renewed on disk counts once the server has restarted.
+
 ### Dashboard and DoH
 
 The proxy renews its public certificate by itself: Caddy and Traefik through ACME, nginx through certbot's timer. Ferrous DNS does not need a restart for that. Only the self-signed certificate between the proxy and the server has to be replaced, once a year (step 1 above), along with every copy of it: the proxy's, and Prometheus's [`ca_file`](logs-monitoring.md#metrics).
@@ -171,6 +173,8 @@ tls_key_path  = "/var/lib/ferrous-dns/tls/dot-key.pem"
 ```
 
 [`contrib/certbot/ferrous-dns-deploy-hook.sh`](https://github.com/ferrous-networking/ferrous-dns/blob/main/contrib/certbot/ferrous-dns-deploy-hook.sh) runs after the certificate is issued and after every renewal of it. It installs the certificate and the key under the service user, readable by it alone, creates their directory if needed, and restarts the server.
+
+That restart is what moves the `dot` and `doq` series forward. certbot renews 30 days before expiry, so `FerrousDnsCertificateExpiring` firing on a certbot-managed certificate means the renewal or the hook failed.
 
 Keep it out of `renewal-hooks/deploy/`: certbot runs the hooks there for every certificate on the host, so the renewal of another one, such as the proxy's, would overwrite the DoT files. Pass it with `--deploy-hook` instead, which certbot keeps with this certificate's renewal settings:
 

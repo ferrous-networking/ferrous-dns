@@ -490,6 +490,7 @@ impl TestAppBuilder {
             tls_enabled: false,
             restart_pending: Default::default(),
             dns_listening: Arc::new(AtomicBool::new(true)),
+            loaded_certificates: Default::default(),
         };
 
         TestApp {

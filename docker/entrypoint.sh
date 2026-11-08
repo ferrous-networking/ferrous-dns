@@ -69,6 +69,12 @@ fi
 
 if [ -n "$FERROUS_DATABASE" ] && [ "$FERROUS_DATABASE" != "/data/db/ferrous.db" ]; then
     ARGS="$ARGS --database $FERROUS_DATABASE"
+elif [ -n "$FERROUS_DATABASE" ] && [ "$BESIDE_SERVER" = false ]; then
+    # Applying it now would start every existing install on an empty database: theirs
+    # is wherever [database] path put it.
+    echo "NOTICE: FERROUS_DATABASE=$FERROUS_DATABASE is ignored: earlier images documented it as their" >&2
+    echo "        default but never applied it, so the database is where [database] path puts it" >&2
+    echo "        (/data/ferrous-dns.db with the bundled config). Remove the variable to silence this notice." >&2
 fi
 
 if [ -n "$FERROUS_LOG_LEVEL" ] && [ "$FERROUS_LOG_LEVEL" != "info" ]; then
