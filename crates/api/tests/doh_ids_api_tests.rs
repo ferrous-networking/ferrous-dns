@@ -102,6 +102,25 @@ async fn test_crud_doh_id_lifecycle_with_custom_id_and_comment_clear() {
     assert_eq!(created["client_id"], "kids-tablet");
     assert_eq!(created["group_name"], "Kids");
 
+    // GET all verifies group_name resolution on list
+    let list_res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/doh-ids")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_res.status(), StatusCode::OK);
+    let listed = read_json(list_res).await;
+    let listed_arr = listed.as_array().unwrap();
+    assert_eq!(listed_arr.len(), 1);
+    assert_eq!(listed_arr[0]["id"], id);
+    assert_eq!(listed_arr[0]["group_name"], "Kids");
+
     // GET by id
     let get_res = app
         .clone()

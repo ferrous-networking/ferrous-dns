@@ -1,15 +1,22 @@
-use crate::ports::DohIdRepository;
+use crate::ports::{BlockFilterEnginePort, DohIdRepository};
 use ferrous_dns_domain::DomainError;
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 pub struct DeleteDohIdUseCase {
     doh_id_repo: Arc<dyn DohIdRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl DeleteDohIdUseCase {
-    pub fn new(doh_id_repo: Arc<dyn DohIdRepository>) -> Self {
-        Self { doh_id_repo }
+    pub fn new(
+        doh_id_repo: Arc<dyn DohIdRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    ) -> Self {
+        Self {
+            doh_id_repo,
+            block_filter_engine,
+        }
     }
 
     #[instrument(skip(self))]
@@ -28,6 +35,10 @@ impl DeleteDohIdUseCase {
             client_id = %doh_id.client_id,
             "DoH ID deleted successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after DoH ID deletion");
+        }
 
         Ok(())
     }

@@ -196,6 +196,11 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
                 cfg.server.web_tls.tls_key_path = v;
             }
         }
+        if let Some(encrypted_dns) = server.encrypted_dns {
+            if let Some(v) = encrypted_dns.doh_allow_unregistered_ids {
+                cfg.server.encrypted_dns.doh_allow_unregistered_ids = v;
+            }
+        }
     }
 
     if let Some(dns) = request.dns {
@@ -593,12 +598,14 @@ async fn save_config_update(
         Err(e) => return rejected(e),
     };
 
-    // Upstream pools are hot-applied; every other field requires a restart.
+    // Upstream pools and doh_allow_unregistered_ids are hot-applied; every other field requires a restart.
     let restart_required = {
         let mut before = config.clone();
         let mut after = new_config.clone();
         before.dns.pools.clear();
         after.dns.pools.clear();
+        before.server.encrypted_dns.doh_allow_unregistered_ids = false;
+        after.server.encrypted_dns.doh_allow_unregistered_ids = false;
         config_differs(&before, &after)
     };
 

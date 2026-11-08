@@ -189,6 +189,7 @@ fn client_query(domain: &str, protocol: Option<ClientProtocol>) -> QueryLog {
         block_source: None,
         coalesced: None,
         cookie: None,
+        doh_client_id: None,
     }
 }
 
@@ -1868,4 +1869,94 @@ async fn timeline_with_an_unbounded_period_covers_all_history() {
         .await
         .unwrap();
     assert_eq!(buckets.iter().map(|b| b.total).sum::<u64>(), 2);
+}
+
+#[tokio::test]
+async fn doh_client_id_attributes_queries_and_top_clients() {
+    let pool = migrated_pool().await;
+    sqlx::query(
+        "INSERT INTO doh_ids (name, client_id, group_id) VALUES ('Alice Phone', 'alice-phone', 1)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let repo = repo(&pool);
+    repo.log_query(&QueryLog {
+        doh_client_id: Some(Arc::from("alice-phone")),
+        ..client_query("registered.example", Some(ClientProtocol::Doh))
+    })
+    .await
+    .unwrap();
+    repo.log_query(&QueryLog {
+        doh_client_id: Some(Arc::from("roaming-ipad")),
+        ..client_query("unregistered.example", Some(ClientProtocol::Doh))
+    })
+    .await
+    .unwrap();
+
+    let mut paged = repo
+        .get_recent_paged(10, PageAt::Offset(0), 24.0, &no_filter())
+        .await
+        .unwrap();
+    for _ in 0..40 {
+        if paged.queries.len() == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        paged = repo
+            .get_recent_paged(10, PageAt::Offset(0), 24.0, &no_filter())
+            .await
+            .unwrap();
+    }
+    assert_eq!(paged.queries.len(), 2);
+
+    let by_name = repo
+        .get_recent_paged(
+            10,
+            PageAt::Offset(0),
+            24.0,
+            &QueryLogFilter {
+                client: Some("Alice Phone".to_string()),
+                ..no_filter()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(by_name.queries.len(), 1);
+    assert_eq!(
+        by_name.queries[0].doh_client_id.as_deref(),
+        Some("alice-phone")
+    );
+    assert_eq!(
+        by_name.queries[0].client_hostname.as_deref(),
+        Some("Alice Phone")
+    );
+
+    let by_id = repo
+        .get_recent_paged(
+            10,
+            PageAt::Offset(0),
+            24.0,
+            &QueryLogFilter {
+                client: Some("roaming-ipad".to_string()),
+                ..no_filter()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(by_id.queries.len(), 1);
+    assert_eq!(
+        by_id.queries[0].client_hostname.as_deref(),
+        Some("roaming-ipad")
+    );
+
+    let top = repo.get_top_clients(10, 24.0).await.unwrap();
+    assert_eq!(top.len(), 2);
+    assert!(top.iter().any(|(id, name, n)| id == "alice-phone"
+        && name.as_deref() == Some("Alice Phone")
+        && *n == 1));
+    assert!(top
+        .iter()
+        .any(|(id, name, n)| id == "roaming-ipad" && name.is_none() && *n == 1));
 }

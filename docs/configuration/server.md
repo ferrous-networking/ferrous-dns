@@ -95,6 +95,8 @@ trusted_proxies = ["127.0.0.0/8", "::1/128", "172.18.0.0/16"]
 
 Setting the list replaces the default, so keep the loopback entries if the proxy can also connect locally. Trust only addresses you control: any peer inside the list can claim to be any client.
 
+To identify roaming or NATed DoH devices independently of their IP address, clients can also query `/dns-query/<ClientID>` using an identifier registered on the **DoH IDs** page (`/doh-ids.html`). Group resolution evaluates the DoH Client ID first, then falls back to `client_ip` → subnet → `Protected`. By default (`doh_allow_unregistered_ids = false`), unknown Client IDs are rejected with `400 Bad Request`; setting `doh_allow_unregistered_ids = true` in `[server.encrypted_dns]` (or toggling **Allow Unregistered Client IDs** on the **DoH IDs** page) accepts valid unregistered IDs for Query Log attribution while applying the client IP's group rules. See [DoH IDs](../features/client-management.md#doh-ids).
+
 ---
 
 ## Authentication {#authentication}

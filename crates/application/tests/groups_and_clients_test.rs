@@ -187,6 +187,7 @@ async fn test_delete_group_reloads_block_filter() {
     use_case.execute(group.id.unwrap()).await.unwrap();
 
     assert_eq!(engine.reload_count().await, 1);
+    assert_eq!(engine.load_client_groups_count().await, 1);
 }
 
 #[tokio::test]

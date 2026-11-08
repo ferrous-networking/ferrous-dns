@@ -111,7 +111,10 @@
                     return;
                 }
 
-                if (!confirm(`Are you sure you want to delete the group "${group.name}"?`)) {
+                if (!confirm(
+                    `Are you sure you want to delete the group "${group.name}"?\n\n` +
+                    `Any DoH IDs assigned to this group will also be deleted, and devices using those IDs will be rejected unless unregistered DoH IDs are allowed.`
+                )) {
                     return;
                 }
 

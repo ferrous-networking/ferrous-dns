@@ -281,10 +281,10 @@ impl TestAppBuilder {
                     group_repo.clone(),
                     malware_exemptions.clone(),
                 )),
-                update_group: Arc::new(UpdateGroupUseCase::new(
-                    group_repo.clone(),
-                    malware_exemptions.clone(),
-                )),
+                update_group: Arc::new(
+                    UpdateGroupUseCase::new(group_repo.clone(), malware_exemptions.clone())
+                        .with_block_filter(null_engine.clone()),
+                ),
                 delete_group: Arc::new(DeleteGroupUseCase::new(
                     group_repo.clone(),
                     null_engine.clone(),
@@ -329,12 +329,14 @@ impl TestAppBuilder {
                 create_doh_id: Arc::new(CreateDohIdUseCase::new(
                     doh_id_repo.clone(),
                     group_repo.clone(),
+                    null_engine.clone(),
                 )),
                 update_doh_id: Arc::new(UpdateDohIdUseCase::new(
                     doh_id_repo.clone(),
                     group_repo.clone(),
+                    null_engine.clone(),
                 )),
-                delete_doh_id: Arc::new(DeleteDohIdUseCase::new(doh_id_repo)),
+                delete_doh_id: Arc::new(DeleteDohIdUseCase::new(doh_id_repo, null_engine.clone())),
             },
             blocking: BlockingUseCases {
                 get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(

@@ -1,9 +1,10 @@
-use axum::extract::{ConnectInfo, Query, Request};
+use axum::extract::{ConnectInfo, Path, Query, Request};
 use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use base64::Engine;
-use ferrous_dns_domain::ClientProtocol;
+use ferrous_dns_application::ports::BlockFilterEnginePort;
+use ferrous_dns_domain::{Config, DohId};
 use ferrous_dns_infrastructure::dns::forwarding::EDNS_MAX_PAYLOAD;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query as DnsQuery};
@@ -14,6 +15,7 @@ use serde_json::{json, Value};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 const DNS_MESSAGE_CONTENT_TYPE: &str = "application/dns-message";
 const DNS_JSON_CONTENT_TYPE: &str = "application/dns-json; charset=utf-8";
@@ -23,6 +25,8 @@ pub struct DohContext {
     pub handler: Arc<DnsServerHandler>,
     /// `[server].trusted_proxies`: peers allowed to name the client.
     pub trusted_proxies: Vec<IpNetwork>,
+    pub block_filter: Arc<dyn BlockFilterEnginePort>,
+    pub config: Arc<RwLock<Config>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -33,7 +37,7 @@ pub struct DnsQueryParams {
     record_type: Option<String>,
 }
 
-/// DNS-over-HTTPS handler (RFC 8484 + Google JSON format).
+/// DNS-over-HTTPS handler for `/dns-query` (RFC 8484 + Google JSON format).
 ///
 /// Wire format: `GET ?dns=<base64url>` or `POST` with `Content-Type: application/dns-message`.
 /// JSON format: `GET ?name=<domain>&type=<A|AAAA|...>` with `Accept: application/dns-json`.
@@ -48,6 +52,56 @@ pub async fn dns_query_handler(
     Query(params): Query<DnsQueryParams>,
     request: Request,
 ) -> Response {
+    handle_doh_request(doh, peer, headers, params, request, None).await
+}
+
+/// DNS-over-HTTPS handler for `/dns-query/{client_id}`.
+///
+/// Validates `client_id` against [`DohId::validate_client_id`] (`400 Bad Request`
+/// on invalid format). When `doh_allow_unregistered_ids` is `false` (default
+/// strict mode), unregistered Client IDs are also rejected with `400 Bad Request`
+/// without falling back to the client IP.
+pub async fn dns_query_with_id_handler(
+    Extension(doh): Extension<Arc<DohContext>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Path(client_id): Path<String>,
+    headers: HeaderMap,
+    Query(params): Query<DnsQueryParams>,
+    request: Request,
+) -> Response {
+    handle_doh_request(doh, peer, headers, params, request, Some(client_id)).await
+}
+
+async fn handle_doh_request(
+    doh: Arc<DohContext>,
+    peer: SocketAddr,
+    headers: HeaderMap,
+    params: DnsQueryParams,
+    request: Request,
+    raw_client_id: Option<String>,
+) -> Response {
+    let doh_client_id: Option<Arc<str>> = match raw_client_id {
+        Some(cid) => {
+            if DohId::validate_client_id(&cid).is_err() {
+                return (StatusCode::BAD_REQUEST, "Invalid DoH client ID").into_response();
+            }
+            if !doh.block_filter.is_doh_id_registered(&cid) {
+                let allow_unregistered = doh
+                    .config
+                    .read()
+                    .await
+                    .server
+                    .encrypted_dns
+                    .doh_allow_unregistered_ids;
+                if !allow_unregistered {
+                    return (StatusCode::BAD_REQUEST, "Unregistered DoH client ID").into_response();
+                }
+            }
+            Some(Arc::from(cid.as_str()))
+        }
+        None => None,
+    };
+
     let client_ip = client_ip(peer.ip(), &headers, &doh.trusted_proxies);
     let json_response = wants_json(&headers);
 
@@ -74,7 +128,7 @@ pub async fn dns_query_handler(
 
     match doh
         .handler
-        .handle_raw_udp_fallback(&wire, client_ip, ClientProtocol::Doh)
+        .handle_raw_doh(&wire, client_ip, doh_client_id)
         .await
     {
         Some(response_bytes) if json_response => match wire_to_dns_json(&response_bytes) {

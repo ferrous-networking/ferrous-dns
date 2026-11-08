@@ -168,10 +168,10 @@ impl UseCases {
                 repos.group.clone(),
                 repos.malware_exemptions.clone(),
             )),
-            update_group: Arc::new(UpdateGroupUseCase::new(
-                repos.group.clone(),
-                repos.malware_exemptions.clone(),
-            )),
+            update_group: Arc::new(
+                UpdateGroupUseCase::new(repos.group.clone(), repos.malware_exemptions.clone())
+                    .with_block_filter(repos.block_filter_engine.clone()),
+            ),
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 repos.group.clone(),
                 repos.block_filter_engine.clone(),
@@ -202,12 +202,17 @@ impl UseCases {
             create_doh_id: Arc::new(CreateDohIdUseCase::new(
                 repos.doh_id.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
             update_doh_id: Arc::new(UpdateDohIdUseCase::new(
                 repos.doh_id.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
-            delete_doh_id: Arc::new(DeleteDohIdUseCase::new(repos.doh_id.clone())),
+            delete_doh_id: Arc::new(DeleteDohIdUseCase::new(
+                repos.doh_id.clone(),
+                repos.block_filter_engine.clone(),
+            )),
             create_manual_client: Arc::new(CreateManualClientUseCase::new(
                 repos.client.clone(),
                 repos.group.clone(),

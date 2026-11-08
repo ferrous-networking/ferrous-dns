@@ -366,6 +366,9 @@ pub struct QueryLog {
     /// internally generated queries, and for rows written before the column
     /// existed.
     pub cookie: Option<CookieStatus>,
+    /// Client ID from `/dns-query/<client_id>` for DoH requests. `None` for
+    /// `/dns-query` without a path ID, non-DoH transports, and internal queries.
+    pub doh_client_id: Option<Arc<str>>,
 }
 
 impl QueryLog {

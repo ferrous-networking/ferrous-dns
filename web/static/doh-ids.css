@@ -121,7 +121,73 @@
             background: var(--bg-tertiary);
             color: var(--text-primary);
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-            font-size: 13px
+            font-size: 13px;
+            word-break: break-all
+        }
+
+        .policy-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding: 18px 24px;
+            margin-bottom: 24px
+        }
+
+        .policy-info {
+            flex: 1 1 280px;
+            min-width: 0
+        }
+
+        .policy-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0 0 4px 0
+        }
+
+        .policy-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin: 0
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: var(--text-tertiary);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background .3s;
+            flex-shrink: 0;
+            border: none;
+            padding: 0
+        }
+
+        .toggle-switch.active {
+            background: var(--color-success)
+        }
+
+        .toggle-switch:disabled {
+            opacity: 0.5;
+            cursor: not-allowed
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform .3s
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(24px)
         }
 
         .endpoint-cell {

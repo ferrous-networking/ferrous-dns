@@ -5,14 +5,15 @@ use ferrous_dns_application::use_cases::{
     CreateDohIdUseCase, DeleteDohIdUseCase, GetDohIdsUseCase, UpdateDohIdUseCase,
 };
 use ferrous_dns_domain::{DohId, DomainError};
-use helpers::{MockDohIdRepository, MockGroupRepository};
+use helpers::{MockBlockFilterEngine, MockDohIdRepository, MockGroupRepository};
 use std::sync::Arc;
 
 #[tokio::test]
 async fn test_create_doh_id_generates_valid_uuid_v4_by_default() {
     let doh_repo = Arc::new(MockDohIdRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
-    let uc = CreateDohIdUseCase::new(doh_repo, group_repo);
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let uc = CreateDohIdUseCase::new(doh_repo, group_repo, engine.clone());
 
     let created = uc
         .execute(
@@ -30,6 +31,7 @@ async fn test_create_doh_id_generates_valid_uuid_v4_by_default() {
     assert_eq!(created.comment.as_deref(), Some("Personal phone"));
     assert_eq!(created.client_id.len(), 36);
     assert!(DohId::validate_client_id(&created.client_id).is_ok());
+    assert_eq!(engine.load_client_groups_count().await, 1);
 
     let parts: Vec<&str> = created.client_id.split('-').collect();
     assert_eq!(parts.len(), 5);
@@ -41,7 +43,11 @@ async fn test_create_doh_id_generates_valid_uuid_v4_by_default() {
 async fn test_create_doh_id_with_custom_client_id() {
     let doh_repo = Arc::new(MockDohIdRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
-    let uc = CreateDohIdUseCase::new(doh_repo.clone(), group_repo);
+    let uc = CreateDohIdUseCase::new(
+        doh_repo.clone(),
+        group_repo,
+        Arc::new(MockBlockFilterEngine::new()),
+    );
 
     let created = uc
         .execute(
@@ -66,7 +72,7 @@ async fn test_create_doh_id_with_custom_client_id() {
 async fn test_create_doh_id_rejects_invalid_inputs_and_missing_group() {
     let doh_repo = Arc::new(MockDohIdRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
-    let uc = CreateDohIdUseCase::new(doh_repo, group_repo);
+    let uc = CreateDohIdUseCase::new(doh_repo, group_repo, Arc::new(MockBlockFilterEngine::new()));
 
     assert!(matches!(
         uc.execute("   ".to_string(), None, 1, None).await,
@@ -92,7 +98,7 @@ async fn test_create_doh_id_rejects_invalid_inputs_and_missing_group() {
 async fn test_create_doh_id_rejects_duplicates() {
     let doh_repo = Arc::new(MockDohIdRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
-    let uc = CreateDohIdUseCase::new(doh_repo, group_repo);
+    let uc = CreateDohIdUseCase::new(doh_repo, group_repo, Arc::new(MockBlockFilterEngine::new()));
 
     uc.execute(
         "Laptop".to_string(),
@@ -128,10 +134,11 @@ async fn test_update_get_and_delete_doh_id() {
         .await
         .unwrap();
 
-    let create_uc = CreateDohIdUseCase::new(doh_repo.clone(), group_repo.clone());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let create_uc = CreateDohIdUseCase::new(doh_repo.clone(), group_repo.clone(), engine.clone());
     let get_uc = GetDohIdsUseCase::new(doh_repo.clone());
-    let update_uc = UpdateDohIdUseCase::new(doh_repo.clone(), group_repo);
-    let delete_uc = DeleteDohIdUseCase::new(doh_repo);
+    let update_uc = UpdateDohIdUseCase::new(doh_repo.clone(), group_repo, engine.clone());
+    let delete_uc = DeleteDohIdUseCase::new(doh_repo, engine.clone());
 
     let created = create_uc
         .execute(
@@ -191,4 +198,5 @@ async fn test_update_get_and_delete_doh_id() {
         delete_uc.execute(id).await,
         Err(DomainError::DohIdNotFound(_))
     ));
+    assert_eq!(engine.load_client_groups_count().await, 4);
 }

@@ -29,6 +29,9 @@
             queryRate: {queries: 0, rate: '0 q/s'},
             dohIds: [],
             groups: [],
+            allowUnregisteredIds: false,
+            configWritable: true,
+            policySaving: false,
             editingEntry: null,
             copiedId: null,
             copyTimer: null,
@@ -45,9 +48,60 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadGroups(), this.loadDohIds()]);
+                await Promise.all([this.loadGroups(), this.loadDohIds(), this.loadPolicy()]);
                 await this.$nextTick();
                 scheduleLucide(0);
+            },
+
+            async loadPolicy() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/config`);
+                    if (res.ok) {
+                        const cfg = await res.json();
+                        this.configWritable = cfg.writable !== false;
+                        this.allowUnregisteredIds = Boolean(
+                            cfg.server &&
+                            cfg.server.encrypted_dns &&
+                            cfg.server.encrypted_dns.doh_allow_unregistered_ids
+                        );
+                    }
+                } catch (e) {
+                    console.error('Failed to load DoH policy:', e);
+                }
+            },
+
+            async toggleAllowUnregisteredIds() {
+                if (!this.configWritable || this.policySaving) return;
+                const next = !this.allowUnregisteredIds;
+                this.policySaving = true;
+                try {
+                    const res = await apiFetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            server: {
+                                encrypted_dns: {
+                                    doh_allow_unregistered_ids: next
+                                }
+                            }
+                        })
+                    });
+                    if (res.ok) {
+                        this.allowUnregisteredIds = next;
+                    } else {
+                        let message = 'Failed to update DoH policy';
+                        try {
+                            const data = await res.json();
+                            if (data && data.error) message = data.error;
+                        } catch (_) {}
+                        alert(message);
+                    }
+                } catch (e) {
+                    console.error('Error updating DoH policy:', e);
+                    alert('Network error: ' + e.message);
+                } finally {
+                    this.policySaving = false;
+                }
             },
 
             defaultGroupId() {
@@ -123,6 +177,12 @@
 
                     let res;
                     if (this.editingEntry) {
+                        if (trimmedId && trimmedId !== this.editingEntry.client_id) {
+                            const ok = confirm(
+                                `Changing the Client ID from "${this.editingEntry.client_id}" to "${trimmedId}" will cut off any device still configured with /dns-query/${this.editingEntry.client_id}.\n\nContinue?`
+                            );
+                            if (!ok) return;
+                        }
                         res = await apiFetch(`${API_BASE}/doh-ids/${this.editingEntry.id}`, {
                             method: 'PUT',
                             headers: {'Content-Type': 'application/json'},

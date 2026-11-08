@@ -1414,24 +1414,28 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
 #[derive(Clone)]
 pub struct MockBlockFilterEngine {
     reload_count: Arc<RwLock<u32>>,
+    load_client_groups_count: Arc<RwLock<u32>>,
     should_fail_reload: Arc<RwLock<bool>>,
     blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     cname_blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     explicitly_allowed_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     group_allowed_domains: Arc<std::sync::RwLock<HashSet<(String, i64)>>>,
     client_group: Arc<std::sync::RwLock<i64>>,
+    doh_id_groups: Arc<std::sync::RwLock<HashMap<String, Option<i64>>>>,
 }
 
 impl MockBlockFilterEngine {
     pub fn new() -> Self {
         Self {
             reload_count: Arc::new(RwLock::new(0)),
+            load_client_groups_count: Arc::new(RwLock::new(0)),
             should_fail_reload: Arc::new(RwLock::new(false)),
             blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             cname_blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             explicitly_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             group_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             client_group: Arc::new(std::sync::RwLock::new(1)),
+            doh_id_groups: Arc::new(std::sync::RwLock::new(HashMap::new())),
         }
     }
 
@@ -1440,8 +1444,19 @@ impl MockBlockFilterEngine {
         *self.client_group.write().unwrap() = group_id;
     }
 
+    pub fn set_doh_id_group(&self, client_id: &str, group_id: Option<i64>) {
+        self.doh_id_groups
+            .write()
+            .unwrap()
+            .insert(client_id.to_string(), group_id);
+    }
+
     pub async fn reload_count(&self) -> u32 {
         *self.reload_count.read().await
+    }
+
+    pub async fn load_client_groups_count(&self) -> u32 {
+        *self.load_client_groups_count.read().await
     }
 
     pub async fn set_should_fail_reload(&self, fail: bool) {
@@ -1488,6 +1503,19 @@ impl Default for MockBlockFilterEngine {
 impl BlockFilterEnginePort for MockBlockFilterEngine {
     fn resolve_group(&self, _ip: IpAddr) -> i64 {
         *self.client_group.read().unwrap()
+    }
+
+    fn resolve_group_for_request(&self, ip: IpAddr, doh_client_id: Option<&str>) -> i64 {
+        if let Some(cid) = doh_client_id {
+            if let Some(Some(gid)) = self.doh_id_groups.read().unwrap().get(cid).copied() {
+                return gid;
+            }
+        }
+        self.resolve_group(ip)
+    }
+
+    fn is_doh_id_registered(&self, client_id: &str) -> bool {
+        self.doh_id_groups.read().unwrap().contains_key(client_id)
     }
 
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
@@ -1540,6 +1568,7 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     }
 
     async fn load_client_groups(&self) -> Result<(), DomainError> {
+        *self.load_client_groups_count.write().await += 1;
         Ok(())
     }
 

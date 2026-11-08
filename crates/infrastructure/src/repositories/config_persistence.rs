@@ -297,6 +297,16 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             "tls_key_path",
             config.server.web_tls.tls_key_path.as_str(),
         );
+        if server.get("encrypted_dns").is_some()
+            || config.server.encrypted_dns.doh_allow_unregistered_ids
+        {
+            let ed = ensure_subtable(server, "encrypted_dns")?;
+            set_val(
+                ed,
+                "doh_allow_unregistered_ids",
+                config.server.encrypted_dns.doh_allow_unregistered_ids,
+            );
+        }
     }
 
     {

@@ -147,9 +147,10 @@ tls_key_path  = "/data/key.pem"
 | `dot_enabled` | `bool` | `false` | Enable DNS-over-TLS listener |
 | `dot_port` | `int` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
 | `dot_bind_address` | `str` | — | Address for the DoT listener; inherits `bind_address` when omitted |
-| `doh_enabled` | `bool` | `false` | Enable the `/dns-query` DoH endpoint |
+| `doh_enabled` | `bool` | `false` | Enable the `/dns-query` and `/dns-query/<ClientID>` DoH endpoints |
 | `doh_port` | `int` | — | Dedicated plain-HTTP port for DoH (behind a reverse proxy); omit to co-host on `web_port` |
 | `doh_bind_address` | `str` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted, since `/dns-query` then binds wherever the dashboard does (`web_bind_address`, else `bind_address`) |
+| `doh_allow_unregistered_ids` | `bool` | `false` | When `false`, requests to `/dns-query/<ClientID>` with an unregistered ID return `400 Bad Request`; when `true`, valid unregistered IDs are accepted for Query Log attribution and fall back to the client IP's group rules |
 | `doq_enabled` | `bool` | `false` | Enable the DNS-over-QUIC listener |
 | `doq_port` | `int` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `doq_bind_address` | `str` | — | Address for the DoQ listener; inherits `bind_address` when omitted |

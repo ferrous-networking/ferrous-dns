@@ -52,6 +52,7 @@ impl MockQueryLogRepository {
             block_source: None,
             coalesced: None,
             cookie: None,
+            doh_client_id: None,
         };
         self.logs.write().await.push((log, timestamp));
     }

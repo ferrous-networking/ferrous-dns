@@ -145,7 +145,20 @@ impl DnsServerHandler {
         client_ip: IpAddr,
         protocol: ClientProtocol,
     ) -> Option<Vec<u8>> {
-        self.answer(raw, client_ip, protocol)
+        self.answer(raw, client_ip, protocol, None)
+            .await
+            .inspect(|reply| self.responses.record(reply))
+    }
+
+    /// Resolves a DoH query, optionally carrying a Client ID extracted from
+    /// `/dns-query/<client_id>`.
+    pub async fn handle_raw_doh(
+        &self,
+        raw: &[u8],
+        client_ip: IpAddr,
+        doh_client_id: Option<Arc<str>>,
+    ) -> Option<Vec<u8>> {
+        self.answer(raw, client_ip, ClientProtocol::Doh, doh_client_id)
             .await
             .inspect(|reply| self.responses.record(reply))
     }
@@ -155,13 +168,17 @@ impl DnsServerHandler {
         raw: &[u8],
         client_ip: IpAddr,
         protocol: ClientProtocol,
+        doh_client_id: Option<Arc<str>>,
     ) -> Option<Vec<u8>> {
-        let (mut query, request) = match parse_client_query(raw, client_ip, protocol)? {
+        let (mut query, mut request) = match parse_client_query(raw, client_ip, protocol)? {
             ParsedQuery::Valid(query, request) => (query, request),
             ParsedQuery::BadCookie(query) => {
                 return Some(query.respond(Rcode::FormErr, false, ResponseBody::Empty, None));
             }
         };
+        if let Some(client_id) = doh_client_id {
+            request = request.with_doh_client_id(client_id);
+        }
         // Every reply built from `query` carries it from here on.
         query.set_response_cookie(self.response_cookie(
             request.edns_cookie.as_ref().map(EdnsCookie::as_bytes),

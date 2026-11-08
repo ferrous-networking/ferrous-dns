@@ -49,6 +49,16 @@ pub struct EncryptedDnsConfig {
     #[serde(default, deserialize_with = "deserialize_optional_bind_host")]
     pub doh_bind_address: Option<IpAddr>,
 
+    /// Accept `/dns-query/<ClientID>` requests whose Client ID is not registered
+    /// in the `doh_ids` table (`false` by default).
+    ///
+    /// When `false` (strict mode), only registered DoH Client IDs are accepted;
+    /// unknown Client IDs are rejected with `400 Bad Request` without falling
+    /// back to the client IP. When `true` (permissive mode), valid unregistered
+    /// Client IDs are accepted for query log and statistics attribution, and
+    /// group resolution falls back to IP → subnet → `Protected`.
+    pub doh_allow_unregistered_ids: bool,
+
     /// Enable the DNS-over-QUIC listener (RFC 9250) on `doq_port`.
     pub doq_enabled: bool,
 
@@ -77,6 +87,7 @@ impl Default for EncryptedDnsConfig {
             doh_enabled: false,
             doh_port: None,
             doh_bind_address: None,
+            doh_allow_unregistered_ids: false,
             doq_enabled: false,
             doq_port: 853,
             doq_bind_address: None,

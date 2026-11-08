@@ -43,6 +43,7 @@ fn make_log_with_upstream(
         block_source,
         coalesced: None,
         cookie: None,
+        doh_client_id: None,
     }
 }
 

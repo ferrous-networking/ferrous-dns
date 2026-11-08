@@ -52,6 +52,7 @@ async fn test_get_query_rate_with_data() {
             block_source: None,
             coalesced: None,
             cookie: None,
+            doh_client_id: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -96,6 +97,7 @@ async fn test_get_query_rate_formatted_with_k() {
             block_source: None,
             coalesced: None,
             cookie: None,
+            doh_client_id: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -140,6 +142,7 @@ async fn test_get_query_rate_different_units() {
             block_source: None,
             coalesced: None,
             cookie: None,
+            doh_client_id: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }

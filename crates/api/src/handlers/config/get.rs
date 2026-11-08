@@ -2,8 +2,9 @@ use crate::{
     dto::{
         config::{sinkhole_to_string, RateLimitConfigResponse},
         AuthConfigResponse, BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse,
-        Dns64ConfigResponse, DnsConfigResponse, HealthCheckResponse, LoggingConfigResponse,
-        ServerConfigResponse, SettingsDto, UpstreamPoolResponse, WebTlsConfigResponse,
+        Dns64ConfigResponse, DnsConfigResponse, EncryptedDnsConfigResponse, HealthCheckResponse,
+        LoggingConfigResponse, ServerConfigResponse, SettingsDto, UpstreamPoolResponse,
+        WebTlsConfigResponse,
     },
     state::AppState,
 };
@@ -43,6 +44,9 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 enabled: config.server.web_tls.enabled,
                 tls_cert_path: config.server.web_tls.tls_cert_path.clone(),
                 tls_key_path: config.server.web_tls.tls_key_path.clone(),
+            },
+            encrypted_dns: EncryptedDnsConfigResponse {
+                doh_allow_unregistered_ids: config.server.encrypted_dns.doh_allow_unregistered_ids,
             },
         },
         dns: DnsConfigResponse {

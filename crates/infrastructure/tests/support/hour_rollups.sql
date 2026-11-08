@@ -10,7 +10,7 @@ WHERE created_at IS NOT NULL AND query_source = 'client'
 GROUP BY 1, 2, 3;
 
 INSERT INTO query_log_hour_client
-SELECT (CAST(strftime('%s', created_at) AS INTEGER) / 3600) * 3600, client_ip, blocked != 0, COUNT(*)
+SELECT (CAST(strftime('%s', created_at) AS INTEGER) / 3600) * 3600, COALESCE(doh_client_id, client_ip), blocked != 0, COUNT(*)
 FROM query_log
 WHERE created_at IS NOT NULL AND query_source = 'client'
 GROUP BY 1, 2, 3;

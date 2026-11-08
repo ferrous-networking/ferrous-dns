@@ -64,9 +64,12 @@ impl DeleteGroupUseCase {
             "Group deleted successfully"
         );
 
-        // The delete cascades to managed domains and client subnets the engine still holds.
+        // The delete cascades to managed domains, client subnets, and DoH IDs the engine still holds.
         if let Err(e) = self.block_filter_engine.reload().await {
             error!(error = %e, "Failed to reload block filter after group deletion");
+        }
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after group deletion");
         }
         if !group.malware_detection_enabled {
             if let Err(e) = self.malware_exemptions.reload().await {

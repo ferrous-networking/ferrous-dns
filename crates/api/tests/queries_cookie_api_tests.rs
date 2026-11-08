@@ -36,6 +36,7 @@ fn query(domain: &str, cookie: Option<CookieStatus>) -> QueryLog {
         block_source: None,
         coalesced: None,
         cookie,
+        doh_client_id: None,
     }
 }
 
