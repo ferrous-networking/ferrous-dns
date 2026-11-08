@@ -18,6 +18,12 @@ pub struct ServerConfig {
     #[serde(deserialize_with = "deserialize_bind_host")]
     pub bind_address: IpAddr,
 
+    /// Address the web dashboard and REST API bind to; falls back to
+    /// `bind_address`. Lets the dashboard stay on loopback behind a reverse
+    /// proxy while DNS serves the network.
+    #[serde(default, deserialize_with = "deserialize_optional_bind_host")]
+    pub web_bind_address: Option<IpAddr>,
+
     #[serde(default = "default_cors_origins")]
     pub cors_allowed_origins: Vec<String>,
 
@@ -68,9 +74,13 @@ impl ServerConfig {
         SocketAddr::new(self.bind_address, self.dns_port)
     }
 
-    /// Listen address for the web dashboard and REST API.
+    /// Listen address for the web dashboard and REST API, honouring
+    /// `web_bind_address` when it is set.
     pub fn web_listen_address(&self) -> SocketAddr {
-        SocketAddr::new(self.bind_address, self.web_port)
+        SocketAddr::new(
+            self.web_bind_address.unwrap_or(self.bind_address),
+            self.web_port,
+        )
     }
 
     /// Listen address for the DoT listener, honouring
@@ -141,6 +151,7 @@ impl Default for ServerConfig {
             dns_port: 53,
             web_port: 8080,
             bind_address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            web_bind_address: None,
             cors_allowed_origins: default_cors_origins(),
             encrypted_dns: EncryptedDnsConfig::default(),
             proxy_protocol_enabled: false,

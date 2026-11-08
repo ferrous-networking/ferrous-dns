@@ -34,7 +34,8 @@ pub use auth::{
     ValidateSessionUseCase, VerifyMfaUseCase,
 };
 pub use backup::{
-    BackupSnapshot, ConfigDestination, ExportConfigUseCase, ImportConfigUseCase, ImportSummary,
+    BackupSnapshot, ConfigDestination, ExportConfigUseCase, ImportConfigUseCase, ImportOptions,
+    ImportSummary,
 };
 pub use block_filter::{
     AffectedDomain, BacktestBlocklistsUseCase, BacktestReport, BacktestRequest, CandidateAction,

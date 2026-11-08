@@ -553,7 +553,7 @@ filename `ferrous-backup-YYYY-MM-DD.json`).
 ### Import Config
 
 ```http
-POST /ferrous/api/v1/config/import
+POST /ferrous/api/v1/config/import?keep_host_settings=true
 Content-Type: multipart/form-data
 ```
 
@@ -562,14 +562,18 @@ Content-Type: multipart/form-data
 Restores configuration from a previously exported backup file uploaded as a
 multipart field (`file`). Returns an import summary describing what was applied.
 
+| Parameter | Type | Description |
+|:----------|:-----|:------------|
+| `keep_host_settings` | boolean | `true` keeps this server's `dns_port`, `web_port`, `bind_address`, `web_bind_address`, `[server.web_tls]` `enabled`, `tls_cert_path` and `tls_key_path`, and `[auth.webauthn]` `rp_id` and `rp_origin`, instead of the backup's. Use it to copy a setup to a [second server](operations/redundancy.md); leave it off to restore a server from its own backup (default: `false`) |
+
 - Groups are created by name; one that already exists is kept. A pool's routes
   and a blocklist source follow each group by name, so a backup from another
   server lands on the right groups even though their ids differ.
 - Blocklist sources and local records that already exist are skipped.
 - The settings are validated as a whole: if they fail, none are restored and
   `errors` says why.
-- A backup taken before pools, rate limiting and the Malware Detection settings
-  were exported leaves this server's own values for them.
+- A backup taken before pools, rate limiting, the Malware Detection settings
+  and `web_bind_address` were exported leaves this server's own values for them.
 - Restored settings take effect after a restart. When they differ from the
   running ones, `restart_required` is `true` and the dashboard shows the restart
   banner.

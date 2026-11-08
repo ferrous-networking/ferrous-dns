@@ -133,6 +133,18 @@ fn test_healthcheck_exits_1_when_no_server_answers() {
     assert_eq!(run_healthcheck(&config).code(), Some(1));
 }
 
+/// The dashboard can listen apart from DNS; the probe must follow it there.
+/// 127.0.0.2 reaches the loopback without setup only on Linux.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_healthcheck_probes_the_web_bind_address() {
+    let config =
+        TestConfig::with_web_bind_address(std::net::Ipv4Addr::new(127, 0, 0, 2).into(), "");
+    let _server = config.start();
+
+    assert_eq!(run_healthcheck(&config).code(), Some(0));
+}
+
 #[test]
 fn test_healthcheck_follows_the_redirect_to_a_self_signed_https_server() {
     let cert_dir = tempfile::tempdir().unwrap();

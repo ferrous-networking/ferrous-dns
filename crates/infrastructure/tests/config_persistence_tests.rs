@@ -501,6 +501,59 @@ fn test_save_preserves_inline_comments() {
     );
 }
 
+fn config_toml_with_web_bind_address() -> String {
+    default_config_toml().replace(
+        "bind_address = \"0.0.0.0\"",
+        "bind_address = \"0.0.0.0\"\nweb_bind_address = \"127.0.0.1\"  # dashboard on loopback",
+    )
+}
+
+#[test]
+fn test_save_writes_web_bind_address_and_reloads_it() {
+    let mut config = load_config(default_config_toml());
+    config.server.web_bind_address = Some("::1".parse().unwrap());
+
+    let doc = save_and_reparse(&config, default_config_toml());
+    let server = doc.get("server").unwrap().as_table().unwrap();
+
+    assert_eq!(
+        server.get("web_bind_address").and_then(|v| v.as_str()),
+        Some("[::1]")
+    );
+    let reloaded = Config::from_toml_str(&doc.to_string()).unwrap();
+    assert_eq!(
+        reloaded.server.web_bind_address,
+        config.server.web_bind_address
+    );
+}
+
+#[test]
+fn test_save_keeps_web_bind_address_and_its_comment() {
+    let input = config_toml_with_web_bind_address();
+    let config = load_config(&input);
+
+    let output = save_and_reparse(&config, &input).to_string();
+
+    assert!(
+        output.contains("web_bind_address = \"127.0.0.1\""),
+        "{output}"
+    );
+    assert!(output.contains("# dashboard on loopback"), "{output}");
+}
+
+#[test]
+fn test_save_removes_a_cleared_web_bind_address() {
+    let input = config_toml_with_web_bind_address();
+    let mut config = load_config(&input);
+    assert!(config.server.web_bind_address.is_some());
+    config.server.web_bind_address = None;
+
+    let doc = save_and_reparse(&config, &input);
+    let server = doc.get("server").unwrap().as_table().unwrap();
+
+    assert!(server.get("web_bind_address").is_none());
+}
+
 #[test]
 fn test_save_and_reload_preserves_block_mode_and_ttl() {
     use ferrous_dns_domain::BlockResponseMode;

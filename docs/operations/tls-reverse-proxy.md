@@ -92,7 +92,17 @@ The server sends no security headers of its own. The examples add HSTS, `nosniff
 
 ### 4. Keep the dashboard port off the network
 
-With a proxy in front, clients have no reason to reach port 8080 directly. The web port shares `[server] bind_address` with DNS, so binding it to loopback alone would take DNS off the network too. Close it in the firewall instead.
+With a proxy in front, clients have no reason to reach port 8080 directly. When the proxy shares Ferrous DNS's network (bare metal, systemd, or Docker with host networking, as in the bundled compose file), bind the web server to loopback and leave DNS on the network:
+
+```toml
+[server]
+bind_address     = "0.0.0.0"
+web_bind_address = "127.0.0.1"
+```
+
+Everything on the web port moves with it: the Pi-hole API, `/metrics`, and DoH without a `doh_port` of its own. See [Dashboard on its own address](../configuration/server.md#web-bind-address).
+
+When another host must still reach the port directly, such as a Prometheus that scrapes `/metrics`, keep the shared address and close the port in the firewall instead.
 
 === "Bare metal"
 
@@ -111,7 +121,9 @@ With a proxy in front, clients have no reason to reach port 8080 directly. The w
 
 === "Docker"
 
-    Publish only port 53, and put the proxy on the same Docker network, so that it alone reaches 8080. The bundled compose file uses host networking, which mDNS discovery needs. With host networking the port is on the host, so use the nftables rule there.
+    On a bridge network, publish only port 53 and put the proxy on the same Docker network, so that it alone reaches 8080. Leave `web_bind_address` unset there: the proxy reaches the container by name, never over its loopback, and a published port cannot reach it either.
+
+    The bundled compose file uses host networking, which mDNS discovery needs. The port is then on the host: set `web_bind_address = "127.0.0.1"` as above, or use the nftables rule there.
 
 ### 5. Let DoH name its clients
 

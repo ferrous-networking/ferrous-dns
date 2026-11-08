@@ -22,7 +22,7 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 !!! warning "Invalid values stop startup"
     The file is parsed and validated once, at startup (and again on a reload or an API save), and a bad value is reported with the key it came from instead of surfacing later as a crashed background task. Rejected values include: a bind address that is not an IP literal, a `trusted_proxies` entry that is not a CIDR or address, a `server_secret` that is neither empty nor 64 hex digits, an unknown `block_mode`, a `local_dns_server` that is not an IP address or `IP:port`, `cache_shard_amount` / `cache_inflight_shards` that are not a power of two of at least 2, `cache_min_ttl` above `cache_max_ttl`, and **0** for any interval, timeout, TTL or capacity whose zero would panic, spin or silently disable a component: `query_timeout`, `cache_max_entries`, `cache_compaction_interval`, `cache_eviction_sample_size`, `health_check.interval` / `timeout`, `rate_limit.queries_per_second` / `burst_size` / `stale_entry_ttl_secs`, the tunneling and DGA `stale_entry_ttl_secs`, `nxdomain_hijack.probe_interval_secs` / `probe_timeout_ms` / `hijack_ip_ttl_secs`, `response_ip_filter.refresh_interval_secs` / `ip_ttl_secs`, `query_log_channel_capacity` / `query_log_max_batch_size` / `query_log_flush_interval_ms`, `client_channel_capacity`, the three `*_pool_max_connections`, `write_busy_timeout_secs`, `read_acquire_timeout_secs`, `wal_checkpoint_interval_secs`, `session_ttl_hours`, `remember_me_days`, `login_rate_limit_window_secs` and `mfa_challenge_ttl_secs`. Zeros that have a documented meaning (`cache_min_ttl`, `slip_ratio`, the `*_max_connections_per_ip` limits, `wal_autocheckpoint`, `sqlite_mmap_size_mb`, `read_busy_timeout_secs`, `login_rate_limit_attempts`, `block_ttl`, `queries_log_stored`) stay allowed. Values too large to use are rejected too: a `session_ttl_hours`, `remember_me_days` or `mfa_challenge_ttl_secs` whose expiry, counted from now, lies past the year 9999 (session timestamps are stored with a four-digit year), and a `query_timeout` that overflows when converted to milliseconds.
 
-__omp_shell("!! info "Values earlier releases ran with load with a warning"")
+!!! info "Values earlier releases ran with load with a warning"
     Some of those values started on earlier releases, because the setting was unused or broke only the component it sized. So that an upgrade never takes the network's DNS down, the config **file** loads with each of them rewritten and a `WARN` log line naming the key, the value and what is used instead. The API still rejects every one of them.
 
     | Value in the file | Loads as |
@@ -90,6 +90,7 @@ trusted_proxies          = ["127.0.0.0/8", "::1/128"]
 | `dns_port` | `int` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `int` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
 | `bind_address` | `str` | `"0.0.0.0"` | Default address every listener binds to; `"0.0.0.0"` is all IPv4 interfaces, `"[::]"` is dual-stack (IPv4 + IPv6) |
+| `web_bind_address` | `str` | _(unset)_ | Address the dashboard and REST API bind to; unset, they use `bind_address`. See [Dashboard on its own address](server.md#web-bind-address) |
 | `pihole_compat` | `bool` | `false` | Expose Pi-hole v6 compatible API at `/api/*`; the Ferrous DNS native API stays at `/ferrous/api/v1/*` |
 | `proxy_protocol_enabled` | `bool` | `false` | Enable PROXY Protocol v2 on TCP DNS and DoT listeners |
 | `metrics_enabled` | `bool` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port |
@@ -148,7 +149,7 @@ tls_key_path  = "/data/key.pem"
 | `dot_bind_address` | `str` | — | Address for the DoT listener; inherits `bind_address` when omitted |
 | `doh_enabled` | `bool` | `false` | Enable the `/dns-query` DoH endpoint |
 | `doh_port` | `int` | — | Dedicated plain-HTTP port for DoH (behind a reverse proxy); omit to co-host on `web_port` |
-| `doh_bind_address` | `str` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted |
+| `doh_bind_address` | `str` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted, since `/dns-query` then binds wherever the dashboard does (`web_bind_address`, else `bind_address`) |
 | `doq_enabled` | `bool` | `false` | Enable the DNS-over-QUIC listener |
 | `doq_port` | `int` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `doq_bind_address` | `str` | — | Address for the DoQ listener; inherits `bind_address` when omitted |

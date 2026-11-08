@@ -29,10 +29,14 @@ fn build_multipart_body(boundary: &str, json_bytes: &[u8]) -> Vec<u8> {
 }
 
 fn import_request(json_bytes: &[u8]) -> Request<Body> {
+    import_request_to("/config/import", json_bytes)
+}
+
+fn import_request_to(uri: &str, json_bytes: &[u8]) -> Request<Body> {
     let boundary = "testboundary";
     let body = build_multipart_body(boundary, json_bytes);
     Request::builder()
-        .uri("/config/import")
+        .uri(uri)
         .method("POST")
         .header(
             "content-type",
@@ -297,6 +301,211 @@ async fn test_dns64_config_survives_export_import_roundtrip() {
 }
 
 #[tokio::test]
+async fn test_web_bind_address_survives_export_import_roundtrip() {
+    let TestApp {
+        router: app_a,
+        config: config_a,
+        ..
+    } = test_app().await;
+    config_a.write().await.server.web_bind_address = Some("::1".parse().unwrap());
+    let (status, exported) = do_export(app_a).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(exported["config"]["server"]["web_bind_address"], "::1");
+
+    let TestApp {
+        router: app_b,
+        config: config_b,
+        ..
+    } = test_app().await;
+    assert_eq!(config_b.read().await.server.web_bind_address, None);
+
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["success"], true, "{json}");
+
+    assert_eq!(
+        config_b.read().await.server.web_bind_address,
+        Some("::1".parse().unwrap())
+    );
+}
+
+/// A backup made before `web_bind_address` existed says nothing about it, so
+/// even a full restore must not move a dashboard kept on loopback back onto
+/// `bind_address`.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_this_servers_web_bind_address() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    assert!(minimal_backup_json()["config"]["server"]
+        .get("web_bind_address")
+        .is_none());
+
+    let payload = serde_json::to_vec(&minimal_backup_json()).unwrap();
+    let response = router.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        config.read().await.server.web_bind_address,
+        Some("127.0.0.1".parse().unwrap())
+    );
+}
+
+/// A backup from a server without the key carries it as `null`, and a full
+/// restore applies that: the web server shares `bind_address` again.
+#[tokio::test]
+async fn test_import_of_a_null_web_bind_address_unsets_it() {
+    let TestApp { router: app_a, .. } = test_app().await;
+    let (_, exported) = do_export(app_a).await;
+    assert!(exported["config"]["server"]["web_bind_address"].is_null());
+
+    let TestApp {
+        router: app_b,
+        config: config_b,
+        ..
+    } = test_app().await;
+    config_b.write().await.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(config_b.read().await.server.web_bind_address, None);
+}
+
+/// This server's own listener, web TLS and passkey settings.
+fn give_host_settings(cfg: &mut Config) {
+    cfg.server.dns_port = 5353;
+    cfg.server.web_port = 8443;
+    cfg.server.bind_address = "10.0.0.3".parse().unwrap();
+    cfg.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    cfg.server.web_tls.enabled = true;
+    cfg.server.web_tls.tls_cert_path = "/etc/dns-b/cert.pem".to_string();
+    cfg.server.web_tls.tls_key_path = "/etc/dns-b/key.pem".to_string();
+    cfg.auth.webauthn.rp_id = "dns-b.example".to_string();
+    cfg.auth.webauthn.rp_origin = "https://dns-b.example".to_string();
+}
+
+/// A backup from another server, with host settings of its own, Pi-hole
+/// compatibility on and a debug log level.
+fn backup_from_another_host() -> Vec<u8> {
+    let mut backup = minimal_backup_json();
+    backup["config"]["server"] = json!({
+        "dns_port": 53, "web_port": 8080, "bind_address": "10.0.0.2",
+        "web_bind_address": "10.0.0.2", "pihole_compat": true,
+        "tls_cert_path": "/etc/dns-a/cert.pem", "tls_key_path": "/etc/dns-a/key.pem",
+        "tls_enabled": false
+    });
+    backup["config"]["auth"]["webauthn_rp_id"] = json!("dns-a.example");
+    backup["config"]["auth"]["webauthn_rp_origin"] = json!("https://dns-a.example");
+    backup["config"]["logging"]["level"] = json!("debug");
+    serde_json::to_vec(&backup).unwrap()
+}
+
+async fn import_ok(app: Router, uri: &str, payload: &[u8]) {
+    let response = app.oneshot(import_request_to(uri, payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["success"], true, "{json}");
+}
+
+#[tokio::test]
+async fn test_import_keeps_this_servers_host_settings_when_asked() {
+    let TestApp { router, config, .. } = test_app().await;
+    give_host_settings(&mut *config.write().await);
+    let before = config.read().await.clone();
+
+    import_ok(
+        router,
+        "/config/import?keep_host_settings=true",
+        &backup_from_another_host(),
+    )
+    .await;
+
+    let cfg = config.read().await;
+    assert_eq!(cfg.server.dns_port, before.server.dns_port);
+    assert_eq!(cfg.server.web_port, before.server.web_port);
+    assert_eq!(cfg.server.bind_address, before.server.bind_address);
+    assert_eq!(cfg.server.web_bind_address, before.server.web_bind_address);
+    assert_eq!(cfg.server.web_tls.enabled, before.server.web_tls.enabled);
+    assert_eq!(
+        cfg.server.web_tls.tls_cert_path,
+        before.server.web_tls.tls_cert_path
+    );
+    assert_eq!(
+        cfg.server.web_tls.tls_key_path,
+        before.server.web_tls.tls_key_path
+    );
+    assert_eq!(cfg.auth.webauthn.rp_id, before.auth.webauthn.rp_id);
+    assert_eq!(cfg.auth.webauthn.rp_origin, before.auth.webauthn.rp_origin);
+    // The rest of the backup still lands, Pi-hole compatibility included.
+    assert!(cfg.server.pihole_compat);
+    assert_eq!(cfg.logging.level, "debug");
+}
+
+/// A backup that differs from this server only in what is kept changes
+/// nothing, so it asks for no restart; restored, the same backup does.
+#[tokio::test]
+async fn test_import_keeping_host_settings_asks_for_no_restart_when_only_they_differ() {
+    let TestApp { router, config, .. } = test_app().await;
+    let (_, mut backup) = do_export(router.clone()).await;
+    let server = &mut backup["config"]["server"];
+    server["dns_port"] = json!(5353);
+    server["bind_address"] = json!("10.0.0.2");
+    server["web_bind_address"] = json!("10.0.0.2");
+    server["tls_cert_path"] = json!("/etc/dns-a/cert.pem");
+    backup["config"]["auth"]["webauthn_rp_id"] = json!("dns-a.example");
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let before = serde_json::to_value(&*config.read().await).unwrap();
+
+    let response = router
+        .clone()
+        .oneshot(import_request_to(
+            "/config/import?keep_host_settings=true",
+            &payload,
+        ))
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let kept: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(kept["restart_required"], false, "{kept}");
+    assert_eq!(serde_json::to_value(&*config.read().await).unwrap(), before);
+
+    let response = router.oneshot(import_request(&payload)).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let restored: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(restored["restart_required"], true, "{restored}");
+}
+
+#[tokio::test]
+async fn test_import_restores_the_backups_host_settings_by_default() {
+    let TestApp { router, config, .. } = test_app().await;
+    give_host_settings(&mut *config.write().await);
+
+    import_ok(router, "/config/import", &backup_from_another_host()).await;
+
+    let cfg = config.read().await;
+    assert_eq!(cfg.server.dns_port, 53);
+    assert_eq!(cfg.server.web_port, 8080);
+    assert_eq!(cfg.server.bind_address.to_string(), "10.0.0.2");
+    assert_eq!(
+        cfg.server
+            .web_bind_address
+            .map(|ip| ip.to_string())
+            .as_deref(),
+        Some("10.0.0.2")
+    );
+    assert!(!cfg.server.web_tls.enabled);
+    assert_eq!(cfg.server.web_tls.tls_cert_path, "/etc/dns-a/cert.pem");
+    assert_eq!(cfg.server.web_tls.tls_key_path, "/etc/dns-a/key.pem");
+    assert_eq!(cfg.auth.webauthn.rp_id, "dns-a.example");
+    assert_eq!(cfg.auth.webauthn.rp_origin, "https://dns-a.example");
+    assert!(cfg.server.pihole_compat);
+}
+
+#[tokio::test]
 async fn test_import_new_local_record_is_added_to_config() {
     let TestApp {
         router: app,
@@ -432,12 +641,24 @@ async fn test_import_is_idempotent() {
     // Protected already exists in the DB, so it is skipped.
     let snapshot: ferrous_dns_application::use_cases::BackupSnapshot =
         serde_json::from_slice(&payload).unwrap();
-    let summary1 = import_uc.execute(snapshot.clone()).await.unwrap();
+    let summary1 = import_uc
+        .execute(
+            snapshot.clone(),
+            ferrous_dns_application::use_cases::ImportOptions::default(),
+        )
+        .await
+        .unwrap();
     assert_eq!(summary1.groups_skipped, 1);
     assert_eq!(summary1.groups_imported, 0);
 
     // A second import yields the same result.
-    let summary2 = import_uc.execute(snapshot).await.unwrap();
+    let summary2 = import_uc
+        .execute(
+            snapshot,
+            ferrous_dns_application::use_cases::ImportOptions::default(),
+        )
+        .await
+        .unwrap();
     assert_eq!(summary2.groups_skipped, 1);
     assert_eq!(summary2.groups_imported, 0);
 }
