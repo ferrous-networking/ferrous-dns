@@ -251,6 +251,60 @@ async fn test_get_stats_cache_hits_count() {
     assert_eq!(stats.queries_blocked, 0);
 }
 
+/// Three cache hits, one upstream answer, and four queries the cache never
+/// saw: two blocklist blocks, a rate-limited one and a non-FQDN refusal.
+async fn seed_hits_misses_and_blocks(pool: &SqlitePool) {
+    for _ in 0..3 {
+        insert_log(pool, true, false, None, "client", None).await;
+    }
+    insert_log(pool, false, false, None, "client", None).await;
+    insert_log(pool, false, true, Some("blocklist"), "client", None).await;
+    insert_log(pool, false, true, Some("blocklist"), "client", None).await;
+    insert(
+        pool,
+        Row {
+            blocked: true,
+            block_source: Some("rate_limit"),
+            response_status: Some("RATE_LIMITED"),
+            ..Row::default()
+        },
+    )
+    .await;
+    insert_log(pool, false, true, Some("non_fqdn"), "client", None).await;
+}
+
+#[tokio::test]
+async fn test_get_cache_stats_hit_rate_leaves_blocked_queries_out() {
+    let pool = migrated_pool().await;
+    seed_hits_misses_and_blocks(&pool).await;
+
+    let stats = repo(&pool).get_cache_stats(24.0).await.unwrap();
+
+    assert_eq!(stats.total_hits, 3);
+    assert_eq!(stats.total_misses, 1);
+    assert_eq!(
+        stats.hit_rate, 75.0,
+        "hit rate must be hits / (hits + misses); a blocked query never reached the cache"
+    );
+}
+
+#[tokio::test]
+async fn test_get_stats_cache_hit_rate_matches_cache_stats() {
+    let pool = migrated_pool().await;
+    seed_hits_misses_and_blocks(&pool).await;
+    let repo = repo(&pool);
+
+    let stats = repo.get_stats(24.0).await.unwrap();
+    let cache_stats = repo.get_cache_stats(24.0).await.unwrap();
+
+    assert_eq!(stats.queries_total, 8);
+    assert_eq!(
+        stats.cache_hit_rate, cache_stats.hit_rate,
+        "/stats and /cache/stats must report the same hit rate"
+    );
+    assert_eq!(stats.cache_hit_rate, 75.0);
+}
+
 #[tokio::test]
 async fn test_get_stats_blocklist_breakdown() {
     let pool = migrated_pool().await;
