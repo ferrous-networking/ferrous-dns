@@ -188,13 +188,13 @@ The copy is written to `<PATH>.partial`, readable by its owner only because it h
 
 === "Docker"
 
-    Mount a persistent volume to `/data/`:
+    Mount a persistent volume to `/data/`. The bundled config keeps the database at `/data/ferrous-dns.db`:
     ```yaml
     volumes:
       - ferrous-data:/data/
-    environment:
-      - FERROUS_DATABASE=/data/db/ferrous.db
     ```
+
+    To keep it elsewhere in the volume, change `[database] path` in `/data/config/ferrous-dns.toml` or set `FERROUS_DATABASE`. The image creates `/data/db` for this; any other directory must exist and be writable by uid 1000. The server opens an empty database at a new path, so stop it and move the file, with its `-wal` and `-shm`, first. `FERROUS_DATABASE=/data/db/ferrous.db`, the old documented default, is ignored.
 
 === "Binary"
 

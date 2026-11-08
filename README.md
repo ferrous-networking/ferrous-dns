@@ -50,7 +50,6 @@ docker run -d \
   --network host \
   --user 1000:1000 \
   -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
-  -e FERROUS_DATABASE=/data/db/ferrous.db \
   -e FERROUS_DNS_PORT=53 \
   -e FERROUS_WEB_PORT=8080 \
   -e FERROUS_BIND_ADDRESS=0.0.0.0 \
@@ -79,7 +78,6 @@ services:
     user: "1000:1000"
     environment:
       - FERROUS_CONFIG=/data/config/ferrous-dns.toml
-      - FERROUS_DATABASE=/data/db/ferrous.db
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
       - FERROUS_BIND_ADDRESS=0.0.0.0
@@ -121,7 +119,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
 | `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
-| `FERROUS_DATABASE`    | `/data/db/ferrous.db`                 | SQLite database path (in the Docker image) |
+| `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db` in the Docker image) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
 > **mDNS client names** (`mdns_enabled`, off by default) listens on UDP **5353** for multicast announcements and names clients after the host name their device announces. It requires host networking (`network_mode: host`) — multicast does not traverse Docker bridge port mapping.
