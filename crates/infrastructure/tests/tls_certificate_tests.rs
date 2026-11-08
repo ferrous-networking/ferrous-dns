@@ -1,9 +1,65 @@
 use ferrous_dns_application::ports::TlsCertificatePort;
-use ferrous_dns_infrastructure::tls::TlsCertificateService;
+use ferrous_dns_infrastructure::tls::{certificate_not_after, TlsCertificateService};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn path_str(p: &Path) -> &str {
     p.to_str().expect("utf-8 temp path")
+}
+
+#[tokio::test]
+async fn test_certificate_not_after_reads_a_generated_certificates_expiry() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (cert, key) = (dir.path().join("cert.pem"), dir.path().join("key.pem"));
+    TlsCertificateService
+        .generate_self_signed(path_str(&cert), path_str(&key))
+        .await
+        .expect("generate pair");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after 1970")
+        .as_secs() as i64;
+
+    let not_after = certificate_not_after(path_str(&cert)).expect("a certificate");
+
+    let one_year = 365 * 24 * 3600;
+    assert!(
+        (not_after - (now + one_year)).abs() < 60,
+        "not_after {not_after} is not a year after {now}"
+    );
+}
+
+/// rustls serves the certificate out of a file that holds the key first, so
+/// its expiry must be read from there too.
+#[tokio::test]
+async fn test_certificate_not_after_skips_a_key_ahead_of_the_certificate() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (cert, key) = (dir.path().join("cert.pem"), dir.path().join("key.pem"));
+    TlsCertificateService
+        .generate_self_signed(path_str(&cert), path_str(&key))
+        .await
+        .expect("generate pair");
+    let bundle = dir.path().join("bundle.pem");
+    let mut data = std::fs::read(&key).expect("read key");
+    data.extend(std::fs::read(&cert).expect("read cert"));
+    std::fs::write(&bundle, data).expect("write bundle");
+
+    let expected = certificate_not_after(path_str(&cert));
+    assert!(expected.is_some());
+    assert_eq!(certificate_not_after(path_str(&bundle)), expected);
+}
+
+#[test]
+fn test_certificate_not_after_is_none_without_a_certificate() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let garbage = dir.path().join("garbage.pem");
+    std::fs::write(&garbage, b"not a certificate").expect("write");
+
+    assert_eq!(certificate_not_after(path_str(&garbage)), None);
+    assert_eq!(
+        certificate_not_after(path_str(&dir.path().join("missing.pem"))),
+        None
+    );
 }
 
 #[tokio::test]

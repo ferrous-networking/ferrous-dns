@@ -21,6 +21,46 @@ tests:
             exp_annotations:
               summary: "Ferrous DNS on dns1:8080 does not answer scrapes"
 
+  # Down for a minute at start, then the listener dies while the web server stays up.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_dns_listening{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0 1 1 1 0x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: FerrousDnsListenerDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: FerrousDnsListenerDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FerrousDnsListenerDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: ferrous-dns, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "The DNS listener on dns1:8080 is not serving"
+
+  # The web certificate reaches 21 days left 2 hours in; the DoT one is years away.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_tls_cert_not_after_seconds{job="ferrous-dns", instance="dns1:8080", listener="web"}'
+        values: '1821600x300'
+      - series: 'ferrousdns_tls_cert_not_after_seconds{job="ferrous-dns", instance="dns1:8080", listener="dot"}'
+        values: '1000000000x300'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: FerrousDnsCertificateExpiring
+        exp_alerts: []
+      - eval_time: 2h30m
+        alertname: FerrousDnsCertificateExpiring
+        exp_alerts: []
+      - eval_time: 4h
+        alertname: FerrousDnsCertificateExpiring
+        exp_alerts:
+          - exp_labels: {severity: warning, job: ferrous-dns, instance: "dns1:8080", listener: web}
+            exp_annotations:
+              summary: "The web certificate on dns1:8080 expires within 21 days"
+
   # One server down, its pool still served by the other; an IPv6 address down
   # behind a server that is up raises nothing.
   - interval: 1m

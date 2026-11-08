@@ -6,7 +6,9 @@ static GLOBAL: MiMalloc = MiMalloc;
 use anyhow::Context;
 use clap::Parser;
 use ferrous_dns_application::drop_counter::ShedCounters;
+use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
+use ferrous_dns_infrastructure::tls::certificate_not_after;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, level_filters::LevelFilter};
@@ -146,6 +148,18 @@ async fn async_main() -> anyhow::Result<()> {
     )
     .await;
 
+    // What each TLS listener serves until the next restart, for `/metrics`
+    // and the dashboard's expiry warning.
+    let loaded_certificates = app_state.loaded_certificates.clone();
+    let record_certificate = |listener: TlsListener, cert_path: &str| {
+        if let Some(not_after) = certificate_not_after(cert_path) {
+            loaded_certificates.record(listener, not_after);
+        }
+    };
+    if web_tls_config.is_some() {
+        record_certificate(TlsListener::Web, &config.server.web_tls.tls_cert_path);
+    }
+
     let shutdown = bootstrap::shutdown_signal().context("Failed to listen for shutdown signals")?;
 
     let dns_addr = config.server.dns_listen_address();
@@ -194,6 +208,7 @@ async fn async_main() -> anyhow::Result<()> {
             &[],
         )?;
         if let Some(tls_cfg) = dot_tls_config {
+            record_certificate(TlsListener::Dot, &config.server.encrypted_dns.tls_cert_path);
             let dot_addr = config.server.dot_listen_address();
             let dot_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
@@ -225,6 +240,7 @@ async fn async_main() -> anyhow::Result<()> {
             &[b"doq"],
         )?;
         if let Some(tls_cfg) = doq_tls_config {
+            record_certificate(TlsListener::Doq, &config.server.encrypted_dns.tls_cert_path);
             let doq_addr = config.server.doq_listen_address();
             let doq_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),

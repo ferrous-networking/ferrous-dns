@@ -32,4 +32,4 @@ pub mod upstream;
 pub mod users;
 pub mod whitelist_sources;
 
-pub use metrics::{metrics_routes, render_metrics};
+pub use metrics::{metrics_routes, render_metrics, MetricsInputs};

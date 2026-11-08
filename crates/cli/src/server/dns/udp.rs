@@ -462,15 +462,17 @@ mod tests {
         worker.abort();
         result.unwrap();
         // Query 2 alone found every fallback slot taken.
-        let scraped = ferrous_dns_api::render_metrics(
-            &Default::default(),
-            &[],
-            None,
-            0,
-            &shed.totals(),
-            &Default::default(),
-            "test",
-        )
+        let scraped = ferrous_dns_api::render_metrics(&ferrous_dns_api::MetricsInputs {
+            cache: &Default::default(),
+            upstreams: &[],
+            query_stats: None,
+            blocklist_domains: 0,
+            shed: shed.totals(),
+            responses: Default::default(),
+            dns_listening: true,
+            certificates: &[],
+            version: "test",
+        })
         .unwrap();
         assert!(scraped.contains("\nferrousdns_udp_fallback_shed_total 1\n"));
     }

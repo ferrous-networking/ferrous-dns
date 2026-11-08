@@ -1939,7 +1939,7 @@
                     <template x-if="tlsStatus.cert_exists">
                         <div style="font-size:12px;color:var(--text-secondary);display:flex;flex-direction:column;gap:4px">
                             <span x-show="tlsStatus.cert_subject">Subject: <span x-text="tlsStatus.cert_subject" style="font-family:monospace"></span></span>
-                            <span x-show="tlsStatus.cert_not_after">Expires: <span x-text="tlsStatus.cert_not_after" style="font-family:monospace"></span></span>
+                            <span x-show="tlsStatus.cert_not_after">Expires: <span x-text="tlsStatus.cert_not_after" style="font-family:monospace" :style="certExpiryStyle()"></span><span x-text="certExpiryNote()" :style="certExpiryStyle()"></span></span>
                         </div>
                     </template>
                 </div>

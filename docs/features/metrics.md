@@ -32,6 +32,17 @@ Responses use the OpenMetrics content type `application/openmetrics-text; versio
 
 Every name is prefixed `ferrousdns_`, and counters carry the OpenMetrics `_total` suffix (`ferrousdns_cache_hits_total`).
 
+### Listeners
+
+| Metric | Type | Meaning |
+|:-------|:-----|:--------|
+| `dns_listening` | gauge | 1 while the plain DNS listener (UDP and TCP) is serving; 0 before it has bound at start, and after it stops. [`GET /health`](../operations/logs-monitoring.md#health-check) answers `503` at 0 |
+| `tls_cert_not_after_seconds{listener=…}` | gauge | When the certificate a TLS listener loaded at start expires, in Unix seconds. `listener` is `web`, `dot` or `doq`; a listener without a certificate has no series, and DoH has none of its own |
+
+A server whose DNS listener is down but whose web server is up still answers scrapes, so Prometheus's `up` stays 1. Alert on `ferrousdns_dns_listening == 0` instead.
+
+Certificates are read once, at start, so `tls_cert_not_after_seconds` is what the listener serves. A certificate renewed on disk shows up after the restart that loads it. `ferrousdns_tls_cert_not_after_seconds - time()` is the time left. DoT and DoQ read the same files, so one certificate shared by both shows up, and alerts, under both labels. A listener that loaded its certificate but then failed to bind its port still reports it.
+
 ### Responses
 
 Every reply sent to a client over UDP, TCP, DoT, DoH or DoQ, counted since process start under the RCODE in its header. It is counted where the reply leaves the resolver, so it is exact with the query log on or off.
@@ -164,7 +175,7 @@ increase(ferrousdns_upstream_shed_total[5m])
 count by (version) (ferrousdns_build_info)
 ```
 
-Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, a rising share of `SERVFAIL` or `REFUSED` replies, the cache hit rate from the two counters above dropping below its normal band, and any increase in `ferrousdns_udp_fallback_shed_total` or `ferrousdns_upstream_shed_total` (clients went unanswered: upstreams too slow, or traffic beyond what the server can absorb). Alert on rates of the counters rather than on the 24 h gauges: a `delta()` over a rolling 24 h count compares the last minutes with the same minutes a day earlier, not with zero. Ready-made rules for all of these are in [Logs & Monitoring](../operations/logs-monitoring.md#alert-rules).
+Suggested alerts: `ferrousdns_dns_listening == 0` for longer than a start takes, `ferrousdns_tls_cert_not_after_seconds - time() < 21 * 86400` for a certificate close to expiry, `ferrousdns_upstream_up == 0` for more than a few minutes, a rising share of `SERVFAIL` or `REFUSED` replies, the cache hit rate from the two counters above dropping below its normal band, and any increase in `ferrousdns_udp_fallback_shed_total` or `ferrousdns_upstream_shed_total` (clients went unanswered: upstreams too slow, or traffic beyond what the server can absorb). Alert on rates of the counters rather than on the 24 h gauges: a `delta()` over a rolling 24 h count compares the last minutes with the same minutes a day earlier, not with zero. Ready-made rules for all of these are in [Logs & Monitoring](../operations/logs-monitoring.md#alert-rules).
 
 ---
 

@@ -17,6 +17,7 @@ use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, UpstreamGroupHealth, UpstreamStatus,
 };
 use ferrous_dns_application::response_counter::{ResponseTotals, RCODE_LABELS};
+use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_domain::{DomainError, QueryStats};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::encoding::EncodeLabelSet;
@@ -59,6 +60,11 @@ struct RcodeLabels {
     rcode: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ListenerLabels {
+    listener: String,
+}
+
 /// Maps an aggregate status to a 1/0 "up" value, or `None` when unknown
 /// (no health data yet) so we don't emit a misleading `down`.
 fn aggregate_up(status: AggregateStatus) -> Option<i64> {
@@ -77,20 +83,39 @@ fn endpoint_up(status: UpstreamStatus) -> Option<i64> {
     }
 }
 
+/// What one scrape renders, gathered at a single instant.
+pub struct MetricsInputs<'a> {
+    pub cache: &'a CacheMetricsSnapshot,
+    pub upstreams: &'a [UpstreamGroupHealth],
+    pub query_stats: Option<&'a QueryStats>,
+    pub blocklist_domains: usize,
+    pub shed: ShedTotals,
+    pub responses: ResponseTotals,
+    /// `GET /health`'s flag: every plain DNS worker has bound.
+    pub dns_listening: bool,
+    /// When the certificate each TLS listener loaded at start expires, in
+    /// Unix seconds; a listener without one is absent.
+    pub certificates: &'a [(TlsListener, i64)],
+    pub version: &'a str,
+}
+
 /// Builds the Prometheus exposition string from already-gathered snapshots.
 ///
 /// Pure and side-effect free so it can be unit-tested without an `AppState` or a
 /// database. Cache metrics are monotonic-since-boot atomics → counters; the
 /// upstream and query-log values are point-in-time → gauges.
-pub fn render_metrics(
-    cache: &CacheMetricsSnapshot,
-    upstreams: &[UpstreamGroupHealth],
-    query_stats: Option<&QueryStats>,
-    blocklist_domains: usize,
-    shed: &ShedTotals,
-    responses: &ResponseTotals,
-    version: &str,
-) -> Result<String, DomainError> {
+pub fn render_metrics(inputs: &MetricsInputs) -> Result<String, DomainError> {
+    let MetricsInputs {
+        cache,
+        upstreams,
+        query_stats,
+        blocklist_domains,
+        shed,
+        responses,
+        dns_listening,
+        certificates,
+        version,
+    } = *inputs;
     let mut registry = Registry::with_prefix("ferrousdns");
 
     let cache_counters: [(&str, &str, u64); 12] = [
@@ -181,6 +206,28 @@ pub fn render_metrics(
         "responses",
         "DNS responses sent to clients over every transport, by RCODE, since start",
         by_rcode,
+    );
+
+    let listening = Gauge::<i64>::default();
+    listening.set(i64::from(dns_listening));
+    registry.register(
+        "dns_listening",
+        "Plain DNS listener serving (1) or not (0); GET /health answers 503 at 0",
+        listening,
+    );
+
+    let not_after = Family::<ListenerLabels, Gauge>::default();
+    for (listener, expires) in certificates {
+        not_after
+            .get_or_create(&ListenerLabels {
+                listener: listener.label().to_string(),
+            })
+            .set(*expires);
+    }
+    registry.register(
+        "tls_cert_not_after_seconds",
+        "Expiry (notAfter, Unix seconds) of the certificate each TLS listener loaded at start",
+        not_after,
     );
 
     let cache_entries = Gauge::<i64>::default();
@@ -371,15 +418,18 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
     };
 
     debug!("Rendering Prometheus metrics");
-    let rendered = render_metrics(
-        &cache,
-        &upstreams,
-        query_stats.as_ref(),
+    let certificates = state.loaded_certificates.expiries();
+    let rendered = render_metrics(&MetricsInputs {
+        cache: &cache,
+        upstreams: &upstreams,
+        query_stats: query_stats.as_ref(),
         blocklist_domains,
-        &state.dns.shed.totals(),
-        &state.dns.responses.totals(),
-        env!("CARGO_PKG_VERSION"),
-    );
+        shed: state.dns.shed.totals(),
+        responses: state.dns.responses.totals(),
+        dns_listening: state.is_dns_listening(),
+        certificates: &certificates,
+        version: env!("CARGO_PKG_VERSION"),
+    });
 
     match rendered {
         Ok(body) => ([(header::CONTENT_TYPE, METRICS_CONTENT_TYPE)], body).into_response(),
