@@ -246,17 +246,25 @@
                         </span>
                     </td>
                     <td class="col-client" style="font-size:13px">
-                        <!-- Lucide `git-merge`, inline for the same reason as the icons above. -->
-                        <template x-if="query.coalesced">
-                            <span class="answer-tip coalesced-icon" :data-tooltip="coalescedTip(query)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>
-                        </template>
-                        <span x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></span>
+                        <div class="client-cell">
+                            <!-- Lucide `git-merge`, inline for the same reason as the icons above. -->
+                            <template x-if="query.coalesced">
+                                <span class="answer-tip coalesced-icon" :data-tooltip="coalescedTip(query)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>
+                            </template>
+                            <span class="client-label" :title="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client">
+                                <template x-if="query.client_hostname">
+                                    <span class="client-name" x-text="query.client_hostname"></span>
+                                </template>
+                                <span class="client-ip" x-text="query.client_hostname ? '(' + query.client + ')' : query.client"></span>
+                            </span>
+                        </div>
                     </td>
                     <td style="max-width:0;overflow:hidden">
                         <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                               :style="query.cache_hit
                                 ? 'background:rgba(168,85,247,0.1);color:#A855F7'
-                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection')
+                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection'
+                                    || query.block_source === 'rate_limit' || query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC')
                                   ? 'background:rgba(245,158,11,0.1);color:#F59E0B'
                                   : (query.block_source === 'blocklist' || query.block_source === 'cname_cloaking')
                                     ? 'background:rgba(239,68,68,0.1);color:#ef4444'
@@ -281,12 +289,10 @@
                             <span style="color:var(--text-secondary)">—</span>
                         </template>
                         <template x-if="query.answers && query.answers.length">
-                            <div class="answer-tip" :data-tooltip="query.answers.join('\n')">
-                                <template x-for="(ip, i) in query.answers.slice(0, 2)" :key="i">
-                                    <div x-text="ip" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-                                </template>
-                                <template x-if="query.answers.length > 2">
-                                    <span class="answer-more" x-text="'+' + (query.answers.length - 2)"></span>
+                            <div class="answer-tip answer-cell" :data-tooltip="query.answers.join('\n')">
+                                <span class="answer-first" x-text="query.answers[0]"></span>
+                                <template x-if="query.answers.length > 1">
+                                    <span class="answer-more" x-text="'+' + (query.answers.length - 1)"></span>
                                 </template>
                             </div>
                         </template>

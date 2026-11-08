@@ -4,6 +4,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
+use tokio::runtime::{Handle, Id as RuntimeId};
 use tokio::sync::{Semaphore, SemaphorePermit};
 use tracing::info;
 
@@ -31,7 +32,11 @@ struct PooledEntry {
 }
 
 pub struct UdpSocketPool {
-    pools: DashMap<SocketAddr, Vec<PooledEntry>, FxBuildHasher>,
+    /// Keyed by runtime as well as server: a tokio socket only works on the
+    /// runtime that registered it. The binary runs one, but every
+    /// `#[tokio::test]` has its own, and a socket parked by a finished one fails
+    /// every send.
+    pools: DashMap<(RuntimeId, SocketAddr), Vec<PooledEntry>, FxBuildHasher>,
 
     max_per_server: usize,
 
@@ -67,13 +72,14 @@ impl UdpSocketPool {
             .await
             .map_err(std::io::Error::other)?;
 
-        if let Some(mut entry) = self.pools.get_mut(&server) {
+        let key = (Handle::current().id(), server);
+        if let Some(mut entry) = self.pools.get_mut(&key) {
             if let Some(pooled) = entry.pop() {
                 return Ok(PooledUdpSocket {
                     socket: pooled.socket,
                     uses: pooled.uses.saturating_add(1),
                     budget: pooled.budget,
-                    server,
+                    key,
                     pool: self,
                     _permit: permit,
                     poisoned: false,
@@ -88,7 +94,7 @@ impl UdpSocketPool {
             socket: Arc::new(socket),
             uses: 1,
             budget: Self::rotation_budget(),
-            server,
+            key,
             pool: self,
             _permit: permit,
             poisoned: false,
@@ -116,8 +122,8 @@ impl UdpSocketPool {
         UdpSocket::from_std(std_socket)
     }
 
-    fn release(&self, server: SocketAddr, pooled: PooledEntry) {
-        let mut entry = self.pools.entry(server).or_default();
+    fn release(&self, key: (RuntimeId, SocketAddr), pooled: PooledEntry) {
+        let mut entry = self.pools.entry(key).or_default();
 
         if entry.len() < self.max_per_server {
             entry.push(pooled);
@@ -139,7 +145,7 @@ pub struct PooledUdpSocket<'a> {
     uses: u32,
     /// Use count at which this socket's port is retired rather than pooled.
     budget: u32,
-    server: SocketAddr,
+    key: (RuntimeId, SocketAddr),
     pool: &'a UdpSocketPool,
     _permit: SemaphorePermit<'a>,
     poisoned: bool,
@@ -151,7 +157,7 @@ impl<'a> PooledUdpSocket<'a> {
     }
 
     pub fn server(&self) -> SocketAddr {
-        self.server
+        self.key.1
     }
 
     pub fn poison(&mut self) {
@@ -171,7 +177,7 @@ impl<'a> Drop for PooledUdpSocket<'a> {
             return;
         }
         self.pool.release(
-            self.server,
+            self.key,
             PooledEntry {
                 socket: self.socket.clone(),
                 uses: self.uses,

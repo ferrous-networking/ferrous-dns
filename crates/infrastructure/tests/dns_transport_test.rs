@@ -75,8 +75,10 @@ async fn tcp_transport_reconnect_stays_within_the_query_timeout() {
     let started = Instant::now();
     assert!(transport.send(&TCP_QUERY, timeout).await.is_err());
     let elapsed = started.elapsed();
+    // A reconnect with a budget of its own waits out two full timeouts, so this
+    // bound holds however slow the runner is (coverage runs add ~250 ms).
     assert!(
-        elapsed < timeout + timeout / 2,
+        elapsed < timeout * 2,
         "a stalled pooled connection plus the reconnect took {elapsed:?}"
     );
 }

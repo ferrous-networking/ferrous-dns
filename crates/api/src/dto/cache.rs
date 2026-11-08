@@ -14,6 +14,8 @@ pub struct CacheStatsResponse {
     pub total_hits: u64,
     pub total_misses: u64,
     pub total_refreshes: u64,
+    /// Percentage of answered client queries served from cache:
+    /// hits / (hits + misses). Blocked queries count in neither.
     pub hit_rate: f64,
     pub refresh_rate: f64,
 }

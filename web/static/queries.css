@@ -19,9 +19,9 @@
             min-width: 560px
         }
 
-        .col-time { width: 120px }
+        .col-time { width: 100px }
         .col-proto { width: 104px }
-        .col-client { width: 130px }
+        .col-client { width: 150px }
         .col-source { width: 200px }
         .col-answer {
             width: 150px;
@@ -30,11 +30,21 @@
             line-height: 1.4
         }
 
-        /* Count of the answers that did not fit in the two visible lines —
-           the full list lives in the cell's tooltip. */
+        /* ANSWER stays on one line: the first answer, then a count of the
+           rest — the full list lives in the cell's tooltip. */
+        .answer-cell {
+            display: flex;
+            align-items: center;
+            gap: 4px
+        }
+
+        .answer-first {
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
         .answer-more {
-            display: inline-block;
-            margin-top: 2px;
+            flex-shrink: 0;
             padding: 1px 6px;
             border-radius: 9999px;
             font-family: inherit;
@@ -80,9 +90,33 @@
            answer-tip. */
         .coalesced-icon {
             display: inline-flex;
-            vertical-align: -2px;
-            margin-right: 4px;
             color: #6366F1
+        }
+
+        /* CLIENT stays on one line: the name gives way to an ellipsis before
+           the address does, and the label's tooltip has both. No overflow
+           clip on the cell itself, or it would cut the coalesced tooltip. */
+        .client-cell {
+            display: flex;
+            align-items: center;
+            gap: 4px
+        }
+
+        .client-label {
+            display: flex;
+            gap: 4px;
+            min-width: 0
+        }
+
+        .client-name,
+        .client-ip {
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
+        .client-ip {
+            flex-shrink: 0;
+            max-width: 100%
         }
 
         /* The protocol badge and, after it, the query's DNS Cookie on one
@@ -115,6 +149,12 @@
 
         @container (max-width: 1183px) {
             .col-rt { display: none }
+        }
+
+        /* Every column is visible from 1184px; once DOMAIN would still keep
+           its 220px, CLIENT takes 70px more for a typical "host (address)". */
+        @container (min-width: 1254px) {
+            .col-client { width: 220px }
         }
 
         @container (max-width: 1073px) {
@@ -154,7 +194,8 @@
         td {
             padding: 8px 10px;
             border-bottom: 1px solid var(--border-color);
-            font-size: 14px
+            font-size: 14px;
+            white-space: nowrap
         }
 
         tr.row-allowed {
@@ -171,24 +212,6 @@
 
         tr.row-malware {
             background: rgba(245, 158, 11, 0.08)
-        }
-
-        .badge-rate-limited {
-            background: rgba(245, 158, 11, 0.1);
-            color: #F59E0B;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .badge-malware {
-            background: rgba(245, 158, 11, 0.1);
-            color: #F59E0B;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
         }
 
         tr:hover {

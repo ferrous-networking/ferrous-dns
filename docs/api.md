@@ -942,7 +942,7 @@ GET /ferrous/api/v1/cache/stats
 
 **Auth:** session or API key · **Returns:** `200` `CacheStatsResponse`
 
-Returns cache hit/miss counts, hit rate, and total entries.
+Returns cache hit/miss counts, hit rate, and total entries. Counts come from the query log over `period` (default `24h`); the hit rate is hits ÷ (hits + misses), so blocked queries, which never reach the cache, count in neither. `/stats` reports the same figure as `cache_hit_rate`.
 
 ### Cache Metrics
 
@@ -952,7 +952,7 @@ GET /ferrous/api/v1/cache/metrics
 
 **Auth:** session or API key · **Returns:** `200` `CacheMetricsResponse`
 
-Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, expirations, hit rate. `expirations` counts the positive entries their timer removed past their TTL; `compactions` also counts expired negative answers.
+Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, expirations, hit rate. `expirations` counts the positive entries their timer removed past their TTL; `compactions` also counts expired negative answers. `hits`, `misses` and `hit_rate` count cache lookups since the server started, not queries, so they differ from the query-log figures in `/cache/stats`.
 
 ### Cache Overview
 
