@@ -322,9 +322,11 @@ The image's health check now probes the running server through `ferrous-dns --he
 
 The image no longer sets `FERROUS_DATABASE`. Its old default, `/data/db/ferrous.db`, was documented but never applied: the database is `/data/ferrous-dns.db`, from `[database] path` in the bundled config, and it stays there, so nothing moves. A compose file or `docker run` that still sets `FERROUS_DATABASE=/data/db/ferrous.db` keeps working; the entrypoint ignores that value as before and now says so at startup. Remove the line to silence the notice. Any other value still points the server at that path, where it opens an empty database unless you move the file there first: see [Database File Location](../configuration/database.md#database-file-location).
 
-### Listening on IPv6 by default {#default-bind-address}
+### Listening on IPv6 by default
 
 `bind_address` accepts `"auto"`, and it is the new default: every listener serves IPv4 and IPv6 clients on one dual-stack socket. A config file that names an address keeps it, `"0.0.0.0"` included, so an existing install, Docker volume or packaged config listens exactly where it did before. Change the line to `bind_address = "auto"` to serve IPv6 clients too. Only a server started without any config file moves to IPv4 + IPv6 on its own. See [Dual-stack](../configuration/server.md#dual-stack).
+
+Before rolling back to an earlier release, change `bind_address = "auto"` to an address, such as `"[::]"` for the same dual-stack listening: earlier releases refuse to start with `"auto"`, and they cannot restore the config section of a backup that says `"auto"`. A fresh install from this release has `"auto"` in its config file.
 
 ### Docker bind address {#docker-bind-address}
 

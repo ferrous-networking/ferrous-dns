@@ -116,7 +116,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 | `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
-| `FERROUS_BIND_ADDRESS`| —                                     | Bind address; when unset, the config file decides (`auto`: IPv4 and IPv6) |
+| `FERROUS_BIND_ADDRESS`| —                                     | Bind address; when unset, the config file decides (`auto`: IPv4 and IPv6). `0.0.0.0` is ignored: for IPv4 only, set `bind_address = "0.0.0.0"` in the config file |
 | `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db` in the Docker image) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
