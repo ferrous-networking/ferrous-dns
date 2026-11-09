@@ -1,6 +1,7 @@
 use axum::{
-    extract::{OriginalUri, Path},
+    extract::{ConnectInfo, OriginalUri, Path, Request},
     http::{header, HeaderValue, Method, StatusCode, Uri},
+    middleware,
     response::{IntoResponse, Redirect, Response},
     routing::get,
     Json, Router,
@@ -53,7 +54,8 @@ pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::R
             "/dns-query/{client_id}",
             get(dns_query_with_id_handler).post(dns_query_with_id_handler),
         )
-        .layer(axum::Extension(doh));
+        .layer(axum::Extension(doh))
+        .layer(middleware::map_request(canonical_peer));
 
     // The handler attributes each query to the socket peer.
     axum::serve(
@@ -63,6 +65,18 @@ pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::R
     .await?;
 
     Ok(())
+}
+
+/// A dual-stack listener reports an IPv4 client as `::ffff:a.b.c.d`; every
+/// handler gets the plain IPv4 address instead, as behind the DNS listeners.
+async fn canonical_peer(mut request: Request) -> Request {
+    if let Some(ConnectInfo(peer)) = request
+        .extensions_mut()
+        .get_mut::<ConnectInfo<SocketAddr>>()
+    {
+        peer.set_ip(peer.ip().to_canonical());
+    }
+    request
 }
 
 pub async fn start_web_server(
@@ -310,7 +324,8 @@ fn create_app(
             .layer(axum::Extension(doh));
     }
 
-    app
+    // Last, so it covers every route merged above.
+    app.layer(middleware::map_request(canonical_peer))
 }
 
 /// Both APIs, plus the `/ferrous-config.js` that tells the UI where the
