@@ -58,6 +58,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::SubnetConflict(_)
         | DomainError::DohIdConflict(_)
         | DomainError::GroupHasAssignedClients(_)
+        | DomainError::GroupHasAssignedDohIds(_)
         | DomainError::GroupRoutedByPool(_)
         | DomainError::AlreadyExists(_) => StatusCode::CONFLICT,
 

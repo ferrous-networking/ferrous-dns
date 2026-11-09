@@ -25,4 +25,7 @@ pub trait GroupRepository: Send + Sync {
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
     async fn get_clients_in_group(&self, group_id: i64) -> Result<Vec<Client>, DomainError>;
     async fn count_clients_in_group(&self, group_id: i64) -> Result<u64, DomainError>;
+    async fn count_doh_ids_in_group(&self, _group_id: i64) -> Result<u64, DomainError> {
+        Ok(0)
+    }
 }

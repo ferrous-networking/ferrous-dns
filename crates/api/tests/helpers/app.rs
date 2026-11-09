@@ -281,10 +281,10 @@ impl TestAppBuilder {
                     group_repo.clone(),
                     malware_exemptions.clone(),
                 )),
-                update_group: Arc::new(
-                    UpdateGroupUseCase::new(group_repo.clone(), malware_exemptions.clone())
-                        .with_block_filter(null_engine.clone()),
-                ),
+                update_group: Arc::new(UpdateGroupUseCase::new(
+                    group_repo.clone(),
+                    malware_exemptions.clone(),
+                )),
                 delete_group: Arc::new(DeleteGroupUseCase::new(
                     group_repo.clone(),
                     null_engine.clone(),

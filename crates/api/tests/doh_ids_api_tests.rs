@@ -163,6 +163,25 @@ async fn test_crud_doh_id_lifecycle_with_custom_id_and_comment_clear() {
     assert_eq!(updated["group_name"], "Office");
     assert!(updated["comment"].is_null());
 
+    // GET all after PUT verifies updated group_name on list
+    let list_after_put = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/doh-ids")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_after_put.status(), StatusCode::OK);
+    let listed_after_put = read_json(list_after_put).await;
+    assert_eq!(
+        listed_after_put.as_array().unwrap()[0]["group_name"],
+        "Office"
+    );
+
     // PUT rotating client_id
     let rotate_res = app
         .clone()

@@ -334,6 +334,11 @@ it, or `null` for rows logged before the group was recorded and rows whose group
 has since been deleted. A managed-domain rule that should change the outcome for
 that client belongs in that group.
 
+`doh_client_id` is the `<ClientID>` segment from `/dns-query/<ClientID>` for DoH
+queries that carried one, or `null` otherwise. When present, `client_hostname`
+resolves to the registered DoH ID's `name` (or the raw `doh_client_id` when
+unregistered).
+
 ---
 
 ## Configuration
@@ -348,7 +353,7 @@ GET /ferrous/api/v1/config
 
 Returns the full current configuration including server, DNS, blocking, logging, and database settings.
 
-`restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /ferrous/api/v1/config` (anything but upstream pools), `POST /ferrous/api/v1/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
+`restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /ferrous/api/v1/config` (anything but upstream pools and `server.encrypted_dns.doh_allow_unregistered_ids`), `POST /ferrous/api/v1/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
 
 `web_certificate_expires_at` is when the certificate the web server loaded at start expires, in Unix seconds, or `null` while it serves plain HTTP. A certificate replaced on disk counts after the restart that loads it. The dashboard's certificate banner follows it.
 
@@ -1291,9 +1296,9 @@ Takes the fields of Create Group, all optional; an omitted field keeps its value
 DELETE /ferrous/api/v1/groups/{id}
 ```
 
-**Auth:** session or API key · **Returns:** `204` · **Errors:** `400` the default group, `404` unknown group, `409` clients assigned or an upstream pool routes for it
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `400` the default group, `404` unknown group, `409` clients or DoH IDs assigned or an upstream pool routes for it
 
-Returns `409` if the group still has assigned clients, or if an upstream pool routes domains for it (its `groups` in a [conditional pool](configuration/dns.md#conditional-forwarding)); remove the group from the pool first. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
+Returns `409` if the group still has assigned clients or DoH IDs, or if an upstream pool routes domains for it (its `groups` in a [conditional pool](configuration/dns.md#conditional-forwarding)); remove the group from the pool first. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
 
 ### Get Group Clients
 

@@ -97,6 +97,7 @@ fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
         | DomainError::SubnetConflict(_)
         | DomainError::DohIdConflict(_)
         | DomainError::GroupHasAssignedClients(_)
+        | DomainError::GroupHasAssignedDohIds(_)
         | DomainError::GroupRoutedByPool(_)
         | DomainError::DuplicateApiTokenName(_)
         | DomainError::DuplicateUsername(_)

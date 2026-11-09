@@ -265,6 +265,23 @@ async fn test_count_clients_in_group() {
 }
 
 #[tokio::test]
+async fn test_count_doh_ids_in_group() {
+    let (repo, pool) = repo().await;
+    sqlx::query("INSERT INTO doh_ids (name, client_id, group_id) VALUES (?, ?, ?), (?, ?, ?)")
+        .bind("Alice Phone")
+        .bind("alice-phone")
+        .bind(1_i64)
+        .bind("Alice Laptop")
+        .bind("alice-laptop")
+        .bind(1_i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(repo.count_doh_ids_in_group(1).await.unwrap(), 2);
+}
+
+#[tokio::test]
 async fn test_get_clients_in_group() {
     let (repo, pool) = repo().await;
     let other = repo

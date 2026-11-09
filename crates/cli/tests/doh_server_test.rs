@@ -27,6 +27,13 @@ impl BlockFilterEnginePort for RegisteredDohIdFilter {
     fn resolve_group(&self, _ip: IpAddr) -> i64 {
         0
     }
+    fn resolve_group_for_request(&self, ip: IpAddr, doh_client_id: Option<&str>) -> i64 {
+        if doh_client_id == Some(self.0) {
+            1
+        } else {
+            self.resolve_group(ip)
+        }
+    }
     fn is_doh_id_registered(&self, client_id: &str) -> bool {
         client_id == self.0
     }

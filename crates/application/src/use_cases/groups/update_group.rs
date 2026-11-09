@@ -4,12 +4,11 @@ use ferrous_dns_domain::{DomainError, Group};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 
-use crate::ports::{BlockFilterEnginePort, GroupRepository, MalwareExemptionPort};
+use crate::ports::{GroupRepository, MalwareExemptionPort};
 
 pub struct UpdateGroupUseCase {
     group_repo: Arc<dyn GroupRepository>,
     malware_exemptions: Arc<dyn MalwareExemptionPort>,
-    block_filter_engine: Option<Arc<dyn BlockFilterEnginePort>>,
 }
 
 impl UpdateGroupUseCase {
@@ -20,16 +19,7 @@ impl UpdateGroupUseCase {
         Self {
             group_repo,
             malware_exemptions,
-            block_filter_engine: None,
         }
-    }
-
-    pub fn with_block_filter(
-        mut self,
-        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
-    ) -> Self {
-        self.block_filter_engine = Some(block_filter_engine);
-        self
     }
 
     #[instrument(skip(self))]
@@ -57,14 +47,6 @@ impl UpdateGroupUseCase {
             .group_repo
             .update(id, name, enabled, comment, malware_detection_enabled)
             .await?;
-
-        if enabled.is_some() {
-            if let Some(ref engine) = self.block_filter_engine {
-                if let Err(e) = engine.load_client_groups().await {
-                    error!(error = %e, "Failed to reload client groups after group update");
-                }
-            }
-        }
 
         if malware_detection_enabled.is_some() {
             if let Err(e) = self.malware_exemptions.reload().await {

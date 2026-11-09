@@ -22,14 +22,14 @@ pub enum FilterDecision {
 pub trait BlockFilterEnginePort: Send + Sync {
     fn resolve_group(&self, ip: IpAddr) -> i64;
     /// Resolves the group for a request, giving a registered DoH Client ID
-    /// precedence over `ip` and subnet rules when its group is enabled.
-    fn resolve_group_for_request(&self, ip: IpAddr, doh_client_id: Option<&str>) -> i64 {
-        let _ = doh_client_id;
+    /// precedence over `ip` and subnet rules. The default ignores the ID, so an
+    /// implementor that serves DoH must override it.
+    fn resolve_group_for_request(&self, ip: IpAddr, _doh_client_id: Option<&str>) -> i64 {
         self.resolve_group(ip)
     }
     /// Returns `true` when `client_id` is registered in the `doh_ids` table.
-    fn is_doh_id_registered(&self, client_id: &str) -> bool {
-        let _ = client_id;
+    /// The default reports every ID as unregistered.
+    fn is_doh_id_registered(&self, _client_id: &str) -> bool {
         false
     }
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision;

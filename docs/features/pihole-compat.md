@@ -75,7 +75,7 @@ method `405` `method_not_allowed` with the method as `hint`.
 | `GET` | `/api/stats/upstreams` | Array of answer sources: the `blocklist` and `cache` pseudo-entries (port `-1`), then each upstream server, merged across pools |
 | `GET` | `/api/stats/recent_blocked` | Most recently blocked domains, newest first; `count` (default 1) |
 
-These live endpoints also take `from`, a Ferrous extension giving the window in hours back from now (default 24), and still honour `limit` as an alias of `count`.
+These live endpoints also take `from`, a Ferrous extension giving the window in hours back from now (default 24), and still honour `limit` as an alias of `count`. When DoH clients query `/dns-query/<ClientID>`, `/api/stats/top_clients` can return the DoH Client ID in `ip` (with its registered display name in `name`).
 
 ### Long-term statistics
 

@@ -168,10 +168,10 @@ impl UseCases {
                 repos.group.clone(),
                 repos.malware_exemptions.clone(),
             )),
-            update_group: Arc::new(
-                UpdateGroupUseCase::new(repos.group.clone(), repos.malware_exemptions.clone())
-                    .with_block_filter(repos.block_filter_engine.clone()),
-            ),
+            update_group: Arc::new(UpdateGroupUseCase::new(
+                repos.group.clone(),
+                repos.malware_exemptions.clone(),
+            )),
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 repos.group.clone(),
                 repos.block_filter_engine.clone(),
