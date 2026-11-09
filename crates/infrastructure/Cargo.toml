@@ -48,7 +48,7 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # state server-side (in the mfa_challenges row), as WebAuthn requires.
 # `conditional-ui` unlocks the discoverable-credential (usernameless) auth API
 # used for passwordless passkey login.
-webauthn-rs = { version = "0.5", features = [
+webauthn-rs = { version = "0.6", features = [
     "danger-allow-state-serialisation",
     "conditional-ui",
 ] }
