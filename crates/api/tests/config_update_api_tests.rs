@@ -7,6 +7,7 @@ use ferrous_dns_api::create_api_router_with_openapi;
 use ferrous_dns_application::ports::{ConfigFilePersistence, UpstreamReloadPort};
 use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_application::use_cases::{ConfigOverrides, ReloadConfigUseCase};
+use ferrous_dns_domain::config::BindAddress;
 use ferrous_dns_domain::{Config, DomainError, UpstreamPool};
 use ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence;
 use helpers::{create_test_db, TestApp};
@@ -388,6 +389,21 @@ async fn test_update_config_persists_mdns_enabled() {
         written.contains("mdns_enabled = true"),
         "config file should carry mdns_enabled = true, got:\n{written}"
     );
+}
+
+#[tokio::test]
+async fn test_get_config_reports_bind_address_auto() {
+    let pool = create_test_db().await;
+    let (TestApp { router, config, .. }, _path) = test_app(pool).await;
+
+    config.write().await.server.bind_address = BindAddress::Auto;
+    let (status, json) = get_config(router.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["server"]["bind_address"], "auto");
+
+    config.write().await.server.bind_address = "0.0.0.0".parse().unwrap();
+    let (_, json) = get_config(router).await;
+    assert_eq!(json["server"]["bind_address"], "0.0.0.0");
 }
 
 #[tokio::test]

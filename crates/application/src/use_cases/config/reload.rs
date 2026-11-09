@@ -1,6 +1,6 @@
-use std::net::IpAddr;
 use std::sync::Arc;
 
+use ferrous_dns_domain::config::BindAddress;
 use ferrous_dns_domain::{Config, DomainError};
 use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use tracing::{info, instrument, Instrument};
@@ -13,7 +13,7 @@ use crate::ports::{ConfigFilePersistence, UpstreamReloadPort};
 pub struct ConfigOverrides {
     pub dns_port: Option<u16>,
     pub web_port: Option<u16>,
-    pub bind_address: Option<IpAddr>,
+    pub bind_address: Option<BindAddress>,
     pub database_path: Option<String>,
     pub log_level: Option<String>,
 }

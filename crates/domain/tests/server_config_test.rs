@@ -1,3 +1,4 @@
+use ferrous_dns_domain::config::BindAddress;
 use ferrous_dns_domain::ServerConfig;
 use std::net::{IpAddr, SocketAddr};
 
@@ -31,6 +32,81 @@ fn bare_and_bracketed_ipv6_bind_addresses_are_the_same_address() {
         assert_eq!(config.dns_listen_address(), addr("[::]:53"), "{spelling}");
         assert_eq!(config.web_listen_address(), addr("[::]:8080"), "{spelling}");
     }
+}
+
+#[test]
+fn test_bind_address_auto_parses() {
+    let config = parse("dns_port = 53\nweb_port = 8080\nbind_address = \"auto\"");
+    assert_eq!(config.bind_address, BindAddress::Auto);
+}
+
+#[test]
+fn test_missing_bind_address_defaults_to_auto() {
+    let config = parse("dns_port = 53\nweb_port = 8080");
+    assert_eq!(config.bind_address, BindAddress::Auto);
+}
+
+#[test]
+fn test_default_server_config_binds_auto() {
+    assert_eq!(ServerConfig::default().bind_address, BindAddress::Auto);
+}
+
+#[test]
+fn test_auto_listens_on_the_unspecified_ipv6_address() {
+    let config = parse(
+        "dns_port = 53\nweb_port = 8080\nbind_address = \"auto\"\n[encrypted_dns]\ndoh_port = 443",
+    );
+    assert_eq!(config.dns_listen_address(), addr("[::]:53"));
+    assert_eq!(config.web_listen_address(), addr("[::]:8080"));
+    assert_eq!(config.dot_listen_address(), addr("[::]:853"));
+    assert_eq!(config.doq_listen_address(), addr("[::]:853"));
+    assert_eq!(config.doh_listen_address(), Some(addr("[::]:443")));
+}
+
+#[test]
+fn test_explicit_ipv4_bind_address_is_not_upgraded() {
+    let config = parse(&server_toml(""));
+    assert_eq!(
+        config.bind_address,
+        BindAddress::Ip("0.0.0.0".parse().unwrap())
+    );
+    assert_eq!(config.dns_listen_address(), addr("0.0.0.0:53"));
+}
+
+#[test]
+fn test_per_listener_override_wins_over_auto() {
+    let config = parse(
+        "dns_port = 53\nweb_port = 8080\nbind_address = \"auto\"\nweb_bind_address = \"127.0.0.1\"\n\
+         [encrypted_dns]\ndot_bind_address = \"192.168.1.10\"",
+    );
+    assert_eq!(config.web_listen_address(), addr("127.0.0.1:8080"));
+    assert_eq!(config.dot_listen_address(), addr("192.168.1.10:853"));
+    assert_eq!(config.dns_listen_address(), addr("[::]:53"));
+}
+
+#[test]
+fn test_web_bind_address_rejects_auto() {
+    let err = toml::from_str::<ServerConfig>(&server_toml("web_bind_address = \"auto\""))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("web_bind_address"), "names the key: {err}");
+}
+
+#[test]
+fn test_bind_address_displays_auto() {
+    assert_eq!(BindAddress::Auto.to_string(), "auto");
+    assert_eq!("[::]".parse::<BindAddress>().unwrap().to_string(), "::");
+    assert_eq!(
+        "0.0.0.0".parse::<BindAddress>().unwrap().to_string(),
+        "0.0.0.0"
+    );
+}
+
+#[test]
+fn test_bind_address_hostname_error_mentions_auto() {
+    let err = "localhost".parse::<BindAddress>().unwrap_err();
+    assert!(err.contains("\"auto\""), "{err}");
+    assert!(err.contains("not a hostname"), "{err}");
 }
 
 #[test]
