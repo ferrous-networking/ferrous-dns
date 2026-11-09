@@ -3,8 +3,9 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use ferrous_dns_domain::config::BindAddress;
-use ferrous_dns_domain::{Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{
+    BindAddress, Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy,
+};
 use helpers::{get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};

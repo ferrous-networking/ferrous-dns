@@ -1,5 +1,4 @@
-use ferrous_dns_domain::config::BindAddress;
-use ferrous_dns_domain::ServerConfig;
+use ferrous_dns_domain::{BindAddress, ServerConfig};
 use std::net::{IpAddr, SocketAddr};
 
 fn server_toml(extra: &str) -> String {

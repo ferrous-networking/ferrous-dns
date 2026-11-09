@@ -1,5 +1,4 @@
-use ferrous_dns_domain::config::BindAddress;
-use ferrous_dns_domain::{Config, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{BindAddress, Config, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::repositories::config_persistence::save_config_to_file;
 
 fn default_config_toml() -> &'static str {

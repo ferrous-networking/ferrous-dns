@@ -5,10 +5,10 @@ pub mod errors;
 pub mod value_objects;
 
 pub use config::{
-    AdminConfig, AuthConfig, BlockResponseMode, Config, DgaDetectionAction, DgaDetectionConfig,
-    Dns64Config, DnsConfig, DnsCookiesConfig, DnssecMode, EncryptedDnsConfig, HealthCheckConfig,
-    LocalDnsRecord, LocalRecordType, NxdomainHijackAction, NxdomainHijackConfig, RateLimitConfig,
-    ResponseIpFilterAction, ResponseIpFilterConfig, ServerConfig, TunnelingAction,
+    AdminConfig, AuthConfig, BindAddress, BlockResponseMode, Config, DgaDetectionAction,
+    DgaDetectionConfig, Dns64Config, DnsConfig, DnsCookiesConfig, DnssecMode, EncryptedDnsConfig,
+    HealthCheckConfig, LocalDnsRecord, LocalRecordType, NxdomainHijackAction, NxdomainHijackConfig,
+    RateLimitConfig, ResponseIpFilterAction, ResponseIpFilterConfig, ServerConfig, TunnelingAction,
     TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy, WebauthnConfig, DEFAULT_BLOCK_TTL,
     DEFAULT_DNS64_PREFIX,
 };

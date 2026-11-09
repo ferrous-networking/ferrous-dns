@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use ferrous_dns_domain::config::BindAddress;
-use ferrous_dns_domain::{Config, DomainError};
+use ferrous_dns_domain::{BindAddress, Config, DomainError};
 use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use tracing::{info, instrument, Instrument};
 

@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ferrous_dns_application::ports::ConfigFilePersistence;
-use ferrous_dns_domain::config::BindAddress;
-use ferrous_dns_domain::{Config, DomainError};
+use ferrous_dns_domain::{BindAddress, Config, DomainError};
 
 pub struct TomlConfigFilePersistence;
 
@@ -279,7 +278,7 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
         set_val(t, "web_port", config.server.web_port as i64);
         let bind_address = match config.server.bind_address {
             BindAddress::Ip(ip) => bind_host(ip),
-            auto => auto.to_string(),
+            auto @ BindAddress::Auto => auto.to_string(),
         };
         set_val(t, "bind_address", bind_address);
         match config.server.web_bind_address {
