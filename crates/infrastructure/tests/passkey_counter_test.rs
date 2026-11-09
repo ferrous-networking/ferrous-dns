@@ -1,13 +1,16 @@
-//! A passkey login folds the authenticator's signature counter into the stored
-//! passkey, so the next WebAuthn ceremony itself refuses a cloned authenticator
-//! replaying an old counter (WebAuthn §7.2). A software ES256 authenticator
-//! drives the real use cases, `WebauthnRsService` and SQLite.
+//! A passkey login, with a username or discoverable, folds the authenticator's
+//! signature counter into the stored passkey, so the next WebAuthn ceremony
+//! itself refuses a cloned authenticator replaying an old counter (WebAuthn
+//! §7.2). A software ES256 authenticator drives the real use cases,
+//! `WebauthnRsService` and SQLite.
 
 use std::sync::Arc;
 
 use data_encoding::BASE64URL_NOPAD;
 use ferrous_dns_application::ports::{MfaRepository, WebauthnService};
-use ferrous_dns_application::use_cases::{AuthenticatePasskeyUseCase, RegisterPasskeyUseCase};
+use ferrous_dns_application::use_cases::{
+    AuthenticatePasskeyUseCase, DiscoverablePasskeyLoginUseCase, RegisterPasskeyUseCase,
+};
 use ferrous_dns_domain::{AuthConfig, DomainError};
 use ferrous_dns_infrastructure::auth::{SqliteMfaRepository, WebauthnRsService};
 use ferrous_dns_infrastructure::repositories::SqliteSessionRepository;
@@ -15,6 +18,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 #[path = "support/auth.rs"]
 mod auth;
@@ -88,7 +92,8 @@ impl SoftAuthenticator {
         })
     }
 
-    fn assert(&self, request: &Value, counter: u32) -> Value {
+    /// A discoverable login needs `user_handle`, the user id the passkey was created with.
+    fn assert(&self, request: &Value, counter: u32, user_handle: Option<&[u8]>) -> Value {
         let client_data = client_data("webauthn.get", request);
         let auth_data = authenticator_data(FLAG_USER_PRESENT | FLAG_USER_VERIFIED, counter);
         let mut signed = auth_data.clone();
@@ -103,7 +108,7 @@ impl SoftAuthenticator {
                 "authenticatorData": b64(&auth_data),
                 "clientDataJSON": b64(&client_data),
                 "signature": b64(signature.as_ref()),
-                "userHandle": null,
+                "userHandle": user_handle.map(b64),
             },
         })
     }
@@ -131,13 +136,11 @@ fn authenticator_data(flags: u8, counter: u32) -> Vec<u8> {
     data
 }
 
-#[tokio::test]
-async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
-    let pool = db::migrated_pool().await;
-    let mfa: Arc<dyn MfaRepository> = Arc::new(SqliteMfaRepository::new(pool.clone()));
-    let webauthn: Arc<dyn WebauthnService> = Arc::new(WebauthnRsService::new(RP_ID, ORIGIN));
-    let authenticator = SoftAuthenticator::new();
-
+async fn register_admin_passkey(
+    webauthn: &Arc<dyn WebauthnService>,
+    mfa: &Arc<dyn MfaRepository>,
+    authenticator: &SoftAuthenticator,
+) {
     let registration = RegisterPasskeyUseCase::new(webauthn.clone(), mfa.clone(), 300);
     let start = registration.start(ADMIN, ADMIN).await.unwrap();
     registration
@@ -149,6 +152,15 @@ async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
         )
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
+    let pool = db::migrated_pool().await;
+    let mfa: Arc<dyn MfaRepository> = Arc::new(SqliteMfaRepository::new(pool.clone()));
+    let webauthn: Arc<dyn WebauthnService> = Arc::new(WebauthnRsService::new(RP_ID, ORIGIN));
+    let authenticator = SoftAuthenticator::new();
+    register_admin_passkey(&webauthn, &mfa, &authenticator).await;
 
     let login = AuthenticatePasskeyUseCase::new(
         webauthn.clone(),
@@ -162,7 +174,7 @@ async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
     login
         .finish(
             "login",
-            authenticator.assert(&request, 5),
+            authenticator.assert(&request, 5, None),
             "127.0.0.1",
             "agent",
         )
@@ -180,7 +192,56 @@ async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
     let passkeys = [stored.passkey];
     let (request, state) = webauthn.start_authentication(&passkeys).unwrap();
     assert!(matches!(
-        webauthn.finish_authentication(authenticator.assert(&request, 5), &state, &passkeys),
+        webauthn.finish_authentication(authenticator.assert(&request, 5, None), &state, &passkeys),
+        Err(DomainError::WebauthnError(_))
+    ));
+}
+
+#[tokio::test]
+async fn a_discoverable_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
+    let pool = db::migrated_pool().await;
+    let mfa: Arc<dyn MfaRepository> = Arc::new(SqliteMfaRepository::new(pool.clone()));
+    let webauthn: Arc<dyn WebauthnService> = Arc::new(WebauthnRsService::new(RP_ID, ORIGIN));
+    let authenticator = SoftAuthenticator::new();
+    register_admin_passkey(&webauthn, &mfa, &authenticator).await;
+    let user_handle = Uuid::new_v5(&Uuid::NAMESPACE_DNS, ADMIN.as_bytes());
+
+    let login = DiscoverablePasskeyLoginUseCase::new(
+        webauthn.clone(),
+        mfa.clone(),
+        admin_user_provider(pool.clone()),
+        Arc::new(SqliteSessionRepository::new(pool.clone(), pool)),
+        Arc::new(AuthConfig::default()),
+        300,
+    );
+    let start = login.start().await.unwrap();
+    let session = login
+        .finish(
+            &start.challenge_token,
+            authenticator.assert(&start.challenge, 5, Some(user_handle.as_bytes())),
+            false,
+            "127.0.0.1",
+            "agent",
+        )
+        .await
+        .unwrap();
+    assert_eq!(session.username.as_ref(), ADMIN);
+
+    let stored = mfa
+        .find_credential_by_id(&b64(&CREDENTIAL_ID))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.sign_count, 5);
+
+    // A clone replaying counter 5 fails inside the ceremony, before any repository check.
+    let (request, state) = webauthn.start_discoverable().unwrap();
+    assert!(matches!(
+        webauthn.finish_discoverable(
+            authenticator.assert(&request, 5, Some(user_handle.as_bytes())),
+            &state,
+            &stored.passkey,
+        ),
         Err(DomainError::WebauthnError(_))
     ));
 }

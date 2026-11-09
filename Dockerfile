@@ -1,13 +1,6 @@
 FROM rust:1.99-alpine AS builder
 
-# perl and make build the OpenSSL that the `vendored` feature compiles into the binary.
-RUN apk add --no-cache \
-    make \
-    musl-dev \
-    openssl-dev \
-    openssl-libs-static \
-    perl \
-    pkgconfig
+RUN apk add --no-cache musl-dev
 
 WORKDIR /app
 

@@ -224,7 +224,7 @@ impl WebauthnService for WebauthnRsService {
             serde_json::from_str(passkey_json).map_err(|e| json_err("parse stored passkey", e))?;
 
         let result = wa
-            .finish_discoverable_authentication(&cred, state, &[DiscoverableKey::from(&passkey)])
+            .finish_discoverable_authentication_v2(&cred, state, &passkey)
             .map_err(|e| wa_err("finish_discoverable", e))?;
 
         authenticated(passkey, &result)
