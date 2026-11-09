@@ -23,8 +23,9 @@ impl GetManagedDomainsUseCase {
         &self,
         limit: u32,
         offset: u32,
+        search: Option<&str>,
     ) -> Result<(Vec<ManagedDomain>, u64), DomainError> {
-        self.repo.get_all_paged(limit, offset).await
+        self.repo.get_all_paged(limit, offset, search).await
     }
 
     #[instrument(skip(self))]

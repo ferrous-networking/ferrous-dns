@@ -1321,11 +1321,22 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
         &self,
         limit: u32,
         offset: u32,
+        search: Option<&str>,
     ) -> Result<(Vec<ManagedDomain>, u64), DomainError> {
         let domains = self.domains.read().await;
-        let total = domains.len() as u64;
-        let paged = domains
+        let needle = search.map(str::to_ascii_lowercase);
+        let matches: Vec<&ManagedDomain> = domains
             .iter()
+            .filter(|d| {
+                needle.as_deref().is_none_or(|n| {
+                    d.name.to_ascii_lowercase().contains(n)
+                        || d.domain.to_ascii_lowercase().contains(n)
+                })
+            })
+            .collect();
+        let total = matches.len() as u64;
+        let paged = matches
+            .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
             .cloned()

@@ -45,10 +45,15 @@ async fn get_all_managed_domains(
     Query(params): Query<ManagedDomainQuery>,
 ) -> Result<Json<PaginatedManagedDomains>, ApiError> {
     let limit = params.limit.clamp(1, MAX_MANAGED_DOMAINS_LIMIT);
+    let search = params
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     let (domains, total) = state
         .blocking
         .get_managed_domains
-        .get_all_paged(limit, params.offset)
+        .get_all_paged(limit, params.offset, search)
         .await?;
     debug!(
         count = domains.len(),

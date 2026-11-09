@@ -29,10 +29,13 @@ pub trait ManagedDomainRepository: Send + Sync {
 
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError>;
 
+    /// One page sorted by name, then group. `search` keeps only the domains whose
+    /// name or domain contains it, ignoring ASCII case; the total counts those.
     async fn get_all_paged(
         &self,
         limit: u32,
         offset: u32,
+        search: Option<&str>,
     ) -> Result<(Vec<ManagedDomain>, u64), DomainError>;
 
     async fn update(

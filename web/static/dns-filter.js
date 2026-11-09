@@ -36,7 +36,12 @@
 
             // --- MANAGED DOMAINS ---
             mSources: [],
+            mTotal: 0,
+            mPage: 1,
+            mPageSize: 25,
+            mSearch: '',
             mLoading: false,
+            _mCtrl: null,
             mEditingDomain: null,
             mForm: {
                 name: '',
@@ -453,20 +458,47 @@
             // ===================== MANAGED DOMAINS =====================
 
             async loadManagedDomains() {
+                this._mCtrl?.abort();
+                const ctrl = new AbortController();
+                this._mCtrl = ctrl;
                 this.mLoading = true;
                 try {
-                    const res = await fetch(`${API_BASE}/managed-domains`);
+                    const offset = (this.mPage - 1) * this.mPageSize;
+                    const search = this.mSearch.trim();
+                    const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+                    const res = await fetch(
+                        `${API_BASE}/managed-domains?limit=${this.mPageSize}&offset=${offset}${searchParam}`,
+                        {signal: ctrl.signal}
+                    );
                     if (res.ok) {
                         const result = await res.json();
+                        // Deleting the only row of the last page leaves it empty: go to the last page with rows.
+                        if (result.data.length === 0 && result.total > 0 && this.mPage > 1) {
+                            this.mPage = Math.ceil(result.total / this.mPageSize);
+                            return this.loadManagedDomains();
+                        }
                         this.mSources = result.data;
+                        this.mTotal = result.total;
                         await this.$nextTick();
                         scheduleLucide(0);
                     }
                 } catch (e) {
-                    console.error('Failed to load managed domains:', e);
+                    if (e.name !== 'AbortError') console.error('Failed to load managed domains:', e);
                 } finally {
-                    this.mLoading = false;
+                    if (this._mCtrl === ctrl) this.mLoading = false;
                 }
+            },
+
+            get mHasMore() {
+                return this.mPage * this.mPageSize < this.mTotal;
+            },
+
+            async mChangePage(delta) {
+                const next = this.mPage + delta;
+                if (next < 1) return;
+                if (delta > 0 && !this.mHasMore) return;
+                this.mPage = next;
+                await this.loadManagedDomains();
             },
 
             mEditDomain(domain) {

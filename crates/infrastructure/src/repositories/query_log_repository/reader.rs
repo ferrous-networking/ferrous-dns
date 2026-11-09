@@ -2,7 +2,7 @@ use super::helpers::{row_to_query_log, window_start_bucket};
 use super::hour_rollup;
 use super::rollup;
 use crate::repositories::{
-    db_err, hours_ago, hours_ago_cutoff, seconds_ago_cutoff, sql_ts, unix_cutoff,
+    contains_pattern, db_err, hours_ago, hours_ago_cutoff, seconds_ago_cutoff, sql_ts, unix_cutoff,
 };
 use chrono::{DateTime, TimeDelta, Utc};
 use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, QueryLogStorage};
@@ -65,20 +65,6 @@ macro_rules! select_query_log {
             $tail
         )
     };
-}
-
-/// `%needle%` for `LIKE ? ESCAPE '\'`, so `%`, `_` and `\` in user input match literally.
-fn contains_pattern(needle: &str) -> String {
-    let mut pattern = String::with_capacity(needle.len() + 2);
-    pattern.push('%');
-    for ch in needle.chars() {
-        if matches!(ch, '%' | '_' | '\\') {
-            pattern.push('\\');
-        }
-        pattern.push(ch);
-    }
-    pattern.push('%');
-    pattern
 }
 
 /// Client rows logged since `start`: raw rows up to the first complete minute,

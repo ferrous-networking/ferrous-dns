@@ -509,6 +509,24 @@
         </div>
 
         <div class="card">
+            <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;padding:16px;border-bottom:1px solid var(--border-color)">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
+                    <select x-model.number="mPageSize" @change="mPage=1;loadManagedDomains()"
+                            style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Search:</label>
+                    <input type="text" x-model="mSearch" @input.debounce.400ms="mPage=1;loadManagedDomains()"
+                           placeholder="Domain or name..."
+                           style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+                </div>
+            </div>
             <div class="table-scroll">
                 <table class="table">
                     <thead>
@@ -582,7 +600,8 @@
                     <tr x-show="mSources.length === 0 && !mLoading">
                         <td colspan="8" style="text-align:center;padding:48px;color:var(--text-secondary)">
                             <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                            <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
+                            <p style="margin:0"
+                               x-text="mSearch.trim() ? 'No managed domains match this search.' : 'No managed domains found. Add one to block or allow a specific domain immediately.'"></p>
                         </td>
                     </tr>
                     <tr x-show="mLoading">
@@ -592,6 +611,23 @@
                     </tr>
                     </tbody>
                 </table>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px">
+                <div style="font-size:14px;color:var(--text-secondary)">
+                    Showing <span x-text="mTotal === 0 ? 0 : (mPage-1)*mPageSize+1"></span> to <span
+                        x-text="Math.min(mPage*mPageSize,mTotal)"></span> of <span
+                        x-text="mTotal"></span>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button @click="mChangePage(-1)" :disabled="mPage===1"
+                            style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                            :style="mPage===1 ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Previous
+                    </button>
+                    <button @click="mChangePage(1)" :disabled="!mHasMore"
+                            style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                            :style="!mHasMore ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Next
+                    </button>
+                </div>
             </div>
         </div>
     </div><!-- end managed domains tab -->

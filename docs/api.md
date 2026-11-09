@@ -1436,12 +1436,18 @@ Individual domains added to the blocklist or allowlist via the dashboard.
 ### List Domains
 
 ```http
-GET /ferrous/api/v1/managed-domains?limit=100&offset=0
+GET /ferrous/api/v1/managed-domains?limit=100&offset=0&search=example
 ```
 
 **Auth:** session or API key · **Returns:** `200` `PaginatedManagedDomains`
 
-Returns the managed domains sorted by name, as a [page](#pagination) (`limit` default 100, max 1000).
+Returns the managed domains sorted by name, then by group, as a [page](#pagination).
+
+| Parameter | Type | Description |
+|:----------|:-----|:------------|
+| `limit` | integer | Domains per page (default: 100, max: 1000) |
+| `offset` | integer | Domains to skip |
+| `search` | string | Case-insensitive substring match on the domain or the name; `total` then counts only the matches. Blank means no filter |
 
 ### Create Domain
 
