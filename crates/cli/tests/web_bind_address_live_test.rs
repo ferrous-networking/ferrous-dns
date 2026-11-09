@@ -5,48 +5,12 @@
 
 mod server_process;
 
-use server_process::TestConfig;
-use std::io::{ErrorKind, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use server_process::{accepts_within, http_status, is_refused, TestConfig};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
 
 const WEB_HOST: IpAddr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
 const DNS_HOST: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
-
-/// The status code of a plain HTTP/1.1 GET.
-fn http_status(addr: SocketAddr, path: &str) -> u16 {
-    let mut stream = TcpStream::connect(addr).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .unwrap();
-    // One write: the TLS port's redirect reads a single segment, then closes.
-    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
-    stream.write_all(request.as_bytes()).unwrap();
-    let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
-        .split(' ')
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .unwrap_or_else(|| panic!("not an HTTP response: {response}"))
-}
-
-fn is_refused(addr: SocketAddr) -> bool {
-    matches!(TcpStream::connect(addr), Err(e) if e.kind() == ErrorKind::ConnectionRefused)
-}
-
-/// The DNS listener may come up just after the web one.
-fn accepts_within(addr: SocketAddr, limit: Duration) -> bool {
-    let deadline = Instant::now() + limit;
-    while TcpStream::connect(addr).is_err() {
-        if Instant::now() > deadline {
-            return false;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    true
-}
 
 fn assert_dns_stays_on_bind_address(config: &TestConfig) {
     let dns = SocketAddr::new(DNS_HOST, config.dns_port);

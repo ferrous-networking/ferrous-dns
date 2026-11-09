@@ -6,6 +6,7 @@
 mod common;
 mod server_process;
 
+use common::skip_without_dual_stack;
 use server_process::{Server, TestConfig};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
@@ -47,14 +48,6 @@ fn http_json(
         .unwrap_or_else(|| panic!("no status line: {head}"));
     let json = serde_json::from_str(payload).unwrap_or(serde_json::Value::Null);
     (status, json)
-}
-
-fn skip_without_dual_stack(test: &str) -> bool {
-    if common::dual_stack_loopback_available() {
-        return false;
-    }
-    eprintln!("skipping {test}: no dual-stack loopback available");
-    true
 }
 
 fn pihole_server_on_dual_stack(auth: &str) -> TestConfig {

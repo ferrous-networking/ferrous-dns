@@ -6,58 +6,16 @@
 mod common;
 mod server_process;
 
+use common::skip_without_dual_stack;
 use hickory_proto::op::{Message, MessageType, OpCode, Query};
 use hickory_proto::rr::{DNSClass, Name, RecordType};
-use server_process::TestConfig;
-use std::io::{ErrorKind, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, UdpSocket};
-use std::thread::sleep;
-use std::time::{Duration, Instant};
+use server_process::{accepts_within, http_status, is_refused, TestConfig};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
+use std::time::Duration;
 
 const V4: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 const V6: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
 const QUERY_ID: u16 = 0x375;
-
-fn skip_without_dual_stack(test: &str) -> bool {
-    if common::dual_stack_loopback_available() {
-        return false;
-    }
-    eprintln!("skipping {test}: no dual-stack loopback available");
-    true
-}
-
-fn health_status(addr: SocketAddr) -> u16 {
-    let mut stream = TcpStream::connect(addr).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .unwrap();
-    let request =
-        format!("GET /ferrous/api/v1/health HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
-    stream.write_all(request.as_bytes()).unwrap();
-    let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
-        .split(' ')
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .unwrap_or_else(|| panic!("not an HTTP response: {response}"))
-}
-
-/// The DNS listener may come up just after the web one.
-fn accepts_within(addr: SocketAddr, limit: Duration) -> bool {
-    let deadline = Instant::now() + limit;
-    while TcpStream::connect(addr).is_err() {
-        if Instant::now() > deadline {
-            return false;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    true
-}
-
-fn is_refused(addr: SocketAddr) -> bool {
-    matches!(TcpStream::connect(addr), Err(e) if e.kind() == ErrorKind::ConnectionRefused)
-}
 
 /// A private-range PTR query, which `block_private_ptr` (on by default)
 /// answers without an upstream.
@@ -97,7 +55,10 @@ fn assert_serves(config: &TestConfig, ip: IpAddr) {
     );
     assert!(udp_answers(dns), "DNS over UDP on {dns}");
     assert_eq!(
-        health_status(SocketAddr::new(ip, config.web_port)),
+        http_status(
+            SocketAddr::new(ip, config.web_port),
+            "/ferrous/api/v1/health"
+        ),
         200,
         "web on {ip}"
     );

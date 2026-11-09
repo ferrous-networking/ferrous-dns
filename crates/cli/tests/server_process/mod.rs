@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -39,7 +40,42 @@ pub fn server_log(dir: &Path) -> String {
     fs::read_to_string(dir.join("server.log")).unwrap_or_default()
 }
 
-/// A config file in its own temp dir, for a server with auth off on loopback.
+/// The status code of a plain HTTP/1.1 GET.
+pub fn http_status(addr: SocketAddr, path: &str) -> u16 {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    // One write: the TLS port's redirect reads a single segment, then closes.
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+        .split(' ')
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .unwrap_or_else(|| panic!("not an HTTP response: {response}"))
+}
+
+pub fn is_refused(addr: SocketAddr) -> bool {
+    matches!(TcpStream::connect(addr), Err(e) if e.kind() == ErrorKind::ConnectionRefused)
+}
+
+/// The DNS listener may come up just after the web one.
+pub fn accepts_within(addr: SocketAddr, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    while TcpStream::connect(addr).is_err() {
+        if Instant::now() > deadline {
+            return false;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    true
+}
+
+/// A config file in its own temp dir, for a server with auth off on loopback
+/// unless a constructor says otherwise.
 pub struct TestConfig {
     pub dir: TempDir,
     pub path: PathBuf,

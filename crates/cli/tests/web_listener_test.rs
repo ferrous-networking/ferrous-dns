@@ -8,10 +8,7 @@ use std::net::SocketAddr;
 
 #[tokio::test]
 async fn test_a_v6_web_listener_is_dual_stack() {
-    if !common::dual_stack_loopback_available() {
-        eprintln!(
-            "skipping test_a_v6_web_listener_is_dual_stack: no dual-stack loopback available"
-        );
+    if common::skip_without_dual_stack("test_a_v6_web_listener_is_dual_stack") {
         return;
     }
     let listener = bind_web_listener("[::]:0".parse().unwrap()).unwrap();
