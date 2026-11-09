@@ -8,6 +8,7 @@ use axum::{
 };
 use ferrous_dns_api::{create_api_router_with_openapi, metrics_routes, AppState};
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -39,7 +40,7 @@ pub async fn start_doh_server(bind_addr: SocketAddr, doh: Arc<DohContext>) -> an
         "Starting DoH server (DNS-over-HTTPS, RFC 8484)"
     );
 
-    let listener = TcpListener::bind(&bind_addr).await?;
+    let listener = bind_web_listener(bind_addr)?;
 
     info!("DoH server ready on {}", bind_addr);
 
@@ -65,6 +66,23 @@ pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::R
     .await?;
 
     Ok(())
+}
+
+/// Binds a web or DoH listener on `bind`. An IPv6 bind turns `IPV6_V6ONLY`
+/// off, so `[::]` serves IPv4 too whatever `net.ipv6.bindv6only` says; an
+/// IPv4 bind stays AF_INET and needs no IPv6 in the kernel. Unlike the DNS
+/// listeners there is no `SO_REUSEPORT`: a second server must fail to bind.
+pub fn bind_web_listener(bind: SocketAddr) -> anyhow::Result<TcpListener> {
+    let socket = Socket::new(Domain::for_address(bind), Type::STREAM, Some(Protocol::TCP))?;
+    if bind.is_ipv6() {
+        socket.set_only_v6(false)?;
+    }
+    socket.set_reuse_address(true)?;
+    socket.bind(&bind.into())?;
+    socket.listen(1024)?;
+    socket.set_nonblocking(true)?;
+    let std_listener: std::net::TcpListener = socket.into();
+    Ok(TcpListener::from_std(std_listener)?)
 }
 
 /// A dual-stack listener reports an IPv4 client as `::ffff:a.b.c.d`; every
@@ -119,11 +137,11 @@ pub async fn start_web_server(
         doh,
     );
 
+    let listener = bind_web_listener(bind_addr)?;
     if let Some(tls_cfg) = tls_config {
         info!("Web server started successfully (HTTPS)");
-        web_tls::start_https_web_server(bind_addr, app, tls_cfg).await?;
+        web_tls::start_https_web_server(listener, app, tls_cfg).await?;
     } else {
-        let listener = TcpListener::bind(&bind_addr).await?;
         info!("Web server started successfully");
         axum::serve(
             listener,

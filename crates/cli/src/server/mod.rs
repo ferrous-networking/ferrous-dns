@@ -12,4 +12,4 @@ pub use dns::start_mdns_listener;
 pub use dns::tls_config::load_server_tls_config;
 pub use doh::DohContext;
 pub use web::start_web_server;
-pub use web::{serve_doh, start_doh_server};
+pub use web::{bind_web_listener, serve_doh, start_doh_server};

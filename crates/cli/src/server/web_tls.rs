@@ -17,12 +17,12 @@ use tracing::{debug, error, warn};
 ///
 /// This allows the same port to handle both protocols transparently.
 pub(super) async fn start_https_web_server(
-    bind_addr: SocketAddr,
+    listener: TcpListener,
     app: Router,
     tls_config: Arc<rustls::ServerConfig>,
 ) -> anyhow::Result<()> {
-    let listener = TcpListener::bind(bind_addr).await?;
     let acceptor = TlsAcceptor::from(tls_config);
+    let port = listener.local_addr()?.port();
 
     loop {
         let (stream, peer_addr) = match listener.accept().await {
@@ -35,7 +35,6 @@ pub(super) async fn start_https_web_server(
 
         let acceptor = acceptor.clone();
         let tower_service = app.clone();
-        let port = bind_addr.port();
 
         tokio::spawn(async move {
             let mut peek_buf = [0u8; 1];
