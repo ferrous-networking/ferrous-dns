@@ -24,4 +24,15 @@ ignore = [
     # on it). It emits no runtime code of its own and has no attack surface at
     # execution time. Nothing to upgrade until utoipa-axum drops it upstream.
     "RUSTSEC-2024-0436",
+
+    # RUSTSEC-2026-0459 — the SQLite bundled by `libsqlite3-sys` < 0.39 can
+    # return stale process memory when it opens a database together with a
+    # crafted `-wal` file. The attacker must be able to write both files, and
+    # ferrous-dns only opens its own database (startup, --compact-database,
+    # --backup-database); the backup import takes a JSON snapshot, never a
+    # database file. Anyone who can plant a `-wal` there can already read the
+    # database. No release of sqlx accepts the fix yet (0.8.6 pins `^0.30.1`,
+    # 0.9.0 caps it below 0.38); bump and drop this entry once one does.
+    # Tracked in #383.
+    "RUSTSEC-2026-0459",
 ]
