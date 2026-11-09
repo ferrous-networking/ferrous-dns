@@ -57,9 +57,24 @@ impl TestConfig {
     /// `extra` is appended to the `[server]` table, e.g. a `[server.web_tls]` table.
     pub fn with_extra(extra: &str) -> Self {
         Self::with_tables(
+            Some("127.0.0.1"),
             extra,
             r#"upstream_servers = ["127.0.0.1:9"]"#,
             "enabled = false",
+            "enabled = false",
+        )
+    }
+
+    /// A server whose listeners bind `bind_address` as written in the file
+    /// (`None` leaves the key out); `extra` is appended to `[server]` and
+    /// `auth` is the body of `[auth]`.
+    pub fn with_bind_address(bind_address: Option<&str>, extra: &str, auth: &str) -> Self {
+        Self::with_tables(
+            bind_address,
+            extra,
+            r#"upstream_servers = ["127.0.0.1:9"]"#,
+            "enabled = false",
+            auth,
         )
     }
 
@@ -77,6 +92,7 @@ impl TestConfig {
     /// never cached.
     pub fn filtering(upstream: SocketAddr) -> Self {
         Self::with_tables(
+            Some("127.0.0.1"),
             "",
             &format!(
                 "upstream_servers = [\"{upstream}\"]\n\
@@ -84,20 +100,30 @@ impl TestConfig {
                  dnssec_mode = \"Off\""
             ),
             "enabled = true",
+            "enabled = false",
         )
     }
 
-    /// `server_extra` is appended to `[server]`; `dns` and `blocking` are the
-    /// bodies of those tables.
-    fn with_tables(server_extra: &str, dns: &str, blocking: &str) -> Self {
+    /// `server_extra` is appended to `[server]`; `dns`, `blocking` and `auth`
+    /// are the bodies of those tables.
+    fn with_tables(
+        bind_address: Option<&str>,
+        server_extra: &str,
+        dns: &str,
+        blocking: &str,
+        auth: &str,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let dns_port = free_port();
         let web_port = free_port();
+        let bind_line = bind_address
+            .map(|bind| format!("bind_address = \"{bind}\""))
+            .unwrap_or_default();
         let config = format!(
             r#"[server]
 dns_port = {dns_port}
 web_port = {web_port}
-bind_address = "127.0.0.1"
+{bind_line}
 {server_extra}
 
 [dns]
@@ -114,7 +140,7 @@ level = "info"
 path = "{db}"
 
 [auth]
-enabled = false
+{auth}
 "#,
             db = dir.path().join("ferrous.db").display(),
         );
