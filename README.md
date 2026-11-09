@@ -52,7 +52,6 @@ docker run -d \
   -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
   -e FERROUS_DNS_PORT=53 \
   -e FERROUS_WEB_PORT=8080 \
-  -e FERROUS_BIND_ADDRESS=0.0.0.0 \
   -e FERROUS_LOG_LEVEL=info \
   -e TZ=America/Sao_Paulo \
   --dns 10.0.0.1 \
@@ -80,7 +79,6 @@ services:
       - FERROUS_CONFIG=/data/config/ferrous-dns.toml
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
-      - FERROUS_BIND_ADDRESS=0.0.0.0
       - FERROUS_LOG_LEVEL=info
       - TZ=America/Sao_Paulo
     dns:
@@ -118,7 +116,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 | `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
-| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
+| `FERROUS_BIND_ADDRESS`| —                                     | Bind address; when unset, the config file decides (`auto`: IPv4 and IPv6) |
 | `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db` in the Docker image) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 

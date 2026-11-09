@@ -33,7 +33,7 @@ No host config file is needed to start: on first run the entrypoint copies the b
 | `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
 | `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
 | `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
-| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address (`server.bind_address`; `web_bind_address` is left as it is) |
+| `FERROUS_BIND_ADDRESS`| —                                     | Bind address (`server.bind_address`; `web_bind_address` is left as it is). When unset, the config file decides (`auto` in the bundled one). `0.0.0.0` is ignored: see [Docker bind address](#docker-bind-address) |
 | `FERROUS_DATABASE`    | —                                     | SQLite database path. When unset, `[database] path` applies (`/data/ferrous-dns.db`) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
@@ -271,7 +271,7 @@ These flags override the matching values from the config file:
 | `--config <FILE>`     | `-c`  | Path to the TOML config file                  |
 | `--dns-port <PORT>`   | `-d`  | DNS server port (config: `server.dns_port`)   |
 | `--web-port <PORT>`   | `-w`  | Web dashboard port (config: `server.web_port`) |
-| `--bind <ADDR>`       | `-b`  | Bind address (config: `server.bind_address`; `server.web_bind_address` is left as it is) |
+| `--bind <ADDR>`       | `-b`  | Bind address, `auto` or an IP literal (config: `server.bind_address`; `server.web_bind_address` is left as it is) |
 | `--database <PATH>`   |       | SQLite database path (config: `database.path`) |
 | `--log-level <LEVEL>` |       | Log level: `debug`, `info`, `warn`, `error` (config: `logging.level`) |
 
@@ -321,6 +321,14 @@ The image's health check now probes the running server through `ferrous-dns --he
 ### Docker database path
 
 The image no longer sets `FERROUS_DATABASE`. Its old default, `/data/db/ferrous.db`, was documented but never applied: the database is `/data/ferrous-dns.db`, from `[database] path` in the bundled config, and it stays there, so nothing moves. A compose file or `docker run` that still sets `FERROUS_DATABASE=/data/db/ferrous.db` keeps working; the entrypoint ignores that value as before and now says so at startup. Remove the line to silence the notice. Any other value still points the server at that path, where it opens an empty database unless you move the file there first: see [Database File Location](../configuration/database.md#database-file-location).
+
+### Listening on IPv6 by default {#default-bind-address}
+
+`bind_address` accepts `"auto"`, and it is the new default: every listener serves IPv4 and IPv6 clients on one dual-stack socket. A config file that names an address keeps it, `"0.0.0.0"` included, so an existing install, Docker volume or packaged config listens exactly where it did before. Change the line to `bind_address = "auto"` to serve IPv6 clients too. Only a server started without any config file moves to IPv4 + IPv6 on its own. See [Dual-stack](../configuration/server.md#dual-stack).
+
+### Docker bind address {#docker-bind-address}
+
+The image and the bundled `docker-compose.yml` no longer set `FERROUS_BIND_ADDRESS`. Their old default, `0.0.0.0`, was never applied: `bind_address` in the config file decided, and still does. A compose file or `docker run` that still sets `FERROUS_BIND_ADDRESS=0.0.0.0` keeps working the same way, and the entrypoint now says so at startup; remove the line to silence the notice. To keep a container on IPv4 only, set `bind_address = "0.0.0.0"` in its config file. Any other value is still passed to the server as `--bind`.
 
 ### One-time query log rebuild
 

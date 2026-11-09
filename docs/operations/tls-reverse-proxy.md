@@ -96,7 +96,7 @@ With a proxy in front, clients have no reason to reach port 8080 directly. When 
 
 ```toml
 [server]
-bind_address     = "0.0.0.0"
+bind_address     = "auto"
 web_bind_address = "127.0.0.1"
 ```
 

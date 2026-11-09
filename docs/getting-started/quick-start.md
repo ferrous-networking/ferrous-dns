@@ -121,7 +121,7 @@ For a minimal setup, create `ferrous-dns.toml`:
 [server]
 dns_port = 53
 web_port = 8080
-bind_address = "0.0.0.0"
+bind_address = "auto"
 
 [dns]
 dnssec_mode = "Permissive"
