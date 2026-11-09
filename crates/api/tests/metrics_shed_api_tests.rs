@@ -58,6 +58,7 @@ fn logged_query() -> QueryLog {
         block_source: None,
         coalesced: None,
         cookie: None,
+        doh_client_id: None,
     }
 }
 

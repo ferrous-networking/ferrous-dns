@@ -147,13 +147,29 @@
 
             async loadClients() {
                 try {
-                    const res = await fetch(`${API_BASE}/clients?limit=1000`);
-                    if (res.ok) {
-                        const clients = (await res.json()).data;
-                        clients.sort((a, b) =>
-                            this.clientLabel(a).localeCompare(this.clientLabel(b)));
-                        this.clients = clients;
+                    const [clientsRes, dohRes] = await Promise.all([
+                        fetch(`${API_BASE}/clients?limit=1000`),
+                        fetch(`${API_BASE}/doh-ids`)
+                    ]);
+                    const list = [];
+                    if (clientsRes.ok) {
+                        const clients = (await clientsRes.json()).data || [];
+                        for (const c of clients) {
+                            list.push(c);
+                        }
                     }
+                    if (dohRes.ok) {
+                        const dohIds = await dohRes.json();
+                        for (const d of dohIds) {
+                            list.push({
+                                ip_address: d.client_id,
+                                hostname: d.name
+                            });
+                        }
+                    }
+                    list.sort((a, b) =>
+                        this.clientLabel(a).localeCompare(this.clientLabel(b)));
+                    this.clients = list;
                 } catch (e) {
                     console.error('Failed to load clients:', e);
                 }

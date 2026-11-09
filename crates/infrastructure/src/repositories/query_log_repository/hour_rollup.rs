@@ -132,7 +132,7 @@ pub(super) async fn roll_up_hours(
             break;
         };
         let domains = aggregate(read_pool, "domain", hour).await?;
-        let clients = aggregate(read_pool, "client_ip", hour).await?;
+        let clients = aggregate(read_pool, "COALESCE(doh_client_id, client_ip)", hour).await?;
         if store(write_pool, coverage, hour, &domains, &clients).await? {
             stored += 1;
         }

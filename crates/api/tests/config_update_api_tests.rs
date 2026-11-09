@@ -1450,3 +1450,46 @@ async fn test_a_dropped_reload_still_swaps_in_the_pools_it_applied() {
         "{live:?}"
     );
 }
+
+#[tokio::test]
+async fn test_update_config_hot_applies_doh_allow_unregistered_ids_without_restart() {
+    let pool = create_test_db().await;
+    let (TestApp { router, config, .. }, path) = test_app(pool).await;
+    assert!(
+        !config
+            .read()
+            .await
+            .server
+            .encrypted_dns
+            .doh_allow_unregistered_ids
+    );
+
+    let (status, json) = post_config(
+        router,
+        serde_json::json!({
+            "server": {
+                "encrypted_dns": {
+                    "doh_allow_unregistered_ids": true
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    assert_eq!(json["restart_required"], false);
+    assert!(
+        config
+            .read()
+            .await
+            .server
+            .encrypted_dns
+            .doh_allow_unregistered_ids
+    );
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        saved.contains("doh_allow_unregistered_ids = true"),
+        "{saved}"
+    );
+}

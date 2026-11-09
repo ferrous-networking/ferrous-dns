@@ -1,23 +1,26 @@
-use crate::ports::{DohIdRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, DohIdRepository, GroupRepository};
 use crate::use_cases::groups::require_group;
 use ferrous_dns_domain::value_objects::validators::validate_comment;
 use ferrous_dns_domain::{DohId, DomainError};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 pub struct UpdateDohIdUseCase {
     doh_id_repo: Arc<dyn DohIdRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl UpdateDohIdUseCase {
     pub fn new(
         doh_id_repo: Arc<dyn DohIdRepository>,
         group_repo: Arc<dyn GroupRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     ) -> Self {
         Self {
             doh_id_repo,
             group_repo,
+            block_filter_engine,
         }
     }
 
@@ -57,6 +60,10 @@ impl UpdateDohIdUseCase {
             group_id = group_id,
             "DoH ID updated successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after DoH ID update");
+        }
 
         Ok(doh_id)
     }

@@ -61,9 +61,10 @@ tls_key_path  = "/data/key.pem"
 # dot_enabled   = true                    # Enable DoT listener on dot_port
 # dot_port      = 853                     # TCP port for DNS-over-TLS (standard: 853)
 # dot_bind_address = "[::]"               # Address for the DoT listener (omit to inherit [server].bind_address)
-# doh_enabled   = true                    # Enable /dns-query endpoint on web_port or doh_port
+# doh_enabled   = true                    # Enable /dns-query and /dns-query/<ClientID> endpoints on web_port or doh_port
 # doh_port      = 8053                    # Dedicated plain-HTTP port for DoH behind a proxy (omit to co-host on web_port)
 # doh_bind_address = "[::]"               # Address for the dedicated DoH listener (ignored when doh_port is omitted)
+# doh_allow_unregistered_ids = false      # Allow unregistered /dns-query/<ClientID> paths (false = 400 Bad Request, true = fall back to IP group)
 # doq_enabled   = true                    # Enable DoQ listener on doq_port
 # doq_port      = 853                     # UDP port for DNS-over-QUIC (standard: 853; no collision with TCP dot_port)
 # doq_bind_address = "[::]"               # Address for the DoQ listener (omit to inherit [server].bind_address)

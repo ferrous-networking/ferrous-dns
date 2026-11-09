@@ -20,7 +20,7 @@ use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 use sqlx::{Row, SqlitePool};
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -30,6 +30,9 @@ use tracing::{error, info, warn};
 
 /// Cached entry: (group_id, expiry_secs, epoch_at_insert).
 type GroupL0Cache = LruCache<IpAddr, (i64, u64, u64), FxBuildHasher>;
+
+/// Registered DoH Client ID → group id.
+type DohIdGroups = HashMap<Arc<str>, i64, FxBuildHasher>;
 
 const GROUP_L0_CAPACITY: NonZeroUsize = match NonZeroUsize::new(256) {
     Some(capacity) => capacity,
@@ -62,6 +65,9 @@ pub struct BlockFilterEngine {
     this: Weak<Self>,
     decision_cache: BlockDecisionCache,
     client_groups: Arc<DashMap<IpAddr, i64, FxBuildHasher>>,
+    /// Registered DoH Client IDs mapped to their group. Rebuilt whole and swapped
+    /// in, so a reload never shows a registered ID as unknown.
+    doh_id_groups: ArcSwap<DohIdGroups>,
     subnet_matcher: ArcSwap<Option<SubnetMatcher>>,
     /// Shared in-memory store of active schedule overrides per group.
     /// Written by `ScheduleEvaluatorJob` every 60 s; read in `check()` on every query.
@@ -92,6 +98,7 @@ impl BlockFilterEngine {
             this: this.clone(),
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
+            doh_id_groups: ArcSwap::from_pointee(DohIdGroups::default()),
             subnet_matcher: ArcSwap::from_pointee(None),
             schedule_state,
             blocking_enabled: AtomicBool::new(blocking_enabled),
@@ -223,7 +230,26 @@ impl BlockFilterEngine {
         };
         self.subnet_matcher.store(Arc::new(matcher));
 
-        info!(clients = client_rows.len(), "Client groups loaded");
+        // Like IP clients, a DoH ID keeps its group whatever the group's `enabled` flag says.
+        let doh_rows = sqlx::query("SELECT client_id, group_id FROM doh_ids")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+        let mut doh_id_groups =
+            DohIdGroups::with_capacity_and_hasher(doh_rows.len(), FxBuildHasher);
+        for row in &doh_rows {
+            let client_id: String = row.get("client_id");
+            let group_id: i64 = row.get("group_id");
+            doh_id_groups.insert(Arc::from(client_id.as_str()), group_id);
+        }
+        self.doh_id_groups.store(Arc::new(doh_id_groups));
+
+        info!(
+            clients = client_rows.len(),
+            doh_ids = doh_rows.len(),
+            "Client groups loaded"
+        );
 
         Ok(())
     }
@@ -277,6 +303,19 @@ impl BlockFilterEnginePort for BlockFilterEngine {
                 .put(ip, (gid, coarse_now_secs() + 60, current_epoch));
         });
         gid
+    }
+
+    fn resolve_group_for_request(&self, ip: IpAddr, doh_client_id: Option<&str>) -> i64 {
+        if let Some(cid) = doh_client_id {
+            if let Some(&gid) = self.doh_id_groups.load().get(cid) {
+                return gid;
+            }
+        }
+        self.resolve_group(ip)
+    }
+
+    fn is_doh_id_registered(&self, client_id: &str) -> bool {
+        self.doh_id_groups.load().contains_key(client_id)
     }
 
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {

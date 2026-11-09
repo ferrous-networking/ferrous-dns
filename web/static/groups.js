@@ -125,7 +125,7 @@
                     } else {
                         const errorText = await res.text();
                         if (res.status === 409) {
-                            // Assigned clients, or a pool that routes for the group: the server says which.
+                            // Assigned clients, DoH IDs, or a pool that routes for the group: the server says which.
                             alert(JSON.parse(errorText).error);
                         } else {
                             alert('Failed to delete group: ' + errorText);

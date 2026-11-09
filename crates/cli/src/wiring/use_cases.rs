@@ -202,12 +202,17 @@ impl UseCases {
             create_doh_id: Arc::new(CreateDohIdUseCase::new(
                 repos.doh_id.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
             update_doh_id: Arc::new(UpdateDohIdUseCase::new(
                 repos.doh_id.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
-            delete_doh_id: Arc::new(DeleteDohIdUseCase::new(repos.doh_id.clone())),
+            delete_doh_id: Arc::new(DeleteDohIdUseCase::new(
+                repos.doh_id.clone(),
+                repos.block_filter_engine.clone(),
+            )),
             create_manual_client: Arc::new(CreateManualClientUseCase::new(
                 repos.client.clone(),
                 repos.group.clone(),

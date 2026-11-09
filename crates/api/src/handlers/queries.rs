@@ -104,6 +104,7 @@ pub async fn get_queries(
             coalesced: q.coalesced.map(|role| role.as_str()),
             cookie: q.cookie.map(|status| status.as_str()),
             group_id: q.group_id,
+            doh_client_id: q.doh_client_id,
         })
         .collect();
 

@@ -54,6 +54,9 @@ pub struct DnsRequest {
     /// Transport the query arrived on. `None` for requests built outside a
     /// client listener (internal resolution, tests).
     pub protocol: Option<ClientProtocol>,
+    /// Client ID extracted from `/dns-query/<client_id>` for DoH requests.
+    /// `None` for `/dns-query` without a path ID and for non-DoH transports.
+    pub doh_client_id: Option<Arc<str>>,
 }
 
 impl DnsRequest {
@@ -65,6 +68,7 @@ impl DnsRequest {
             edns_cookie: None,
             checking_disabled: false,
             protocol: None,
+            doh_client_id: None,
         }
     }
 
@@ -80,6 +84,11 @@ impl DnsRequest {
 
     pub fn with_protocol(mut self, protocol: ClientProtocol) -> Self {
         self.protocol = Some(protocol);
+        self
+    }
+
+    pub fn with_doh_client_id(mut self, client_id: impl Into<Arc<str>>) -> Self {
+        self.doh_client_id = Some(client_id.into());
         self
     }
 }

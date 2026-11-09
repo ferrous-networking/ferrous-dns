@@ -80,11 +80,11 @@ Everything served on `web_port` moves with it: the [Pi-hole compatible API](../f
 
 ### DoH client identity {#doh-client-identity}
 
-A DoH query is attributed to the address of the TCP connection it arrived on, and that address picks the client's group and per-client rules. When the connection comes from a reverse proxy listed in `trusted_proxies`, the proxy may name the real client instead:
+A DoH query to `/dns-query` is attributed to the address of the TCP connection it arrived on, and that address picks the client's group and per-client rules (unless the client queries `/dns-query/<ClientID>`, described below). When the connection comes from a reverse proxy listed in `trusted_proxies`, the proxy may name the real client instead:
 
 - `X-Forwarded-For` is read right to left — every proxy appends the address it received the request from — and the first hop that is not itself a trusted proxy is the client. Hops further left were written by the client and are ignored.
 - Without `X-Forwarded-For`, the trusted proxy's `X-Real-IP` is used.
-- A request from any other peer is attributed to that peer, whatever headers it carries, so a client cannot choose another device's (for example an unfiltered group's) identity.
+- On `/dns-query` (without a `<ClientID>`), a request from any other peer is attributed to that peer, whatever headers it carries, so a client cannot spoof another device's IP address through forwarding headers.
 
 The default trusts only loopback, which fits a reverse proxy on the same host. List the proxy's address when it runs elsewhere — for a Docker bridge network that is the proxy container's address or the bridge subnet:
 
@@ -94,6 +94,8 @@ trusted_proxies = ["127.0.0.0/8", "::1/128", "172.18.0.0/16"]
 ```
 
 Setting the list replaces the default, so keep the loopback entries if the proxy can also connect locally. Trust only addresses you control: any peer inside the list can claim to be any client.
+
+To identify roaming or NATed DoH devices independently of their IP address, clients can also query `/dns-query/<ClientID>` using an identifier registered on the **DoH IDs** page (`/doh-ids.html`). Group resolution evaluates the DoH Client ID first, then falls back to `client_ip` → subnet → `Protected`. By default (`doh_allow_unregistered_ids = false`), unknown Client IDs are rejected with `400 Bad Request`; setting `doh_allow_unregistered_ids = true` in `[server.encrypted_dns]` (or toggling **Allow Unregistered Client IDs** on the **DoH IDs** page) accepts valid unregistered IDs for Query Log attribution while applying the client IP's group rules. Because a registered `/dns-query/<ClientID>` URL acts as a bearer credential that selects its group's policy regardless of source IP, anyone who knows the URL gets that group's rules — prefer the generated random UUID v4 for groups with lighter filtering. See [DoH IDs](../features/client-management.md#doh-ids).
 
 ---
 
@@ -236,9 +238,10 @@ tls_key_path  = "/data/key.pem"
 | `dot_enabled` | `false` | Enable DoT listener |
 | `dot_port` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
 | `dot_bind_address` | — | Address for the DoT listener; inherits `[server].bind_address` when omitted |
-| `doh_enabled` | `false` | Enable DoH endpoint (`/dns-query`) |
+| `doh_enabled` | `false` | Enable DoH endpoints (`/dns-query` and `/dns-query/<ClientID>`) |
 | `doh_port` | — | Dedicated plain-HTTP port for DoH (behind a reverse proxy); omit to co-host on `web_port` |
 | `doh_bind_address` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted, since `/dns-query` then binds wherever the dashboard does (`web_bind_address`, else `bind_address`) |
+| `doh_allow_unregistered_ids` | `false` | When `false`, requests to `/dns-query/<ClientID>` with an unregistered ID return `400 Bad Request`; when `true`, valid unregistered IDs are accepted for Query Log attribution and fall back to the client IP's group rules |
 | `doq_enabled` | `false` | Enable DoQ listener |
 | `doq_port` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `doq_bind_address` | — | Address for the DoQ listener; inherits `[server].bind_address` when omitted |

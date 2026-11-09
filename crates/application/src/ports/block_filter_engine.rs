@@ -21,6 +21,17 @@ pub enum FilterDecision {
 #[async_trait]
 pub trait BlockFilterEnginePort: Send + Sync {
     fn resolve_group(&self, ip: IpAddr) -> i64;
+    /// Resolves the group for a request, giving a registered DoH Client ID
+    /// precedence over `ip` and subnet rules. The default ignores the ID, so an
+    /// implementor that serves DoH must override it.
+    fn resolve_group_for_request(&self, ip: IpAddr, _doh_client_id: Option<&str>) -> i64 {
+        self.resolve_group(ip)
+    }
+    /// Returns `true` when `client_id` is registered in the `doh_ids` table.
+    /// The default reports every ID as unregistered.
+    fn is_doh_id_registered(&self, _client_id: &str) -> bool {
+        false
+    }
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision;
     /// Read-only, exhaustive attribution of how the static filter index evaluates
     /// `domain` for `group_id` (all matching allow/block rules, named). Does not

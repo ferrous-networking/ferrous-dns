@@ -105,4 +105,8 @@ pub struct QueryResponse {
     /// to it. `null` for rows logged before this was recorded, or whose group
     /// has since been deleted.
     pub group_id: Option<i64>,
+    /// Client ID from `/dns-query/<client_id>` for DoH requests; `null` for
+    /// `/dns-query` without a path ID or non-DoH transports.
+    #[schema(value_type = Option<String>)]
+    pub doh_client_id: Option<Arc<str>>,
 }

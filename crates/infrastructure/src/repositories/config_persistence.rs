@@ -24,7 +24,11 @@ impl ConfigFilePersistence for TomlConfigFilePersistence {
 
 /// Updates an existing value preserving its inline comment (suffix decoration),
 /// or inserts a new key if absent.
-fn set_val(table: &mut toml_edit::Table, key: &str, new_val: impl Into<toml_edit::Value>) {
+fn set_val(
+    table: &mut (impl toml_edit::TableLike + ?Sized),
+    key: &str,
+    new_val: impl Into<toml_edit::Value>,
+) {
     let new_val = new_val.into();
     match table.get_mut(key) {
         Some(item @ toml_edit::Item::Value(_)) => {
@@ -69,18 +73,18 @@ fn ensure_table<'a>(
         .ok_or_else(|| DomainError::ConfigError(format!("Failed to ensure table '{key}'")))
 }
 
-/// Gets a mutable reference to a sub-table inside a parent table,
-/// creating it if absent.
+/// Gets a mutable reference to a sub-table (standard or inline) inside a parent
+/// table, creating a standard sub-table if absent.
 fn ensure_subtable<'a>(
     parent: &'a mut toml_edit::Table,
     key: &str,
-) -> Result<&'a mut toml_edit::Table, DomainError> {
+) -> Result<&'a mut dyn toml_edit::TableLike, DomainError> {
     if parent.get(key).is_none() {
         parent.insert(key, toml_edit::Item::Table(toml_edit::Table::new()));
     }
     parent
         .get_mut(key)
-        .and_then(|item| item.as_table_mut())
+        .and_then(|item| item.as_table_like_mut())
         .ok_or_else(|| DomainError::ConfigError(format!("Failed to ensure subtable '{key}'")))
 }
 
@@ -297,6 +301,19 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             "tls_key_path",
             config.server.web_tls.tls_key_path.as_str(),
         );
+        if server
+            .get("encrypted_dns")
+            .and_then(|item| item.as_table_like())
+            .is_some()
+            || config.server.encrypted_dns.doh_allow_unregistered_ids
+        {
+            let ed = ensure_subtable(server, "encrypted_dns")?;
+            set_val(
+                ed,
+                "doh_allow_unregistered_ids",
+                config.server.encrypted_dns.doh_allow_unregistered_ids,
+            );
+        }
     }
 
     {
@@ -949,5 +966,30 @@ cache_enabled = true
 
         let output = doc.to_string();
         assert!(output.contains("[dns.nested]") && output.contains("value = 42"));
+    }
+
+    #[test]
+    fn test_write_config_updates_inline_encrypted_dns_and_web_tls_subtables() {
+        let input = r#"
+[server]
+dns_port = 53
+web_port = 8080
+bind_address = "0.0.0.0"
+pihole_compat = false
+encrypted_dns = { doh_enabled = true }
+web_tls = { enabled = false, tls_cert_path = "/data/cert.pem", tls_key_path = "/data/key.pem" }
+"#;
+        let mut doc = input.parse::<toml_edit::DocumentMut>().unwrap();
+        let mut config = Config::default();
+        config.server.pihole_compat = true;
+        config.server.encrypted_dns.doh_enabled = true;
+        config.server.encrypted_dns.doh_allow_unregistered_ids = true;
+
+        write_config(&mut doc, &config).unwrap();
+
+        let reloaded = Config::from_toml_str(&doc.to_string()).unwrap();
+        assert!(reloaded.server.pihole_compat);
+        assert!(reloaded.server.encrypted_dns.doh_enabled);
+        assert!(reloaded.server.encrypted_dns.doh_allow_unregistered_ids);
     }
 }

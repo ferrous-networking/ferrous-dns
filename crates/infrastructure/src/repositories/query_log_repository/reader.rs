@@ -50,16 +50,18 @@ fn reply_kind_sql(block_mode: BlockResponseMode) -> String {
     )
 }
 
-/// Every column `row_to_query_log` reads, joined to the client hostname, followed by `$tail`.
+/// Every column `row_to_query_log` reads, joined to the client hostname / DoH ID name, followed by `$tail`.
 macro_rules! select_query_log {
     ($tail:literal) => {
         concat!(
             "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                     q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
                     q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source, q.coalesced, q.cookie,
-                    datetime(q.created_at) AS created_at, c.hostname
+                    q.doh_client_id, datetime(q.created_at) AS created_at,
+                    COALESCE(d.name, q.doh_client_id, c.hostname) AS hostname
              FROM query_log q
-             LEFT JOIN clients c ON q.client_ip = c.ip_address",
+             LEFT JOIN clients c ON q.client_ip = c.ip_address
+             LEFT JOIN doh_ids d ON q.doh_client_id = d.client_id",
             $tail
         )
     };
@@ -203,7 +205,7 @@ pub(super) async fn get_recent_paged(
         ""
     };
     let client_clause = if client_pattern.is_some() {
-        " AND (q.client_ip LIKE ? ESCAPE '\\' OR c.hostname LIKE ? ESCAPE '\\')"
+        " AND (q.client_ip LIKE ? ESCAPE '\\' OR c.hostname LIKE ? ESCAPE '\\' OR q.doh_client_id LIKE ? ESCAPE '\\' OR d.name LIKE ? ESCAPE '\\')"
     } else {
         ""
     };
@@ -295,7 +297,7 @@ pub(super) async fn get_recent_paged(
                 q = q.bind(pat);
             }
             if let Some(ref pat) = client_pattern {
-                q = q.bind(pat).bind(pat);
+                q = q.bind(pat).bind(pat).bind(pat).bind(pat);
             }
             if let Some(ref rt) = filter.record_type {
                 q = q.bind(rt.as_str());
@@ -393,6 +395,7 @@ pub(super) async fn get_recent_paged(
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
+                 LEFT JOIN doh_ids d ON q.doh_client_id = d.client_id
                  WHERE q.query_source = 'client' AND q.created_at >= ?{snapshot_clause}{filters}"
             );
             let mut q = sqlx::query(&count_sql).bind(&cutoff);
@@ -797,13 +800,35 @@ pub(super) async fn count_distinct_domains(
     Ok(rows.first().map_or(0, |r| r.get::<i64, _>("count")) as u64)
 }
 
-/// The top clients by count, with the hostname looked up once per listed client.
+/// The top clients by count, with the hostname / DoH ID name looked up once per listed client.
 macro_rules! top_clients_sql {
     ($verdict:literal) => {
         concat!(
-            "SELECT t.client_ip, c.hostname, t.count FROM (",
-            hour_split_counts_sql!("client_ip", "query_log_hour_client", $verdict),
-            ") t
+            "SELECT t.client_ip, COALESCE(d.name, c.hostname) AS hostname, t.count FROM (
+                 SELECT client_ip, SUM(n) AS count FROM (
+                     SELECT COALESCE(doh_client_id, client_ip) AS client_ip, COUNT(*) AS n FROM query_log
+                     WHERE query_source = 'client' AND created_at >= ? AND created_at < ?",
+            $verdict,
+            "
+                     GROUP BY COALESCE(doh_client_id, client_ip)
+                     UNION ALL
+                     SELECT client_ip, SUM(count) AS n FROM query_log_hour_client
+                     WHERE bucket >= ? AND bucket < ?",
+            $verdict,
+            "
+                     GROUP BY client_ip
+                     UNION ALL
+                     SELECT COALESCE(doh_client_id, client_ip) AS client_ip, COUNT(*) AS n FROM query_log
+                     WHERE query_source = 'client' AND created_at >= ?",
+            $verdict,
+            "
+                     GROUP BY COALESCE(doh_client_id, client_ip)
+                 )
+                 GROUP BY client_ip
+                 ORDER BY count DESC
+                 LIMIT ?
+             ) t
+             LEFT JOIN doh_ids d ON t.client_ip = d.client_id
              LEFT JOIN clients c ON t.client_ip = c.ip_address
              ORDER BY t.count DESC"
         )
@@ -851,8 +876,8 @@ pub(super) async fn get_client_activity(
         .map_err(|e| DomainError::InvalidInput(format!("invalid client list: {e}")))?;
     let rows = sqlx::query(
         "SELECT (CAST(strftime('%s', created_at) AS INTEGER) / ?) * ? AS bucket,
-                CASE WHEN client_ip IN (SELECT value FROM json_each(?))
-                     THEN client_ip END AS client,
+                CASE WHEN COALESCE(doh_client_id, client_ip) IN (SELECT value FROM json_each(?))
+                     THEN COALESCE(doh_client_id, client_ip) END AS client,
                 COUNT(*) AS count
          FROM query_log
          WHERE created_at >= ?

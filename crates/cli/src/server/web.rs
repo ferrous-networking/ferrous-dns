@@ -17,7 +17,7 @@ use utoipa::openapi::server::Server;
 use utoipa::openapi::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
-use super::doh::{dns_query_handler, DohContext};
+use super::doh::{dns_query_handler, dns_query_with_id_handler, DohContext};
 use super::web_tls;
 
 /// Where the Ferrous API answers, whether or not `pihole_compat` is on.
@@ -49,6 +49,10 @@ pub async fn start_doh_server(bind_addr: SocketAddr, doh: Arc<DohContext>) -> an
 pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/dns-query", get(dns_query_handler).post(dns_query_handler))
+        .route(
+            "/dns-query/{client_id}",
+            get(dns_query_with_id_handler).post(dns_query_with_id_handler),
+        )
         .layer(axum::Extension(doh));
 
     // The handler attributes each query to the socket peer.
@@ -299,6 +303,10 @@ fn create_app(
     if let Some(doh) = doh {
         app = app
             .route("/dns-query", get(dns_query_handler).post(dns_query_handler))
+            .route(
+                "/dns-query/{client_id}",
+                get(dns_query_with_id_handler).post(dns_query_with_id_handler),
+            )
             .layer(axum::Extension(doh));
     }
 

@@ -265,4 +265,15 @@ impl GroupRepository for SqliteGroupRepository {
 
         Ok(count.0 as u64)
     }
+
+    #[instrument(skip(self))]
+    async fn count_doh_ids_in_group(&self, group_id: i64) -> Result<u64, DomainError> {
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM doh_ids WHERE group_id = ?")
+            .bind(group_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_err("Failed to count DoH IDs in group"))?;
+
+        Ok(count.0 as u64)
+    }
 }

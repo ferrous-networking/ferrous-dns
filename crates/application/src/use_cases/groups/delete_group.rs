@@ -41,6 +41,11 @@ impl DeleteGroupUseCase {
             return Err(DomainError::GroupHasAssignedClients(client_count));
         }
 
+        let doh_id_count = self.group_repo.count_doh_ids_in_group(id).await?;
+        if doh_id_count > 0 {
+            return Err(DomainError::GroupHasAssignedDohIds(doh_id_count));
+        }
+
         // A pool still naming the group could no longer be saved: every pool
         // save rejects a group that does not exist.
         let routing_pool = self
@@ -67,6 +72,9 @@ impl DeleteGroupUseCase {
         // The delete cascades to managed domains and client subnets the engine still holds.
         if let Err(e) = self.block_filter_engine.reload().await {
             error!(error = %e, "Failed to reload block filter after group deletion");
+        }
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after group deletion");
         }
         if !group.malware_detection_enabled {
             if let Err(e) = self.malware_exemptions.reload().await {

@@ -71,6 +71,9 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
     let cookie = row
         .get::<Option<String>, _>("cookie")
         .and_then(|s| s.parse().ok());
+    let doh_client_id = row
+        .get::<Option<String>, _>("doh_client_id")
+        .map(|s| Arc::from(s.as_str()));
 
     Some(QueryLog {
         id: Some(row.get("id")),
@@ -104,5 +107,6 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         block_source,
         coalesced,
         cookie,
+        doh_client_id,
     })
 }

@@ -102,6 +102,22 @@
         <p style="font-size:14px;color:var(--text-secondary)">Register per-device DNS-over-HTTPS identifiers and assign them to client groups</p>
     </div>
 
+    <div class="card policy-card">
+        <div class="policy-info">
+            <h2 class="policy-title">Allow Unregistered Client IDs</h2>
+            <p class="policy-desc">
+                When disabled (strict mode), requests to <code>/dns-query/&lt;ClientID&gt;</code> with an unregistered ID are rejected with <code>400 Bad Request</code>.
+                When enabled, valid unregistered IDs are accepted for Query Log attribution and inherit the client IP's group rules.
+            </p>
+        </div>
+        <button type="button" class="toggle-switch" :class="{ active: allowUnregisteredIds }"
+                :disabled="!configWritable || policySaving"
+                :title="configWritable ? 'Toggle unregistered DoH Client ID policy' : 'Configuration file is read-only'"
+                @click="toggleAllowUnregisteredIds()">
+            <div class="toggle-slider"></div>
+        </button>
+    </div>
+
     <div class="form-container">
         <div class="card" style="padding:24px">
             <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
@@ -119,6 +135,8 @@
                     <div class="doh-id-input-row">
                         <input type="text" class="input" x-model="form.client_id"
                                :placeholder="editingEntry ? 'Keep current ID or enter a new one' : 'Leave blank for a random UUID, or type e.g. alice-iphone'"
+                               pattern="^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$"
+                               title="1–63 lowercase letters, digits, or hyphens; cannot start or end with a hyphen"
                                maxlength="63" spellcheck="false" autocomplete="off">
                         <button type="button" class="btn btn-secondary" @click="generateUuid()">
                             <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>

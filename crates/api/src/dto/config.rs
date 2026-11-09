@@ -42,6 +42,12 @@ pub struct ServerConfigResponse {
     pub bind_address: String,
     pub pihole_compat: bool,
     pub web_tls: WebTlsConfigResponse,
+    pub encrypted_dns: EncryptedDnsConfigResponse,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct EncryptedDnsConfigResponse {
+    pub doh_allow_unregistered_ids: bool,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -349,6 +355,12 @@ pub struct AuthConfigUpdate {
 pub struct ServerConfigUpdate {
     pub pihole_compat: Option<bool>,
     pub web_tls: Option<WebTlsConfigUpdate>,
+    pub encrypted_dns: Option<EncryptedDnsConfigUpdate>,
+}
+
+#[derive(Deserialize, Debug, Clone, ToSchema)]
+pub struct EncryptedDnsConfigUpdate {
+    pub doh_allow_unregistered_ids: Option<bool>,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]

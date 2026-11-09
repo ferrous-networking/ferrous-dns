@@ -187,6 +187,31 @@ async fn test_delete_group_reloads_block_filter() {
     use_case.execute(group.id.unwrap()).await.unwrap();
 
     assert_eq!(engine.reload_count().await, 1);
+    assert_eq!(engine.load_client_groups_count().await, 1);
+}
+
+#[tokio::test]
+async fn test_delete_group_with_assigned_doh_ids_is_refused() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let group_id = groups
+        .create("Kids".to_string(), None, true, true)
+        .await
+        .unwrap()
+        .id
+        .unwrap();
+    groups.set_doh_id_count(group_id, 2).await;
+    let use_case =
+        DeleteGroupUseCase::new(groups.clone(), engine.clone(), exemptions(), no_pools());
+
+    let result = use_case.execute(group_id).await;
+
+    assert!(
+        matches!(result, Err(DomainError::GroupHasAssignedDohIds(2))),
+        "got {result:?}"
+    );
+    assert!(groups.get_by_id(group_id).await.unwrap().is_some());
+    assert_eq!(engine.reload_count().await, 0);
 }
 
 #[tokio::test]

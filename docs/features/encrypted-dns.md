@@ -203,11 +203,17 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
 
 ### DNS-over-HTTPS (DoH)
 
+Clients can use `/dns-query` for IP-based identification, or `/dns-query/<ClientID>` for per-device identification across changing networks (see [DoH IDs](client-management.md#doh-ids)).
+
 === "Firefox"
 
     Settings > Privacy & Security > DNS over HTTPS > Custom:
     ```text
     https://192.168.1.100/dns-query
+    ```
+    Or with a per-device Client ID:
+    ```text
+    https://192.168.1.100/dns-query/alice-laptop
     ```
 
 === "Chrome / Edge"

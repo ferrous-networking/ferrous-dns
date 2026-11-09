@@ -390,6 +390,7 @@ impl HandleDnsQueryUseCase {
             block_source: None,
             coalesced: None,
             cookie: self.cookie_status(request),
+            doh_client_id: request.doh_client_id.clone(),
         }
     }
 
@@ -609,6 +610,7 @@ impl HandleDnsQueryUseCase {
             block_source: None,
             coalesced: None,
             cookie: None,
+            doh_client_id: None,
         }
     }
 
@@ -842,9 +844,13 @@ impl HandleDnsQueryUseCase {
         let tsc_start = tsc_timer::now();
         let elapsed_us = || tsc_timer::elapsed_us_since(tsc_start);
 
-        self.maybe_track_client(request.client_ip);
+        if request.doh_client_id.is_none() {
+            self.maybe_track_client(request.client_ip);
+        }
 
-        let group_id = self.block_filter.resolve_group(request.client_ip);
+        let group_id = self
+            .block_filter
+            .resolve_group_for_request(request.client_ip, request.doh_client_id.as_deref());
 
         self.apply_rate_limit(
             self.rate_limiter.check(request.client_ip, request.protocol),

@@ -1,10 +1,10 @@
-use crate::ports::{DohIdRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, DohIdRepository, GroupRepository};
 use crate::use_cases::groups::require_group;
 use ferrous_dns_domain::value_objects::validators::validate_comment;
 use ferrous_dns_domain::{DohId, DomainError};
 use ring::rand::SecureRandom;
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 fn generate_uuid_v4() -> Result<String, DomainError> {
     let mut bytes = [0u8; 16];
@@ -29,16 +29,19 @@ fn generate_uuid_v4() -> Result<String, DomainError> {
 pub struct CreateDohIdUseCase {
     doh_id_repo: Arc<dyn DohIdRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl CreateDohIdUseCase {
     pub fn new(
         doh_id_repo: Arc<dyn DohIdRepository>,
         group_repo: Arc<dyn GroupRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     ) -> Self {
         Self {
             doh_id_repo,
             group_repo,
+            block_filter_engine,
         }
     }
 
@@ -76,6 +79,10 @@ impl CreateDohIdUseCase {
             group_id = group_id,
             "DoH ID created successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after DoH ID creation");
+        }
 
         Ok(doh_id)
     }

@@ -267,6 +267,8 @@ async fn async_main() -> anyhow::Result<()> {
                 responses,
             )),
             trusted_proxies: config.server.trusted_proxies.clone(),
+            block_filter: repos.block_filter_engine.clone(),
+            config: app_state.config.clone(),
         })
     });
     let web_doh = match (doh, config.server.doh_listen_address()) {
