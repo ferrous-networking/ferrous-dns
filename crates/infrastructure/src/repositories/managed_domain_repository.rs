@@ -1,4 +1,6 @@
-use crate::repositories::{db_err, is_fk_violation, is_unique_violation, parse_db_action, sql_now};
+use crate::repositories::{
+    contains_pattern, db_err, is_fk_violation, is_unique_violation, parse_db_action, sql_now,
+};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{ManagedDomainRepository, ManagedDomainUpdate};
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
@@ -132,22 +134,43 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         &self,
         limit: u32,
         offset: u32,
+        search: Option<&str>,
     ) -> Result<(Vec<ManagedDomain>, u64), DomainError> {
-        let count_row = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM managed_domains")
+        let pattern = search.map(contains_pattern);
+        // Static SQL either way; the search only ever reaches the query as a bind.
+        let where_clause = if pattern.is_some() {
+            " WHERE name LIKE ? ESCAPE '\\' OR domain LIKE ? ESCAPE '\\'"
+        } else {
+            ""
+        };
+
+        let count_sql = format!("SELECT COUNT(*) FROM managed_domains{where_clause}");
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql);
+        if let Some(pattern) = &pattern {
+            count_query = count_query.bind(pattern).bind(pattern);
+        }
+        let count_row = count_query
             .fetch_one(&self.pool)
             .await
             .map_err(db_err("Failed to count managed domains"))?;
         let total = count_row.0 as u64;
 
-        let rows = sqlx::query_as::<_, ManagedDomainRow>(
+        // A name is unique only within its group, so the group breaks ties and
+        // every page boundary falls in the same place on every request.
+        let page_sql = format!(
             "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
-             FROM managed_domains ORDER BY name ASC LIMIT ? OFFSET ?",
-        )
-        .bind(i64::from(limit))
-        .bind(i64::from(offset))
-        .fetch_all(&self.pool)
-        .await
-        .map_err(db_err("Failed to query managed domains paged"))?;
+             FROM managed_domains{where_clause} ORDER BY name ASC, group_id ASC LIMIT ? OFFSET ?"
+        );
+        let mut page_query = sqlx::query_as::<_, ManagedDomainRow>(&page_sql);
+        if let Some(pattern) = &pattern {
+            page_query = page_query.bind(pattern).bind(pattern);
+        }
+        let rows = page_query
+            .bind(i64::from(limit))
+            .bind(i64::from(offset))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err("Failed to query managed domains paged"))?;
 
         Ok((rows.into_iter().map(Self::row_to_domain).collect(), total))
     }

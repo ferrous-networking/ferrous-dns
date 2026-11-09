@@ -9,6 +9,10 @@ pub struct ManagedDomainQuery {
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
+    /// Keeps only the domains whose domain or name contains this text, ignoring
+    /// ASCII case; `total` then counts the matches. Blank means no filter.
+    #[serde(default)]
+    pub search: Option<String>,
 }
 
 fn default_limit() -> u32 {

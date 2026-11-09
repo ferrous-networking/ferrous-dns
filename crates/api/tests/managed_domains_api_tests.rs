@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use helpers::TestApp;
+use helpers::{get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -483,4 +483,87 @@ async fn test_get_all_managed_domains_after_create() {
 
     assert!(json["data"].is_array());
     assert_eq!(json["data"].as_array().unwrap().len(), 2);
+}
+
+async fn create_domain(app: &axum::Router, name: &str, domain: &str, group_id: i64) {
+    let (status, created) = send_json(
+        app.clone(),
+        "POST",
+        "/managed-domains",
+        json!({ "name": name, "domain": domain, "action": "deny", "group_id": group_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+}
+
+fn names(json: &Value) -> Vec<&str> {
+    json["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["name"].as_str().unwrap())
+        .collect()
+}
+
+async fn app_with_three_domains() -> axum::Router {
+    let app = test_app().await.router;
+    create_domain(&app, "Popup ads", "ads.example.com", 1).await;
+    create_domain(&app, "Work tracker", "metrics.corp.example", 1).await;
+    create_domain(&app, "Video", "cdn.videos.example.net", 1).await;
+    app
+}
+
+#[tokio::test]
+async fn test_list_search_matches_domain_or_name() {
+    let app = app_with_three_domains().await;
+
+    let by_domain = get_json(app.clone(), "/managed-domains?search=corp").await;
+    assert_eq!(by_domain["total"], 1);
+    assert_eq!(names(&by_domain), vec!["Work tracker"]);
+
+    let by_name = get_json(app, "/managed-domains?search=Video").await;
+    assert_eq!(by_name["total"], 1);
+    assert_eq!(names(&by_name), vec!["Video"]);
+}
+
+#[tokio::test]
+async fn test_list_search_is_case_insensitive() {
+    let app = app_with_three_domains().await;
+
+    let json = get_json(app, "/managed-domains?search=TRACKER").await;
+
+    assert_eq!(json["total"], 1);
+    assert_eq!(names(&json), vec!["Work tracker"]);
+}
+
+#[tokio::test]
+async fn test_list_search_pages_within_the_matches() {
+    let app = app_with_three_domains().await;
+
+    let json = get_json(app, "/managed-domains?search=example.&limit=1&offset=1").await;
+
+    assert_eq!(json["total"], 2);
+    assert_eq!(names(&json), vec!["Video"]);
+}
+
+#[tokio::test]
+async fn test_list_blank_search_returns_everything() {
+    let app = app_with_three_domains().await;
+
+    let json = get_json(app, "/managed-domains?search=%20%20").await;
+
+    assert_eq!(json["total"], 3);
+}
+
+#[tokio::test]
+async fn test_list_search_matches_like_wildcards_literally() {
+    let app = app_with_three_domains().await;
+    create_domain(&app, "100% blocked", "percent.example.org", 1).await;
+    create_domain(&app, "snake_case", "underscore.example.org", 1).await;
+
+    let percent = get_json(app.clone(), "/managed-domains?search=%25").await;
+    assert_eq!(names(&percent), vec!["100% blocked"]);
+
+    let underscore = get_json(app, "/managed-domains?search=_").await;
+    assert_eq!(names(&underscore), vec!["snake_case"]);
 }

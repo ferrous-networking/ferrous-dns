@@ -91,6 +91,20 @@ pub(crate) fn db_err(ctx: &'static str) -> impl FnOnce(sqlx::Error) -> DomainErr
     }
 }
 
+/// `%needle%` for `LIKE ? ESCAPE '\'`, so `%`, `_` and `\` in user input match literally.
+pub(crate) fn contains_pattern(needle: &str) -> String {
+    let mut pattern = String::with_capacity(needle.len() + 2);
+    pattern.push('%');
+    for ch in needle.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('%');
+    pattern
+}
+
 pub(crate) fn is_unique_violation(e: &sqlx::Error) -> bool {
     matches!(e, sqlx::Error::Database(db) if db.is_unique_violation())
 }

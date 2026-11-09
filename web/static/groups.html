@@ -202,7 +202,7 @@
                                 <button @click="deleteGroup(group)" class="btn-icon" :disabled="group.is_default"
                                         title="Delete">
                                     <i data-lucide="trash-2" style="width:16px;height:16px"
-                                       :style="group.is_default ? 'opacity:0.3' : ''"></i>
+                                       :style="group.is_default ? {opacity: 0.3} : {}"></i>
                                 </button>
                             </div>
                         </td>

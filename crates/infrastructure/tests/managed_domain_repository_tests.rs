@@ -148,11 +148,66 @@ async fn test_get_all_paged_reports_total() {
         create(&repo, name, DomainAction::Deny, true).await;
     }
 
-    let (page, total) = repo.get_all_paged(2, 1).await.unwrap();
+    let (page, total) = repo.get_all_paged(2, 1, None).await.unwrap();
 
     assert_eq!(total, 3);
     let names: Vec<&str> = page.iter().map(|d| d.name.as_ref()).collect();
     assert_eq!(names, vec!["b", "c"]);
+}
+
+#[tokio::test]
+async fn test_get_all_paged_search_filters_total_and_page() {
+    let (repo, _pool) = repo().await;
+    for (name, domain) in [
+        ("Alpha", "ads.example.com"),
+        ("Bravo", "tracker.example.net"),
+        ("Charlie", "cdn.other.org"),
+        ("Delta", "pixel.EXAMPLE.io"),
+    ] {
+        repo.create(
+            name.to_string(),
+            domain.to_string(),
+            DomainAction::Deny,
+            1,
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+    }
+
+    let (page, total) = repo.get_all_paged(2, 1, Some("example")).await.unwrap();
+
+    assert_eq!(total, 3);
+    let names: Vec<&str> = page.iter().map(|d| d.name.as_ref()).collect();
+    assert_eq!(names, vec!["Bravo", "Delta"]);
+}
+
+#[tokio::test]
+async fn test_get_all_paged_orders_name_ties_by_group() {
+    let (repo, pool) = repo().await;
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Kids')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for group_id in [2, 1] {
+        repo.create(
+            "Shared".to_string(),
+            "ads.example.com".to_string(),
+            DomainAction::Deny,
+            group_id,
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+    }
+
+    let (first, _) = repo.get_all_paged(1, 0, None).await.unwrap();
+    let (second, _) = repo.get_all_paged(1, 1, None).await.unwrap();
+
+    assert_eq!(first[0].group_id, 1);
+    assert_eq!(second[0].group_id, 2);
 }
 
 #[tokio::test]
