@@ -7,12 +7,15 @@
 [advisories]
 ignore = [
     # RUSTSEC-2023-0071 — Marvin Attack timing sidechannel in `rsa`.
-    # `rsa` is pulled in ONLY as an OPTIONAL dependency of `sqlx-mysql`. This
-    # project uses sqlx with `default-features = false` and the `sqlite` driver
-    # only (see workspace Cargo.toml); the MySQL driver is never enabled, so
-    # `rsa` is never compiled or linked into the binary. Cargo.lock still lists
-    # it because it records optional deps regardless of feature activation.
-    # No fixed upgrade of `rsa` is available upstream. Not applicable here.
+    # The attack recovers an RSA *private* key by timing decryption or signing.
+    # `rsa` 0.10.0-rc.19 is linked through `webauthn-rs` (via `crypto-glue`),
+    # which only verifies RS256 passkey signatures with the credential's public
+    # key; the server holds no RSA private key, so there is nothing to leak.
+    # The fixed release, `rsa` 0.10.0, is out of reach until `crypto-glue`
+    # (0.2.2) stops asking for the `sha2` feature that release removed. `rsa`
+    # 0.9 is an optional dependency of `sqlx-mysql`, whose driver is never
+    # enabled (sqlx is built with the `sqlite` driver only, see workspace
+    # Cargo.toml). Not applicable here.
     "RUSTSEC-2023-0071",
 
     # RUSTSEC-2024-0436 — `paste` is unmaintained (informational, no CVE).
