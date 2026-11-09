@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - DNS Filter</title>
+    <title data-i18n-title="Ferrous DNS - DNS Filter">Ferrous DNS - DNS Filter</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/dns-filter.css">
@@ -25,88 +27,88 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span></div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span>
+            <span x-text="t(&quot;Active&quot;)">Active</span>
         </div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item">
             <i data-lucide="shield-off" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
-            <span x-text="`${sources.length} block ${sources.length === 1 ? 'list' : 'lists'}`"></span>
+            <span x-text="tn('{count} blocklist', '{count} blocklists', sources.length)"></span>
         </div>
         <div class="status-item">
             <i data-lucide="shield-check" style="width:12px;height:12px;color:var(--color-success)"></i>
-            <span x-text="`${wSources.length} allow ${wSources.length === 1 ? 'list' : 'lists'}`"></span>
+            <span x-text="tn('{count} allowlist', '{count} allowlists', wSources.length)"></span>
         </div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
-            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
             </a>
             <a href="/doh-ids.html" class="nav-item">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item active">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
-            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
-            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
+            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
 
 <main style="padding:24px">
     <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">DNS Filter</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Manage blocklist and allowlist sources for DNS filtering</p>
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)" x-text="t(&quot;DNS Filter&quot;)">DNS Filter</h1>
+        <p style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;Manage blocklist and allowlist sources for DNS filtering&quot;)">Manage blocklist and allowlist sources for DNS filtering</p>
     </div>
 
     <div class="tab-bar">
-        <button class="tab-btn" :class="activeTab === 'blocklist' ? 'active' : ''" @click="switchTab('blocklist')">DNS Blocklist</button>
-        <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')">DNS Allowlist</button>
-        <button class="tab-btn" :class="activeTab === 'managed' ? 'active' : ''" @click="switchTab('managed')">Managed Domains</button>
-        <button class="tab-btn" :class="activeTab === 'regex' ? 'active' : ''" @click="switchTab('regex')">Regex Filters</button>
-        <button class="tab-btn" :class="activeTab === 'test' ? 'active' : ''" @click="switchTab('test')">Test</button>
-        <button class="tab-btn" :class="activeTab === 'backtest' ? 'active' : ''" @click="switchTab('backtest')">Backtest</button>
+        <button class="tab-btn" :class="activeTab === 'blocklist' ? 'active' : ''" @click="switchTab('blocklist')" x-text="t(&quot;DNS Blocklist&quot;)">DNS Blocklist</button>
+        <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')" x-text="t(&quot;DNS Allowlist&quot;)">DNS Allowlist</button>
+        <button class="tab-btn" :class="activeTab === 'managed' ? 'active' : ''" @click="switchTab('managed')" x-text="t(&quot;Managed Domains&quot;)">Managed Domains</button>
+        <button class="tab-btn" :class="activeTab === 'regex' ? 'active' : ''" @click="switchTab('regex')" x-text="t(&quot;Regex Filters&quot;)">Regex Filters</button>
+        <button class="tab-btn" :class="activeTab === 'test' ? 'active' : ''" @click="switchTab('test')" x-text="t(&quot;Test&quot;)">Test</button>
+        <button class="tab-btn" :class="activeTab === 'backtest' ? 'active' : ''" @click="switchTab('backtest')" x-text="t(&quot;Backtest&quot;)">Backtest</button>
     </div>
 
     <!-- BLOCKLIST TAB -->
@@ -114,17 +116,17 @@
     <div style="margin-bottom:24px">
         <div class="card" style="padding:24px">
             <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                x-text="editingSource ? 'Edit Blocklist Source' : 'Add Blocklist Source'">Add Blocklist Source</h2>
+                x-text="editingSource ? t(&quot;Edit Blocklist Source&quot;) : t(&quot;Add Blocklist Source&quot;)">Add Blocklist Source</h2>
 
             <form @submit.prevent="saveSource()">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div class="form-group">
-                        <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                        <label class="form-label"><span x-text="t(&quot;Name&quot;)">Name</span> <span style="color:var(--color-error)">*</span></label>
                         <input type="text" class="input" x-model="form.name"
-                               placeholder="e.g. AdGuard DNS" required>
+                               placeholder="e.g. AdGuard DNS" required :placeholder="t(&quot;e.g. AdGuard DNS&quot;)">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                         <input type="text" class="input" x-model="form.url"
                                placeholder="https://example.com/blocklist.txt">
                     </div>
@@ -132,7 +134,7 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div class="form-group">
-                        <label class="form-label">Groups</label>
+                        <label class="form-label" x-text="t(&quot;Groups&quot;)">Groups</label>
                         <div class="group-checkboxes">
                             <template x-for="group in groups" :key="group.id">
                                 <label class="group-checkbox-row">
@@ -150,23 +152,23 @@
                     <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
                             <input type="checkbox" x-model="form.enabled" style="width:18px;height:18px;cursor:pointer">
-                            <span class="form-label" style="margin:0">Enabled</span>
+                            <span class="form-label" style="margin:0" x-text="t(&quot;Enabled&quot;)">Enabled</span>
                         </label>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                    <label class="form-label"><span x-text="t(&quot;Comment&quot;)">Comment</span> <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                     <textarea class="textarea" x-model="form.comment"
-                              placeholder="Add a description for this blocklist"></textarea>
+                              placeholder="Add a description for this blocklist" :placeholder="t(&quot;Add a description for this blocklist&quot;)"></textarea>
                 </div>
 
                 <div style="display:flex;gap:12px">
-                    <button type="submit" class="btn btn-primary" x-text="editingSource ? 'Update Source' : 'Add Source'"></button>
-                    <button type="button" class="btn btn-secondary" @click="cancelForm()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" x-text="editingSource ? t(&quot;Update Source&quot;) : t(&quot;Add Source&quot;)"></button>
+                    <button type="button" class="btn btn-secondary" @click="cancelForm()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                 </div>
 
-                <div x-show="formError" x-text="formError"
+                <div x-show="formError" x-text="t(formError)"
                      style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
             </form>
         </div>
@@ -175,19 +177,19 @@
     <div class="card">
         <div x-show="syncMessage" x-text="syncMessage"
              style="margin:16px 16px 0;padding:12px;background:rgba(59,130,246,0.1);color:var(--color-primary);border-radius:8px;font-size:14px"></div>
-        <div x-show="syncError" x-text="syncError"
+        <div x-show="syncError" x-text="t(syncError)"
              style="margin:16px 16px 0;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
 
         <div class="table-scroll">
             <table class="table">
                 <thead>
                 <tr>
-                    <th>Name</th>
+                    <th x-text="t(&quot;Name&quot;)">Name</th>
                     <th>URL</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                    <th>Group</th>
-                    <th>Last Sync</th>
+                    <th x-text="t(&quot;Status&quot;)">Status</th>
+                    <th x-text="t(&quot;Comment&quot;)">Comment</th>
+                    <th x-text="t(&quot;Group&quot;)">Group</th>
+                    <th x-text="t(&quot;Last Sync&quot;)">Last Sync</th>
                     <th>Actions</th>
                 </tr>
                 </thead>
@@ -211,8 +213,8 @@
                             <button class="badge"
                                     :class="source.enabled ? 'badge-success' : 'badge-inactive'"
                                     @click="toggleStatus(source)"
-                                    :title="source.enabled ? 'Click to disable' : 'Click to enable'"
-                                    x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                                    :title="source.enabled ? t(&quot;Click to disable&quot;) : t(&quot;Click to enable&quot;)"
+                                    x-text="source.enabled ? t(&quot;Enabled&quot;) : t(&quot;Disabled&quot;)">
                             </button>
                         </td>
                         <td>
@@ -225,12 +227,12 @@
                                         <span x-text="groupName(gid)"></span>
                                         <button class="pill-remove" type="button"
                                                 @click.stop="toggleGroup(source, gid, false)"
-                                                :title="'Remove from ' + groupName(gid)">×</button>
+                                                :title="t(&quot;Remove from &quot;) + groupName(gid)">×</button>
                                     </span>
                                 </template>
                                 <button type="button" class="btn-add-group"
                                         @click.stop="source._showGroupMenu = !source._showGroupMenu"
-                                        title="Add to group">+</button>
+                                        title="Add to group" :title="t(&quot;Add to group&quot;)">+</button>
                                 <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
                                     <template x-for="group in groups" :key="group.id">
                                         <label class="group-check-item">
@@ -252,14 +254,14 @@
                                 <button @click="syncSource(source)" class="btn-icon"
                                         :disabled="syncingId !== null"
                                         :style="syncingId !== null ? 'opacity:0.5;cursor:not-allowed' : ''"
-                                        title="Re-download now. Rebuilds the block index, so every enabled list is refreshed.">
+                                        title="Re-download now. Rebuilds the block index, so every enabled list is refreshed." :title="t(&quot;Re-download now. Rebuilds the block index, so every enabled list is refreshed.&quot;)">
                                     <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
                                 </button>
-                                <button @click="editSource(source)" class="btn-icon" title="Edit">
+                                <button @click="editSource(source)" class="btn-icon" title="Edit" :title="t(&quot;Edit&quot;)">
                                     <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                                 </button>
                                 <button @click="deleteSource(source)" class="btn-icon" title="Delete"
-                                        style="color:var(--color-error)">
+                                        style="color:var(--color-error)" :title="t(&quot;Delete&quot;)">
                                     <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                 </button>
                             </div>
@@ -269,11 +271,11 @@
                 <tr x-show="sources.length === 0 && !loading">
                     <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
                         <i data-lucide="shield-off" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No blocklist sources found. Add one to get started.</p>
+                        <p style="margin:0" x-text="t(&quot;No blocklist sources found. Add one to get started.&quot;)">No blocklist sources found. Add one to get started.</p>
                     </td>
                 </tr>
                 <tr x-show="loading">
-                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)" x-text="t(&quot;Loading...&quot;)">
                         Loading...
                     </td>
                 </tr>
@@ -288,17 +290,17 @@
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
                 <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                    x-text="wEditingSource ? 'Edit Allowlist Source' : 'Add Allowlist Source'">Add Allowlist Source</h2>
+                    x-text="wEditingSource ? t(&quot;Edit Allowlist Source&quot;) : t(&quot;Add Allowlist Source&quot;)">Add Allowlist Source</h2>
 
                 <form @submit.prevent="wSaveSource()">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Name&quot;)">Name</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="wForm.name"
-                                   placeholder="e.g. My Allowlist" required>
+                                   placeholder="e.g. My Allowlist" required :placeholder="t(&quot;e.g. My Allowlist&quot;)">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                            <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                             <input type="text" class="input" x-model="wForm.url"
                                    placeholder="https://example.com/allowlist.txt">
                         </div>
@@ -306,7 +308,7 @@
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Groups</label>
+                            <label class="form-label" x-text="t(&quot;Groups&quot;)">Groups</label>
                             <div class="group-checkboxes">
                                 <template x-for="group in groups" :key="group.id">
                                     <label class="group-checkbox-row">
@@ -324,23 +326,23 @@
                         <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
                                 <input type="checkbox" x-model="wForm.enabled" style="width:18px;height:18px;cursor:pointer">
-                                <span class="form-label" style="margin:0">Enabled</span>
+                                <span class="form-label" style="margin:0" x-text="t(&quot;Enabled&quot;)">Enabled</span>
                             </label>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <label class="form-label"><span x-text="t(&quot;Comment&quot;)">Comment</span> <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                         <textarea class="textarea" x-model="wForm.comment"
-                                  placeholder="Add a description for this allowlist"></textarea>
+                                  placeholder="Add a description for this allowlist" :placeholder="t(&quot;Add a description for this allowlist&quot;)"></textarea>
                     </div>
 
                     <div style="display:flex;gap:12px">
-                        <button type="submit" class="btn btn-primary" x-text="wEditingSource ? 'Update Source' : 'Add Source'"></button>
-                        <button type="button" class="btn btn-secondary" @click="wCancelForm()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" x-text="wEditingSource ? t(&quot;Update Source&quot;) : t(&quot;Add Source&quot;)"></button>
+                        <button type="button" class="btn btn-secondary" @click="wCancelForm()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                     </div>
 
-                    <div x-show="wFormError" x-text="wFormError"
+                    <div x-show="wFormError" x-text="t(wFormError)"
                          style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
                 </form>
             </div>
@@ -351,12 +353,12 @@
                 <table class="table">
                     <thead>
                     <tr>
-                        <th>Name</th>
+                        <th x-text="t(&quot;Name&quot;)">Name</th>
                         <th>URL</th>
-                        <th>Status</th>
-                        <th>Comment</th>
-                        <th>Group</th>
-                        <th>Last Sync</th>
+                        <th x-text="t(&quot;Status&quot;)">Status</th>
+                        <th x-text="t(&quot;Comment&quot;)">Comment</th>
+                        <th x-text="t(&quot;Group&quot;)">Group</th>
+                        <th x-text="t(&quot;Last Sync&quot;)">Last Sync</th>
                         <th>Actions</th>
                     </tr>
                     </thead>
@@ -380,8 +382,8 @@
                                 <button class="badge"
                                         :class="source.enabled ? 'badge-success' : 'badge-inactive'"
                                         @click="wToggleStatus(source)"
-                                        :title="source.enabled ? 'Click to disable' : 'Click to enable'"
-                                        x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                                        :title="source.enabled ? t(&quot;Click to disable&quot;) : t(&quot;Click to enable&quot;)"
+                                        x-text="source.enabled ? t(&quot;Enabled&quot;) : t(&quot;Disabled&quot;)">
                                 </button>
                             </td>
                             <td>
@@ -394,12 +396,12 @@
                                             <span x-text="groupName(gid)"></span>
                                             <button class="pill-remove" type="button"
                                                     @click.stop="wToggleGroup(source, gid, false)"
-                                                    :title="'Remove from ' + groupName(gid)">×</button>
+                                                    :title="t(&quot;Remove from &quot;) + groupName(gid)">×</button>
                                         </span>
                                     </template>
                                     <button type="button" class="btn-add-group"
                                             @click.stop="source._showGroupMenu = !source._showGroupMenu"
-                                            title="Add to group">+</button>
+                                            title="Add to group" :title="t(&quot;Add to group&quot;)">+</button>
                                     <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
                                         <template x-for="group in groups" :key="group.id">
                                             <label class="group-check-item">
@@ -418,11 +420,11 @@
                             </td>
                             <td>
                                 <div style="display:flex;gap:4px">
-                                    <button @click="wEditSource(source)" class="btn-icon" title="Edit">
+                                    <button @click="wEditSource(source)" class="btn-icon" title="Edit" :title="t(&quot;Edit&quot;)">
                                         <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                                     </button>
                                     <button @click="wDeleteSource(source)" class="btn-icon" title="Delete"
-                                            style="color:var(--color-error)">
+                                            style="color:var(--color-error)" :title="t(&quot;Delete&quot;)">
                                         <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                     </button>
                                 </div>
@@ -432,11 +434,11 @@
                     <tr x-show="wSources.length === 0 && !wLoading">
                         <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
                             <i data-lucide="shield-check" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;color:var(--color-success)"></i>
-                            <p style="margin:0">No allowlist sources found. Add one to always allow specific domains.</p>
+                            <p style="margin:0" x-text="t(&quot;No allowlist sources found. Add one to always allow specific domains.&quot;)">No allowlist sources found. Add one to always allow specific domains.</p>
                         </td>
                     </tr>
                     <tr x-show="wLoading">
-                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)" x-text="t(&quot;Loading...&quot;)">
                             Loading...
                         </td>
                     </tr>
@@ -451,19 +453,19 @@
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
                 <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                    x-text="mEditingDomain ? 'Edit Managed Domain' : 'Add Managed Domain'">Add Managed Domain</h2>
+                    x-text="mEditingDomain ? t(&quot;Edit Managed Domain&quot;) : t(&quot;Add Managed Domain&quot;)">Add Managed Domain</h2>
 
                 <form @submit.prevent="mSaveDomain()">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Name&quot;)">Name</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="mForm.name"
-                                   placeholder="e.g. Block Ads" required>
+                                   placeholder="e.g. Block Ads" required :placeholder="t(&quot;e.g. Block Ads&quot;)">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Domain <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Domain&quot;)">Domain</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="mForm.domain"
-                                   placeholder="e.g. ads.example.com or *.x.com" required>
+                                   placeholder="e.g. ads.example.com or *.x.com" required :placeholder="t(&quot;e.g. ads.example.com or *.x.com&quot;)">
                         </div>
                     </div>
 
@@ -471,12 +473,12 @@
                         <div class="form-group">
                             <label class="form-label">Action</label>
                             <select class="input" x-model="mForm.action">
-                                <option value="deny">Deny (Block)</option>
-                                <option value="allow">Allow (Override)</option>
+                                <option value="deny" x-text="t(&quot;Deny (Block)&quot;)">Deny (Block)</option>
+                                <option value="allow" x-text="t(&quot;Allow (Override)&quot;)">Allow (Override)</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Group</label>
+                            <label class="form-label" x-text="t(&quot;Group&quot;)">Group</label>
                             <select class="input" x-model="mForm.group_id">
                                 <template x-for="group in groups" :key="group.id">
                                     <option :value="group.id" x-text="group.name"></option>
@@ -486,23 +488,23 @@
                         <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
                                 <input type="checkbox" x-model="mForm.enabled" style="width:18px;height:18px;cursor:pointer">
-                                <span class="form-label" style="margin:0">Enabled</span>
+                                <span class="form-label" style="margin:0" x-text="t(&quot;Enabled&quot;)">Enabled</span>
                             </label>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <label class="form-label"><span x-text="t(&quot;Comment&quot;)">Comment</span> <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                         <textarea class="textarea" x-model="mForm.comment"
-                                  placeholder="Add a description for this rule"></textarea>
+                                  placeholder="Add a description for this rule" :placeholder="t(&quot;Add a description for this rule&quot;)"></textarea>
                     </div>
 
                     <div style="display:flex;gap:12px">
-                        <button type="submit" class="btn btn-primary" x-text="mEditingDomain ? 'Update Domain' : 'Add Domain'"></button>
-                        <button type="button" class="btn btn-secondary" @click="mCancelForm()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" x-text="mEditingDomain ? t(&quot;Update Domain&quot;) : t(&quot;Add Domain&quot;)"></button>
+                        <button type="button" class="btn btn-secondary" @click="mCancelForm()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                     </div>
 
-                    <div x-show="mFormError" x-text="mFormError"
+                    <div x-show="mFormError" x-text="t(mFormError)"
                          style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
                 </form>
             </div>
@@ -513,13 +515,13 @@
                 <table class="table">
                     <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Domain</th>
+                        <th x-text="t(&quot;Name&quot;)">Name</th>
+                        <th x-text="t(&quot;Domain&quot;)">Domain</th>
                         <th>Action</th>
-                        <th>Status</th>
-                        <th>Comment</th>
+                        <th x-text="t(&quot;Status&quot;)">Status</th>
+                        <th x-text="t(&quot;Comment&quot;)">Comment</th>
                         <th>Service</th>
-                        <th>Group</th>
+                        <th x-text="t(&quot;Group&quot;)">Group</th>
                         <th>Actions</th>
                     </tr>
                     </thead>
@@ -535,15 +537,15 @@
                             <td>
                                 <span class="badge"
                                       :style="domain.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
-                                      x-text="domain.action === 'deny' ? 'Deny' : 'Allow'">
+                                      x-text="domain.action === 'deny' ? t(&quot;Deny&quot;) : t(&quot;Allow&quot;)">
                                 </span>
                             </td>
                             <td>
                                 <button class="badge"
                                         :class="domain.enabled ? 'badge-success' : 'badge-inactive'"
                                         @click="mToggleStatus(domain)"
-                                        :title="domain.enabled ? 'Click to disable' : 'Click to enable'"
-                                        x-text="domain.enabled ? 'Enabled' : 'Disabled'">
+                                        :title="domain.enabled ? t(&quot;Click to disable&quot;) : t(&quot;Click to enable&quot;)"
+                                        x-text="domain.enabled ? t(&quot;Enabled&quot;) : t(&quot;Disabled&quot;)">
                                 </button>
                             </td>
                             <td>
@@ -568,11 +570,11 @@
                             </td>
                             <td>
                                 <div style="display:flex;gap:4px">
-                                    <button @click="mEditDomain(domain)" class="btn-icon" title="Edit">
+                                    <button @click="mEditDomain(domain)" class="btn-icon" title="Edit" :title="t(&quot;Edit&quot;)">
                                         <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                                     </button>
                                     <button @click="mDeleteDomain(domain)" class="btn-icon" title="Delete"
-                                            style="color:var(--color-error)">
+                                            style="color:var(--color-error)" :title="t(&quot;Delete&quot;)">
                                         <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                     </button>
                                 </div>
@@ -582,11 +584,11 @@
                     <tr x-show="mSources.length === 0 && !mLoading">
                         <td colspan="8" style="text-align:center;padding:48px;color:var(--text-secondary)">
                             <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                            <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
+                            <p style="margin:0" x-text="t(&quot;No managed domains found. Add one to block or allow a specific domain immediately.&quot;)">No managed domains found. Add one to block or allow a specific domain immediately.</p>
                         </td>
                     </tr>
                     <tr x-show="mLoading">
-                        <td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        <td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary)" x-text="t(&quot;Loading...&quot;)">
                             Loading...
                         </td>
                     </tr>
@@ -601,20 +603,20 @@
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
                 <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                    x-text="rgEditingFilter ? 'Edit Regex Filter' : 'Add Regex Filter'">Add Regex Filter</h2>
+                    x-text="rgEditingFilter ? t(&quot;Edit Regex Filter&quot;) : t(&quot;Add Regex Filter&quot;)">Add Regex Filter</h2>
 
                 <form @submit.prevent="rgSaveFilter()">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Name&quot;)">Name</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="rgForm.name"
-                                   placeholder="e.g. Block Ad Networks" required>
+                                   placeholder="e.g. Block Ad Networks" required :placeholder="t(&quot;e.g. Block Ad Networks&quot;)">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Regex Pattern <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Regex Pattern&quot;)">Regex Pattern</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="rgForm.pattern"
                                    placeholder="e.g. ^ads\..*\.com$" required
-                                   style="font-family:monospace">
+                                   style="font-family:monospace" :placeholder="t(&quot;e.g. ^ads\\..*\\.com$&quot;)">
                         </div>
                     </div>
 
@@ -622,12 +624,12 @@
                         <div class="form-group">
                             <label class="form-label">Action</label>
                             <select class="input" x-model="rgForm.action">
-                                <option value="deny">Deny (Block)</option>
-                                <option value="allow">Allow (Override)</option>
+                                <option value="deny" x-text="t(&quot;Deny (Block)&quot;)">Deny (Block)</option>
+                                <option value="allow" x-text="t(&quot;Allow (Override)&quot;)">Allow (Override)</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Group</label>
+                            <label class="form-label" x-text="t(&quot;Group&quot;)">Group</label>
                             <select class="input" x-model="rgForm.group_id">
                                 <template x-for="group in groups" :key="group.id">
                                     <option :value="group.id" x-text="group.name"></option>
@@ -637,23 +639,23 @@
                         <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
                                 <input type="checkbox" x-model="rgForm.enabled" style="width:18px;height:18px;cursor:pointer">
-                                <span class="form-label" style="margin:0">Enabled</span>
+                                <span class="form-label" style="margin:0" x-text="t(&quot;Enabled&quot;)">Enabled</span>
                             </label>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <label class="form-label"><span x-text="t(&quot;Comment&quot;)">Comment</span> <span style="color:var(--text-tertiary);font-weight:400" x-text="t(&quot;(optional)&quot;)">(optional)</span></label>
                         <textarea class="textarea" x-model="rgForm.comment"
-                                  placeholder="Add a description for this filter"></textarea>
+                                  placeholder="Add a description for this filter" :placeholder="t(&quot;Add a description for this filter&quot;)"></textarea>
                     </div>
 
                     <div style="display:flex;gap:12px">
-                        <button type="submit" class="btn btn-primary" x-text="rgEditingFilter ? 'Update Filter' : 'Add Filter'"></button>
-                        <button type="button" class="btn btn-secondary" @click="rgCancelForm()">Cancel</button>
+                        <button type="submit" class="btn btn-primary" x-text="rgEditingFilter ? t(&quot;Update Filter&quot;) : t(&quot;Add Filter&quot;)"></button>
+                        <button type="button" class="btn btn-secondary" @click="rgCancelForm()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                     </div>
 
-                    <div x-show="rgFormError" x-text="rgFormError"
+                    <div x-show="rgFormError" x-text="t(rgFormError)"
                          style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
                 </form>
             </div>
@@ -664,12 +666,12 @@
                 <table class="table">
                     <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Regex</th>
+                        <th x-text="t(&quot;Name&quot;)">Name</th>
+                        <th x-text="t(&quot;Regex&quot;)">Regex</th>
                         <th>Action</th>
-                        <th>Status</th>
-                        <th>Comment</th>
-                        <th>Group</th>
+                        <th x-text="t(&quot;Status&quot;)">Status</th>
+                        <th x-text="t(&quot;Comment&quot;)">Comment</th>
+                        <th x-text="t(&quot;Group&quot;)">Group</th>
                         <th>Actions</th>
                     </tr>
                     </thead>
@@ -685,15 +687,15 @@
                             <td>
                                 <span class="badge"
                                       :style="filter.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
-                                      x-text="filter.action === 'deny' ? 'Deny' : 'Allow'">
+                                      x-text="filter.action === 'deny' ? t(&quot;Deny&quot;) : t(&quot;Allow&quot;)">
                                 </span>
                             </td>
                             <td>
                                 <button class="badge"
                                         :class="filter.enabled ? 'badge-success' : 'badge-inactive'"
                                         @click="rgToggleStatus(filter)"
-                                        :title="filter.enabled ? 'Click to disable' : 'Click to enable'"
-                                        x-text="filter.enabled ? 'Enabled' : 'Disabled'">
+                                        :title="filter.enabled ? t(&quot;Click to disable&quot;) : t(&quot;Click to enable&quot;)"
+                                        x-text="filter.enabled ? t(&quot;Enabled&quot;) : t(&quot;Disabled&quot;)">
                                 </button>
                             </td>
                             <td>
@@ -712,11 +714,11 @@
                             </td>
                             <td>
                                 <div style="display:flex;gap:4px">
-                                    <button @click="rgEditFilter(filter)" class="btn-icon" title="Edit">
+                                    <button @click="rgEditFilter(filter)" class="btn-icon" title="Edit" :title="t(&quot;Edit&quot;)">
                                         <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                                     </button>
                                     <button @click="rgDeleteFilter(filter)" class="btn-icon" title="Delete"
-                                            style="color:var(--color-error)">
+                                            style="color:var(--color-error)" :title="t(&quot;Delete&quot;)">
                                         <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                     </button>
                                 </div>
@@ -726,11 +728,11 @@
                     <tr x-show="rgFilters.length === 0 && !rgLoading">
                         <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
                             <i data-lucide="regex" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                            <p style="margin:0">No regex filters found. Add one to block or allow domains matching a pattern.</p>
+                            <p style="margin:0" x-text="t(&quot;No regex filters found. Add one to block or allow domains matching a pattern.&quot;)">No regex filters found. Add one to block or allow domains matching a pattern.</p>
                         </td>
                     </tr>
                     <tr x-show="rgLoading">
-                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)" x-text="t(&quot;Loading...&quot;)">
                             Loading...
                         </td>
                     </tr>
@@ -744,8 +746,8 @@
     <div x-show="activeTab === 'test'">
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
-                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Test a Domain</h2>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)" x-text="t(&quot;Test a Domain&quot;)">Test a Domain</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px" x-text="t(&quot;Evaluates a domain against the current filter index — downloaded blocklists, the manual list, managed domains, regex filters and allowlists — and shows exactly which rules match. Dynamic runtime rules (schedule, CNAME cloaking, DNS rebinding, rate-limit, tunneling) are not evaluated here.&quot;)">
                     Evaluates a domain against the current filter index — downloaded blocklists, the manual list,
                     managed domains, regex filters and allowlists — and shows exactly which rules match. Dynamic
                     runtime rules (schedule, CNAME cloaking, DNS rebinding, rate-limit, tunneling) are not evaluated here.
@@ -753,12 +755,12 @@
                 <form @submit.prevent="runTest()">
                     <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Domain <span style="color:var(--color-error)">*</span></label>
+                            <label class="form-label"><span x-text="t(&quot;Domain&quot;)">Domain</span> <span style="color:var(--color-error)">*</span></label>
                             <input type="text" class="input" x-model="testForm.domain"
-                                   placeholder="e.g. ads.example.com" required style="font-family:monospace">
+                                   placeholder="e.g. ads.example.com" required style="font-family:monospace" :placeholder="t(&quot;e.g. ads.example.com&quot;)">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Group</label>
+                            <label class="form-label" x-text="t(&quot;Group&quot;)">Group</label>
                             <select class="input" x-model="testForm.group_id">
                                 <template x-for="group in groups" :key="group.id">
                                     <option :value="group.id" x-text="group.name"></option>
@@ -768,9 +770,9 @@
                     </div>
                     <div style="display:flex;gap:12px">
                         <button type="submit" class="btn btn-primary" :disabled="testLoading"
-                                x-text="testLoading ? 'Checking...' : 'Check Domain'"></button>
+                                x-text="testLoading ? t(&quot;Checking...&quot;) : t(&quot;Check Domain&quot;)"></button>
                     </div>
-                    <div x-show="testError" x-text="testError"
+                    <div x-show="testError" x-text="t(testError)"
                          style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
                 </form>
             </div>
@@ -780,22 +782,22 @@
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
                 <span class="badge"
                       :style="testResult && testResult.blocked ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
-                      x-text="testResult ? (testResult.blocked ? 'Blocked' : 'Allowed') : ''"></span>
+                      x-text="testResult ? (testResult.blocked ? t(&quot;Blocked&quot;) : t(&quot;Allowed&quot;)) : ''"></span>
                 <span style="font-family:monospace;font-weight:600;color:var(--text-primary)" x-text="testResult ? testResult.domain : ''"></span>
-                <span style="color:var(--text-secondary);font-size:13px" x-text="testResult ? ('group ' + testResult.group_id) : ''"></span>
+                <span style="color:var(--text-secondary);font-size:13px" x-text="testResult ? (t(&quot;group &quot;) + testResult.group_id) : ''"></span>
             </div>
 
             <div x-show="testResult && testResult.allow_reasons.length > 0" style="margin-bottom:20px">
-                <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Allow rules (override blocking)</h3>
+                <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)" x-text="t(&quot;Allow rules (override blocking)&quot;)">Allow rules (override blocking)</h3>
                 <div class="table-scroll">
                     <table class="table">
-                        <thead><tr><th>Rule</th><th>Kind</th><th>Match</th></tr></thead>
+                        <thead><tr><th x-text="t(&quot;Rule&quot;)">Rule</th><th x-text="t(&quot;Kind&quot;)">Kind</th><th x-text="t(&quot;Match&quot;)">Match</th></tr></thead>
                         <tbody>
                         <template x-for="(m, i) in (testResult ? testResult.allow_reasons : [])" :key="'allow-' + i">
                             <tr>
                                 <td x-text="m.name"></td>
-                                <td><span class="badge badge-success" x-text="m.kind"></span></td>
-                                <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                                <td><span class="badge badge-success" x-text="t(m.kind)"></span></td>
+                                <td><span style="color:var(--text-secondary)" x-text="t(m.match_type)"></span></td>
                             </tr>
                         </template>
                         </tbody>
@@ -805,19 +807,19 @@
 
             <div>
                 <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">
-                    Blocking rules
+                    <span x-text="t(&quot;Blocking rules&quot;)">Blocking rules</span>
                     <span x-show="testResult && testResult.block_matches.length === 0"
-                          style="font-weight:400;color:var(--text-secondary)">— none matched</span>
+                          style="font-weight:400;color:var(--text-secondary)" x-text="t(&quot;— none matched&quot;)">— none matched</span>
                 </h3>
                 <div class="table-scroll">
                     <table class="table" x-show="testResult && testResult.block_matches.length > 0">
-                        <thead><tr><th>Source</th><th>Kind</th><th>Match</th></tr></thead>
+                        <thead><tr><th>Source</th><th x-text="t(&quot;Kind&quot;)">Kind</th><th x-text="t(&quot;Match&quot;)">Match</th></tr></thead>
                         <tbody>
                         <template x-for="(m, i) in (testResult ? testResult.block_matches : [])" :key="'block-' + i">
                             <tr>
                                 <td style="font-weight:500;color:var(--text-primary)" x-text="m.name"></td>
-                                <td><span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444" x-text="m.kind"></span></td>
-                                <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                                <td><span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444" x-text="t(m.kind)"></span></td>
+                                <td><span style="color:var(--text-secondary)" x-text="t(m.match_type)"></span></td>
                             </tr>
                         </template>
                         </tbody>
@@ -831,26 +833,26 @@
     <div x-show="activeTab === 'backtest'">
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
-                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Backtest a list (what-if)</h2>
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)" x-text="t(&quot;Backtest a list (what-if)&quot;)">Backtest a list (what-if)</h2>
                 <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
-                    Test an allow- or deny- list that is <strong>not applied yet</strong> against the domains seen in
-                    your recent traffic, and see how many queries it would <strong>newly block</strong> (deny) or
-                    <strong>free</strong> (allow) versus your current rules. The pasted list accepts plain domains,
-                    hosts (<code>0.0.0.0 domain</code>) and adblock (<code>||domain^</code>) formats, so a real list
+                    <span x-text="t(&quot;Test an allow- or deny- list that is&quot;)">Test an allow- or deny- list that is</span> <strong x-text="t(&quot;not applied yet&quot;)">not applied yet</strong> <span x-text="t(&quot;against the domains seen in your recent traffic, and see how many queries it would&quot;)">against the domains seen in
+                    your recent traffic, and see how many queries it would</span> <strong x-text="t(&quot;newly block&quot;)">newly block</strong> <span x-text="t(&quot;(deny) or&quot;)">(deny) or</span>
+                    <strong x-text="t(&quot;free&quot;)">free</strong> <span x-text="t(&quot;(allow) versus your current rules. The pasted list accepts plain domains, hosts (&quot;)">(allow) versus your current rules. The pasted list accepts plain domains,
+                    hosts (</span><code>0.0.0.0 domain</code><span x-text="t(&quot;) and adblock (&quot;)">) and adblock (</span><code>||domain^</code><span x-text="t(&quot;) formats, so a real list behaves exactly as it would if added. Evaluated against the static filter index only — dynamic rules (schedule, CNAME, rebinding, rate-limit, tunneling) are not simulated.&quot;)">) formats, so a real list
                     behaves exactly as it would if added. Evaluated against the static filter index only — dynamic
-                    rules (schedule, CNAME, rebinding, rate-limit, tunneling) are not simulated.
+                    rules (schedule, CNAME, rebinding, rate-limit, tunneling) are not simulated.</span>
                 </p>
                 <form @submit.prevent="runBacktest()">
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
                         <div class="form-group">
                             <label class="form-label">Action</label>
                             <select class="input" x-model="btForm.action">
-                                <option value="deny">Deny (candidate blocklist)</option>
-                                <option value="allow">Allow (candidate allowlist)</option>
+                                <option value="deny" x-text="t(&quot;Deny (candidate blocklist)&quot;)">Deny (candidate blocklist)</option>
+                                <option value="allow" x-text="t(&quot;Allow (candidate allowlist)&quot;)">Allow (candidate allowlist)</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Group</label>
+                            <label class="form-label" x-text="t(&quot;Group&quot;)">Group</label>
                             <select class="input" x-model="btForm.group_id">
                                 <template x-for="group in groups" :key="group.id">
                                     <option :value="group.id" x-text="group.name"></option>
@@ -858,25 +860,25 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Window (hours)</label>
+                            <label class="form-label" x-text="t(&quot;Window (hours)&quot;)">Window (hours)</label>
                             <input type="number" class="input" x-model.number="btForm.window_hours" min="1">
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">List (domains / hosts / adblock — one per line)</label>
+                        <label class="form-label" x-text="t(&quot;List (domains / hosts / adblock — one per line)&quot;)">List (domains / hosts / adblock — one per line)</label>
                         <textarea class="textarea" x-model="btForm.list" rows="6"
                                   placeholder="ads.example.com&#10;0.0.0.0 tracker.test&#10;||doubleclick.net^&#10;*.analytics.example"></textarea>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Regex patterns (optional, one per line)</label>
+                        <label class="form-label" x-text="t(&quot;Regex patterns (optional, one per line)&quot;)">Regex patterns (optional, one per line)</label>
                         <textarea class="textarea" x-model="btForm.regexes" rows="3"
                                   placeholder="^ads\.&#10;tracking"></textarea>
                     </div>
                     <div style="display:flex;gap:12px">
                         <button type="submit" class="btn btn-primary" :disabled="btLoading"
-                                x-text="btLoading ? 'Running...' : 'Run Backtest'"></button>
+                                x-text="btLoading ? t(&quot;Running...&quot;) : t(&quot;Run Backtest&quot;)"></button>
                     </div>
-                    <div x-show="btError" x-text="btError"
+                    <div x-show="btError" x-text="t(btError)"
                          style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
                 </form>
             </div>
@@ -885,32 +887,32 @@
         <div class="card" style="padding:24px" x-show="btResult">
             <div style="margin-bottom:16px;font-size:16px;font-weight:600;color:var(--text-primary)">
                 <template x-if="btResult && btResult.action === 'deny'">
-                    <span>Would newly block
+                    <span><span x-text="t(&quot;Would newly block&quot;)">Would newly block</span>
                         <span style="color:#ef4444" x-text="btResult ? btResult.changed_domains : 0"></span>
-                        domains (<span x-text="btResult ? btResult.changed_queries : 0"></span> queries).</span>
+                        <span x-text="t(&quot;domains (&quot;)">domains (</span><span x-text="btResult ? btResult.changed_queries : 0"></span> <span x-text="t(&quot;queries).&quot;)">queries).</span></span>
                 </template>
                 <template x-if="btResult && btResult.action === 'allow'">
-                    <span>Would newly free
+                    <span><span x-text="t(&quot;Would newly free&quot;)">Would newly free</span>
                         <span style="color:#16a34a" x-text="btResult ? btResult.changed_domains : 0"></span>
-                        domains (<span x-text="btResult ? btResult.changed_queries : 0"></span> queries).</span>
+                        <span x-text="t(&quot;domains (&quot;)">domains (</span><span x-text="btResult ? btResult.changed_queries : 0"></span> <span x-text="t(&quot;queries).&quot;)">queries).</span></span>
                 </template>
             </div>
             <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;font-size:14px;color:var(--text-secondary)">
-                <span>Corpus: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.corpus_size : 0"></strong> domains
-                    / <span x-text="btResult ? btResult.total_queries : 0"></span> queries</span>
-                <span>Currently blocked: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.currently_blocked_domains : 0"></strong></span>
-                <span>Matched by list: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.matched_domains : 0"></strong></span>
-                <span>Already covered: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.redundant_domains : 0"></strong></span>
-                <span x-show="btResult && btResult.action === 'deny' && btResult.overridden_domains > 0">Blocked but allow-listed:
+                <span><span x-text="t(&quot;Corpus:&quot;)">Corpus:</span> <strong style="color:var(--text-primary)" x-text="btResult ? btResult.corpus_size : 0"></strong> <span x-text="t(&quot;domains /&quot;)">domains
+                    /</span> <span x-text="btResult ? btResult.total_queries : 0"></span> <span x-text="t(&quot;queries&quot;)">queries</span></span>
+                <span><span x-text="t(&quot;Currently blocked:&quot;)">Currently blocked:</span> <strong style="color:var(--text-primary)" x-text="btResult ? btResult.currently_blocked_domains : 0"></strong></span>
+                <span><span x-text="t(&quot;Matched by list:&quot;)">Matched by list:</span> <strong style="color:var(--text-primary)" x-text="btResult ? btResult.matched_domains : 0"></strong></span>
+                <span><span x-text="t(&quot;Already covered:&quot;)">Already covered:</span> <strong style="color:var(--text-primary)" x-text="btResult ? btResult.redundant_domains : 0"></strong></span>
+                <span x-show="btResult && btResult.action === 'deny' && btResult.overridden_domains > 0"><span x-text="t(&quot;Blocked but allow-listed:&quot;)">Blocked but allow-listed:</span>
                     <strong style="color:var(--text-primary)" x-text="btResult ? btResult.overridden_domains : 0"></strong></span>
             </div>
             <div class="table-scroll">
                 <table class="table">
                     <thead>
                     <tr>
-                        <th x-text="btResult && btResult.action === 'allow' ? 'Freed domain' : 'Newly blocked domain'"></th>
-                        <th>Queries (last window)</th>
-                        <th x-show="btResult && btResult.action === 'allow'">Currently blocked by</th>
+                        <th x-text="btResult &amp;&amp; btResult.action === 'allow' ? t(&quot;Freed domain&quot;) : t(&quot;Newly blocked domain&quot;)"></th>
+                        <th x-text="t(&quot;Queries (last window)&quot;)">Queries (last window)</th>
+                        <th x-show="btResult && btResult.action === 'allow'" x-text="t(&quot;Currently blocked by&quot;)">Currently blocked by</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -922,14 +924,14 @@
                         </tr>
                     </template>
                     <tr x-show="btResult && btResult.sample.length === 0">
-                        <td colspan="3" style="text-align:center;padding:32px;color:var(--text-secondary)">No domains would change.</td>
+                        <td colspan="3" style="text-align:center;padding:32px;color:var(--text-secondary)" x-text="t(&quot;No domains would change.&quot;)">No domains would change.</td>
                     </tr>
                     </tbody>
                 </table>
             </div>
             <p x-show="btResult && btResult.changed_domains > btResult.sample.length"
                style="margin-top:8px;font-size:12px;color:var(--text-secondary)">
-                Showing top <span x-text="btResult ? btResult.sample.length : 0"></span> by query volume.
+                <span x-text="t(&quot;Showing top&quot;)">Showing top</span> <span x-text="btResult ? btResult.sample.length : 0"></span> <span x-text="t(&quot;by query volume.&quot;)">by query volume.</span>
             </p>
         </div>
     </div><!-- end backtest tab -->

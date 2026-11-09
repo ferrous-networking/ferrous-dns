@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Query Log</title>
+    <title data-i18n-title="Ferrous DNS - Query Log">Ferrous DNS - Query Log</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/queries.css">
@@ -25,80 +27,80 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span>
         </div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span></div>
+            <span x-text="t(&quot;Active&quot;)">Active</span></div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span
-                x-text="stats.queries_total+' queries'">0 queries</span></div>
+                x-text="tn('{count} query', '{count} queries', stats.queries_total)">0 queries</span></div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
-            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
+            <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
             </a>
             <a href="/doh-ids.html" class="nav-item">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
-            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
+            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
             <a href="/settings.html" class="nav-item"><i data-lucide="settings"
-                                                         class="nav-icon"></i><span>Settings</span></a>
+                                                         class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
 <main style="padding:24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Query Log</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">DNS query history — last 24h</p>
+            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="t(&quot;Query Log&quot;)">Query Log</h2>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px" x-text="t(&quot;DNS query history — last 24h&quot;)">DNS query history — last 24h</p>
         </div>
     </div>
     <div class="card" style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Show:&quot;)">Show:</label>
                 <select x-model.number="pageSize" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="10">10</option>
@@ -108,39 +110,39 @@
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Domain:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Domain:&quot;)">Domain:</label>
                 <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
                        placeholder="Search domain..."
-                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px" :placeholder="t(&quot;Search domain...&quot;)">
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Client:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Client:&quot;)">Client:</label>
                 <select x-model="searchClient" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
-                    <option value="">All Clients</option>
+                    <option value="" x-text="t(&quot;All Clients&quot;)">All Clients</option>
                     <template x-for="client in clients" :key="client.ip_address">
                         <option :value="client.ip_address" x-text="clientLabel(client)"></option>
                     </template>
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Category:&quot;)">Category:</label>
                 <select x-model="category" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
-                    <option value="">All Queries</option>
-                    <option value="allowed">Allowed</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="cache">Cache Hits</option>
-                    <option value="upstream">Upstream</option>
-                    <option value="rate-limited">Rate Limited</option>
-                    <option value="malware">Malware Detection</option>
+                    <option value="" x-text="t(&quot;All Queries&quot;)">All Queries</option>
+                    <option value="allowed" x-text="t(&quot;Allowed&quot;)">Allowed</option>
+                    <option value="blocked" x-text="t(&quot;Blocked&quot;)">Blocked</option>
+                    <option value="cache" x-text="t(&quot;Cache Hits&quot;)">Cache Hits</option>
+                    <option value="upstream" x-text="t(&quot;Upstream&quot;)">Upstream</option>
+                    <option value="rate-limited" x-text="t(&quot;Rate Limited&quot;)">Rate Limited</option>
+                    <option value="malware" x-text="t(&quot;Malware Detection&quot;)">Malware Detection</option>
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Protocol:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Protocol:&quot;)">Protocol:</label>
                 <select x-model="protocol" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
-                    <option value="">All Protocols</option>
+                    <option value="" x-text="t(&quot;All Protocols&quot;)">All Protocols</option>
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
                     <option value="dot">DoT</option>
@@ -149,22 +151,22 @@
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Cookie:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Cookie:&quot;)">Cookie:</label>
                 <select x-model="cookie" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
-                    <option value="">All</option>
-                    <option value="any">With cookie</option>
-                    <option value="valid">Valid</option>
-                    <option value="client">Client only</option>
-                    <option value="invalid">Invalid</option>
-                    <option value="none">Without cookie</option>
+                    <option value="" x-text="t(&quot;All&quot;)">All</option>
+                    <option value="any" x-text="t(&quot;With cookie&quot;)">With cookie</option>
+                    <option value="valid" x-text="t(&quot;Valid&quot;)">Valid</option>
+                    <option value="client" x-text="t(&quot;Client only&quot;)">Client only</option>
+                    <option value="invalid" x-text="t(&quot;Invalid&quot;)">Invalid</option>
+                    <option value="none" x-text="t(&quot;Without cookie&quot;)">Without cookie</option>
                 </select>
             </div>
             <div style="margin-left:auto">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" x-model="autoRefresh"
                            style="width:16px;height:16px;accent-color:var(--color-primary)">
-                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
+                    <span style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;Live update&quot;)">Live update</span>
                 </label>
             </div>
         </div>
@@ -173,14 +175,14 @@
         <table>
             <thead>
             <tr>
-                <th class="col-time">TIME</th>
-                <th>DOMAIN</th>
+                <th class="col-time" x-text="t(&quot;TIME&quot;)">TIME</th>
+                <th x-text="t(&quot;DOMAIN&quot;)">DOMAIN</th>
                 <th class="col-type" style="width:70px">TYPE</th>
-                <th class="col-proto">PROTOCOL</th>
+                <th class="col-proto" x-text="t(&quot;PROTOCOL&quot;)">PROTOCOL</th>
                 <th class="col-client">CLIENT</th>
                 <th class="col-source">SOURCE</th>
-                <th class="col-answer">ANSWER</th>
-                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
+                <th class="col-answer" x-text="t(&quot;ANSWER&quot;)">ANSWER</th>
+                <th class="col-rt" style="width:110px" x-text="t(&quot;RESPONSE TIME&quot;)">RESPONSE TIME</th>
                 <th class="col-action" style="width:80px">ACTION</th>
             </tr>
             </thead>
@@ -280,7 +282,7 @@
                                               ? 'background:rgba(34,197,94,0.1);color:#22C55E'
                                               : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
                               x-html="formatSource(query)"
-                              :title="query.upstream_pool && query.upstream_server
+                              :title="query.upstream_pool &amp;&amp; query.upstream_server
                                 ? query.upstream_pool + ':' + query.upstream_server
                                 : ''"></span>
                     </td>
@@ -308,7 +310,7 @@
                             x-show="query.block_source !== 'non_fqdn' && query.block_source !== 'private_ptr' && query.block_source !== 'dns_cookie'"
                             :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
                             @click="handleDomainAction(query)"
-                            x-text="query.blocked ? 'Allow' : 'Block'">
+                            x-text="query.blocked ? t(&quot;Allow&quot;) : t(&quot;Block&quot;)">
                         </button>
                     </td>
                 </tr>
@@ -317,18 +319,18 @@
         </table>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
             <div style="font-size:14px;color:var(--text-secondary)">
-                Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span
-                    x-text="Math.min(currentPage*pageSize,total)"></span> of <span
+                <span x-text="t(&quot;Showing&quot;)">Showing</span> <span x-text="(currentPage-1)*pageSize+1"></span> <span x-text="t(&quot;to&quot;)">to</span> <span
+                    x-text="Math.min(currentPage*pageSize,total)"></span> <span x-text="t(&quot;of&quot;)">of</span> <span
                     x-text="total"></span>
             </div>
             <div style="display:flex;gap:8px">
                 <button @click="changePage(-1)" :disabled="currentPage===1"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
+                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''" x-text="t(&quot;Previous&quot;)">Previous
                 </button>
                 <button @click="changePage(1)" :disabled="!_hasMore"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''">Next
+                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''" x-text="t(&quot;Next&quot;)">Next
                 </button>
             </div>
         </div>

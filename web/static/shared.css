@@ -345,3 +345,24 @@ textarea:disabled {
         overflow-x: auto
     }
 }
+
+/* The login screen offers the language control before sign-in; admin pages use Settings → Appearance. */
+.language-selector {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.language-selector select {
+    min-width: 100px;
+    max-width: 150px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+}

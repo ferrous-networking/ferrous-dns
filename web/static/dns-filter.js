@@ -137,17 +137,17 @@
                 try {
                     const res = await fetch(`${API_BASE}/blocklist-sources/${source.id}/sync`, {method: 'POST'});
                     if (res.status === 202) {
-                        this.syncMessage = `Refreshing "${source.name}". Rebuilding the index re-downloads every enabled list, so this can take a minute; Last Sync updates when it finishes.`;
+                        this.syncMessage = t("Refreshing \"{0}\". Rebuilding the index re-downloads every enabled list, so this can take a minute; Last Sync updates when it finishes.", {0: source.name});
                         this.pollForSync(source.id, source.last_synced_at);
                     } else if (res.status === 409) {
-                        this.syncMessage = 'A sync is already running.';
+                        this.syncMessage = t("A sync is already running.");
                     } else {
                         const errorText = await res.text();
-                        this.syncError = errorText || `Failed to start sync (HTTP ${res.status})`;
+                        this.syncError = errorText || t("Failed to start sync (HTTP {0})", {0: res.status});
                     }
                 } catch (e) {
                     console.error('Error starting blocklist sync:', e);
-                    this.syncError = 'Network error: ' + e.message;
+                    this.syncError = t("Network error: ") + e.message;
                 } finally {
                     this.syncingId = null;
                 }
@@ -175,7 +175,7 @@
             },
 
             formatSyncDate(value) {
-                return value ? new Date(value).toLocaleString() : '—';
+                return value ? new Date(value).toLocaleString(FerrousI18n.formatLocale()) : '—';
             },
 
             async toggleGroup(source, groupId, add) {
@@ -192,7 +192,7 @@
                         source.group_ids = newIds;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to update groups: ' + errorText);
+                        alert(t("Failed to update groups: ") + errorText);
                         await this.loadSources();
                     }
                 } catch (e) {
@@ -258,11 +258,11 @@
                         this.cancelForm(); 
                     } else {
                         const errorText = await res.text();
-                        this.formError = errorText || 'Failed to save blocklist source';
+                        this.formError = errorText || t("Failed to save blocklist source");
                     }
                 } catch (e) {
                     console.error('Error saving source:', e);
-                    this.formError = 'Network error: ' + e.message;
+                    this.formError = t("Network error: ") + e.message;
                 }
             },
 
@@ -276,7 +276,7 @@
                     if (res.ok) {
                         source.enabled = !source.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        alert(t("Failed to toggle status"));
                     }
                 } catch (e) {
                     console.error('Error toggling status:', e);
@@ -285,7 +285,7 @@
 
 
             async deleteSource(source) {
-                if (!confirm(`Delete blocklist source "${source.name}"? This cannot be undone.`)) {
+                if (!confirm(t("Delete blocklist source \"{0}\"? This cannot be undone.", {0: source.name}))) {
                     return;
                 }
 
@@ -297,11 +297,11 @@
                         await this.loadSources();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        alert(t("Failed to delete: ") + errorText);
                     }
                 } catch (e) {
                     console.error('Error deleting source:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
 
@@ -337,7 +337,7 @@
                         source.group_ids = newIds;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to update groups: ' + errorText);
+                        alert(t("Failed to update groups: ") + errorText);
                         await this.loadWhitelistSources();
                     }
                 } catch (e) {
@@ -403,11 +403,11 @@
                         this.wCancelForm();
                     } else {
                         const errorText = await res.text();
-                        this.wFormError = errorText || 'Failed to save allowlist source';
+                        this.wFormError = errorText || t("Failed to save allowlist source");
                     }
                 } catch (e) {
                     console.error('Error saving allowlist source:', e);
-                    this.wFormError = 'Network error: ' + e.message;
+                    this.wFormError = t("Network error: ") + e.message;
                 }
             },
 
@@ -421,7 +421,7 @@
                     if (res.ok) {
                         source.enabled = !source.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        alert(t("Failed to toggle status"));
                     }
                 } catch (e) {
                     console.error('Error toggling allowlist status:', e);
@@ -430,7 +430,7 @@
 
 
             async wDeleteSource(source) {
-                if (!confirm(`Delete allowlist source "${source.name}"? This cannot be undone.`)) {
+                if (!confirm(t("Delete allowlist source \"{0}\"? This cannot be undone.", {0: source.name}))) {
                     return;
                 }
 
@@ -442,11 +442,11 @@
                         await this.loadWhitelistSources();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        alert(t("Failed to delete: ") + errorText);
                     }
                 } catch (e) {
                     console.error('Error deleting allowlist source:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
 
@@ -529,11 +529,11 @@
                         this.mCancelForm();
                     } else {
                         const errorText = await res.text();
-                        this.mFormError = errorText || 'Failed to save managed domain';
+                        this.mFormError = errorText || t("Failed to save managed domain");
                     }
                 } catch (e) {
                     console.error('Error saving managed domain:', e);
-                    this.mFormError = 'Network error: ' + e.message;
+                    this.mFormError = t("Network error: ") + e.message;
                 }
             },
 
@@ -547,7 +547,7 @@
                     if (res.ok) {
                         domain.enabled = !domain.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        alert(t("Failed to toggle status"));
                     }
                 } catch (e) {
                     console.error('Error toggling managed domain status:', e);
@@ -565,7 +565,7 @@
                         domain.group_id = newGroupId;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
+                        alert(t("Failed to change group: ") + errorText);
                         await this.loadManagedDomains();
                     }
                 } catch (e) {
@@ -575,7 +575,7 @@
             },
 
             async mDeleteDomain(domain) {
-                if (!confirm(`Delete managed domain "${domain.name}" (${domain.domain})? This cannot be undone.`)) {
+                if (!confirm(t("Delete managed domain \"{0}\" ({1})? This cannot be undone.", {0: domain.name, 1: domain.domain}))) {
                     return;
                 }
 
@@ -587,11 +587,11 @@
                         await this.loadManagedDomains();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        alert(t("Failed to delete: ") + errorText);
                     }
                 } catch (e) {
                     console.error('Error deleting managed domain:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
 
@@ -673,11 +673,11 @@
                         this.rgCancelForm();
                     } else {
                         const errorText = await res.text();
-                        this.rgFormError = errorText || 'Failed to save regex filter';
+                        this.rgFormError = errorText || t("Failed to save regex filter");
                     }
                 } catch (e) {
                     console.error('Error saving regex filter:', e);
-                    this.rgFormError = 'Network error: ' + e.message;
+                    this.rgFormError = t("Network error: ") + e.message;
                 }
             },
 
@@ -691,7 +691,7 @@
                     if (res.ok) {
                         filter.enabled = !filter.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        alert(t("Failed to toggle status"));
                     }
                 } catch (e) {
                     console.error('Error toggling regex filter status:', e);
@@ -709,7 +709,7 @@
                         filter.group_id = newGroupId;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
+                        alert(t("Failed to change group: ") + errorText);
                         await this.loadRegexFilters();
                     }
                 } catch (e) {
@@ -719,7 +719,7 @@
             },
 
             async rgDeleteFilter(filter) {
-                if (!confirm(`Delete regex filter "${filter.name}" (${filter.pattern})? This cannot be undone.`)) {
+                if (!confirm(t("Delete regex filter \"{0}\" ({1})? This cannot be undone.", {0: filter.name, 1: filter.pattern}))) {
                     return;
                 }
 
@@ -731,11 +731,11 @@
                         await this.loadRegexFilters();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        alert(t("Failed to delete: ") + errorText);
                     }
                 } catch (e) {
                     console.error('Error deleting regex filter:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
 
@@ -755,11 +755,11 @@
                     if (res.ok) {
                         this.testResult = await res.json();
                     } else {
-                        this.testError = (await res.text()) || 'Failed to test domain';
+                        this.testError = (await res.text()) || t("Failed to test domain");
                     }
                 } catch (e) {
                     console.error('Error testing domain:', e);
-                    this.testError = 'Network error: ' + e.message;
+                    this.testError = t("Network error: ") + e.message;
                 } finally {
                     this.testLoading = false;
                     this.$nextTick(() => scheduleLucide());
@@ -791,11 +791,11 @@
                     if (res.ok) {
                         this.btResult = await res.json();
                     } else {
-                        this.btError = (await res.text()) || 'Failed to run backtest';
+                        this.btError = (await res.text()) || t("Failed to run backtest");
                     }
                 } catch (e) {
                     console.error('Error running backtest:', e);
-                    this.btError = 'Network error: ' + e.message;
+                    this.btError = t("Network error: ") + e.message;
                 } finally {
                     this.btLoading = false;
                     this.$nextTick(() => scheduleLucide());

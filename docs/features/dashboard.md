@@ -12,7 +12,7 @@ Open your browser and navigate to:
 http://<your-server-ip>:8080
 ```
 
-The dashboard is built with **Alpine.js**, **Chart.js** and **Lucide** icons, and every file it loads — libraries and fonts included — is compiled into the server binary. It makes no request to third-party hosts, so it works on networks without internet access. No Node.js, no build step.
+The dashboard is built with **Alpine.js**, **Chart.js** and **Lucide** icons, and every file it loads — libraries and fonts included — is compiled into the server binary. It makes no request to third-party hosts, so it works on networks without internet access. Serving it requires no Node.js runtime or build step.
 
 ---
 
@@ -151,6 +151,45 @@ is otherwise only written to the log.
 ## Dark Mode
 
 The dashboard supports light and dark themes. Toggle via the theme button in the top navigation bar. The preference is saved in `localStorage`.
+
+---
+
+## Interface Language
+
+The administration interface is available in **English** and **French**. Use the
+**Language** selector on the login screen, or under **Settings → Appearance**
+next to the theme once signed in. Changing it reloads the current page, including
+chart labels and confirmation dialogs; save any unfinished form before switching.
+Other open tabs reload into the new language as well.
+
+The initial language follows the first supported browser language, falling back
+to English. An explicit choice is stored as `ferrous_locale` in that browser's
+`localStorage` and takes precedence on later visits. It does not change another
+user's language or require a server restart. If browser storage is blocked, the
+interface still loads using the browser language, but cannot save a preference.
+
+![French dashboard with translated navigation, query metrics and charts](../assets/dashboard/dashboard-french-dashboard.png)
+
+![French login screen with the language selector and translated account fields](../assets/dashboard/dashboard-french-login.png)
+
+The translation includes navigation, help text, forms, validation messages,
+authentication and MFA screens, charts, filtering tools, and backup controls.
+Plurals follow the selected language. Numbers and timestamps follow the selected
+language with the browser's regional conventions: an English interface in an
+en-GB browser keeps `08/11/2026, 14:30:00`, and a fr-CA browser keeps its own
+date format in French. DNS record types,
+protocols, API enum values, configured names, and user-entered data keep their
+original values. Raw technical diagnostics returned by the API and the generated
+OpenAPI reference remain in their original language.
+
+Translations are bundled into the binary and work offline. Contributors can add
+or review entries in `web/static/i18n-fr.js`: English source text is the lookup
+key and fallback, translations are plain text, and placeholders such as `{count}`
+must be preserved. New visible strings use `t(...)`; count-dependent messages use
+`tn(singular, plural, count)`. Keep bound form values and wire-format identifiers
+untranslated. Run `node --test scripts/tests/web-i18n.test.cjs` to check catalog
+coverage, interpolation, locale selection and fallback behavior without npm or
+third-party JavaScript test dependencies.
 
 ---
 

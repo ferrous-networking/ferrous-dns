@@ -17,6 +17,16 @@ env:
   FUZZ_NIGHTLY: 'nightly-2026-07-01'
 
 jobs:
+  web-i18n:
+    name: Web UI localization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check translation coverage and locale behavior
+        run: node --test scripts/tests/web-i18n.test.cjs
+
   quick-check:
     name: Quick Check (Format + Clippy)
     runs-on: ubuntu-latest
@@ -397,6 +407,7 @@ jobs:
       - build
       - fuzz-short
       - docs-consistency
+      - web-i18n
     runs-on: ubuntu-latest
     # `always()` so a failed dependency fails this job instead of skipping it.
     if: always()
@@ -408,6 +419,7 @@ jobs:
              [ "${{ needs.coverage.result }}" != "success" ] || \
              [ "${{ needs.fuzz-short.result }}" != "success" ] || \
              [ "${{ needs.docs-consistency.result }}" != "success" ] || \
+             [ "${{ needs.web-i18n.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ CI failed"
             exit 1

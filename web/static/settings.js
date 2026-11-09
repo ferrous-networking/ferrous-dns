@@ -71,73 +71,73 @@
             // and the zero checks in root.rs) and must only flag what it rejects too.
             // `max` without `float` is a whole number from 1 to max; no `max`, at least 1.
             malwareTitles: {
-                tunneling_detection: 'DNS Tunneling Detection',
-                dga_detection: 'DGA Detection',
-                nxdomain_hijack: 'NXDomain Hijack Detection',
-                response_ip_filter: 'Response IP Filtering',
+                tunneling_detection: t("DNS Tunneling Detection"),
+                dga_detection: t("DGA Detection"),
+                nxdomain_hijack: t("NXDomain Hijack Detection"),
+                response_ip_filter: t("Response IP Filtering"),
             },
             malwareNumberRows: {
                 tunneling_detection: [
-                    {field: 'max_fqdn_length', label: 'Max FQDN Length', icon: 'ruler', unit: 'bytes', max: 253,
-                        help: 'Phase 1, on every query: flags a name longer than this. Tunnels pack data into long names; ordinary names rarely pass 100 bytes.'},
-                    {field: 'max_label_length', label: 'Max Label Length', icon: 'whole-word', unit: 'bytes', max: 63,
-                        help: 'Phase 1: flags a name with any single label longer than this. Encoded payloads make long labels.'},
-                    {field: 'entropy_threshold', label: 'Entropy Threshold', icon: 'sigma', unit: 'bits/char', float: true, max: 8, step: 0.1,
-                        help: 'Phase 2: Shannon entropy of the subdomain above which it counts as encoded data. Random-looking labels score high, words low.'},
-                    {field: 'query_rate_per_apex', label: 'Query Rate per Domain', icon: 'activity', unit: 'per min',
-                        help: 'Phase 2: queries per minute from one client subnet to one domain above which the rate counts as suspicious.'},
-                    {field: 'unique_subdomain_threshold', label: 'Unique Subdomains', icon: 'layers', unit: 'per min',
-                        help: 'Phase 2: distinct subdomains per minute from one client subnet under one domain above which they count as suspicious. Each tunneled chunk is a new name.'},
-                    {field: 'txt_proportion_threshold', label: 'TXT Proportion', icon: 'file-text', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 2: share of a client\'s queries that ask for TXT records above which it counts as suspicious. 0.05 = 5%.'},
-                    {field: 'nxdomain_ratio_threshold', label: 'NXDOMAIN Ratio', icon: 'circle-x', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 2: share of NXDOMAIN answers for one client and domain above which it counts as suspicious. 0.2 = 20%.'},
-                    {field: 'confidence_threshold', label: 'Confidence Threshold', icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 2: combined score of the signals above at which the domain is flagged. Higher means fewer false positives, and fewer detections.'},
-                    {field: 'stale_entry_ttl_secs', label: 'Stale Entry TTL', icon: 'hourglass', unit: 'seconds',
-                        help: 'Idle per-client tracking entries are dropped from memory after this long.'},
+                    {field: 'max_fqdn_length', label: t("Max FQDN Length"), icon: 'ruler', unit: t("bytes"), max: 253,
+                        help: t("Phase 1, on every query: flags a name longer than this. Tunnels pack data into long names; ordinary names rarely pass 100 bytes.")},
+                    {field: 'max_label_length', label: t("Max Label Length"), icon: 'whole-word', unit: t("bytes"), max: 63,
+                        help: t("Phase 1: flags a name with any single label longer than this. Encoded payloads make long labels.")},
+                    {field: 'entropy_threshold', label: t("Entropy Threshold"), icon: 'sigma', unit: t("bits/char"), float: true, max: 8, step: 0.1,
+                        help: t("Phase 2: Shannon entropy of the subdomain above which it counts as encoded data. Random-looking labels score high, words low.")},
+                    {field: 'query_rate_per_apex', label: t("Query Rate per Domain"), icon: 'activity', unit: t("per min"),
+                        help: t("Phase 2: queries per minute from one client subnet to one domain above which the rate counts as suspicious.")},
+                    {field: 'unique_subdomain_threshold', label: t("Unique Subdomains"), icon: 'layers', unit: t("per min"),
+                        help: t("Phase 2: distinct subdomains per minute from one client subnet under one domain above which they count as suspicious. Each tunneled chunk is a new name.")},
+                    {field: 'txt_proportion_threshold', label: t("TXT Proportion"), icon: 'file-text', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 2: share of a client's queries that ask for TXT records above which it counts as suspicious. 0.05 = 5%.")},
+                    {field: 'nxdomain_ratio_threshold', label: t("NXDOMAIN Ratio"), icon: 'circle-x', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 2: share of NXDOMAIN answers for one client and domain above which it counts as suspicious. 0.2 = 20%.")},
+                    {field: 'confidence_threshold', label: t("Confidence Threshold"), icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 2: combined score of the signals above at which the domain is flagged. Higher means fewer false positives, and fewer detections.")},
+                    {field: 'stale_entry_ttl_secs', label: t("Stale Entry TTL"), icon: 'hourglass', unit: t("seconds"),
+                        help: t("Idle per-client tracking entries are dropped from memory after this long.")},
                 ],
                 dga_detection: [
-                    {field: 'hot_path_confidence_threshold', label: 'Instant Confidence Threshold', icon: 'zap', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 1: weighted score the name signals below must reach to flag a name on the spot. 0.40 usually takes two signals at once, which keeps names that look odd in one way only, like CDN hosts, out.'},
-                    {field: 'sld_entropy_threshold', label: 'Name Entropy', icon: 'sigma', unit: 'bits/char', float: true, max: 8, step: 0.1,
-                        help: 'Shannon entropy of the second-level domain (example in example.com) above which it counts as random.'},
-                    {field: 'sld_max_length', label: 'Max Name Length', icon: 'ruler', unit: 'characters', max: 63,
-                        help: 'Second-level domains longer than this count as suspicious.'},
-                    {field: 'consonant_ratio_threshold', label: 'Consonant Ratio', icon: 'case-sensitive', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Share of consonants among the letters above which a name counts as unpronounceable. 0.75 = 75%.'},
-                    {field: 'digit_ratio_threshold', label: 'Digit Ratio', icon: 'binary', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Share of digits in the name above which it counts as suspicious. 0.3 = 30%.'},
-                    {field: 'ngram_score_threshold', label: 'Letter-pair Score', icon: 'spell-check', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 2: how far the name\'s letter pairs stray from English (0 = English-like, 1 = random) before it counts as suspicious.'},
-                    {field: 'dga_rate_per_client', label: 'Suspicious Names per Client', icon: 'activity', unit: 'per min',
-                        help: 'Phase 2: suspicious names per minute from one client above which the client counts as infected. DGA malware tries many names in a row.'},
-                    {field: 'confidence_threshold', label: 'Confidence Threshold', icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
-                        help: 'Phase 2: combined score of all signals at which the domain is flagged.'},
-                    {field: 'stale_entry_ttl_secs', label: 'Stale Entry TTL', icon: 'hourglass', unit: 'seconds',
-                        help: 'Idle per-client tracking entries are dropped from memory after this long.'},
+                    {field: 'hot_path_confidence_threshold', label: t("Instant Confidence Threshold"), icon: 'zap', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 1: weighted score the name signals below must reach to flag a name on the spot. 0.40 usually takes two signals at once, which keeps names that look odd in one way only, like CDN hosts, out.")},
+                    {field: 'sld_entropy_threshold', label: t("Name Entropy"), icon: 'sigma', unit: t("bits/char"), float: true, max: 8, step: 0.1,
+                        help: t("Shannon entropy of the second-level domain (example in example.com) above which it counts as random.")},
+                    {field: 'sld_max_length', label: t("Max Name Length"), icon: 'ruler', unit: t("characters"), max: 63,
+                        help: t("Second-level domains longer than this count as suspicious.")},
+                    {field: 'consonant_ratio_threshold', label: t("Consonant Ratio"), icon: 'case-sensitive', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Share of consonants among the letters above which a name counts as unpronounceable. 0.75 = 75%.")},
+                    {field: 'digit_ratio_threshold', label: t("Digit Ratio"), icon: 'binary', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Share of digits in the name above which it counts as suspicious. 0.3 = 30%.")},
+                    {field: 'ngram_score_threshold', label: t("Letter-pair Score"), icon: 'spell-check', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 2: how far the name's letter pairs stray from English (0 = English-like, 1 = random) before it counts as suspicious.")},
+                    {field: 'dga_rate_per_client', label: t("Suspicious Names per Client"), icon: 'activity', unit: t("per min"),
+                        help: t("Phase 2: suspicious names per minute from one client above which the client counts as infected. DGA malware tries many names in a row.")},
+                    {field: 'confidence_threshold', label: t("Confidence Threshold"), icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: t("Phase 2: combined score of all signals at which the domain is flagged.")},
+                    {field: 'stale_entry_ttl_secs', label: t("Stale Entry TTL"), icon: 'hourglass', unit: t("seconds"),
+                        help: t("Idle per-client tracking entries are dropped from memory after this long.")},
                 ],
                 nxdomain_hijack: [
-                    {field: 'probe_interval_secs', label: 'Probe Interval', icon: 'timer', unit: 'seconds',
-                        help: 'Time between probe rounds against each upstream.'},
-                    {field: 'probe_timeout_ms', label: 'Probe Timeout', icon: 'clock', unit: 'milliseconds',
-                        help: 'How long a probe waits for an upstream\'s answer.'},
-                    {field: 'probes_per_round', label: 'Probes per Round', icon: 'hash', unit: 'probes', max: 255,
-                        help: 'Random .invalid names sent to each upstream per round.'},
-                    {field: 'hijack_ip_ttl_secs', label: 'Hijack IP TTL', icon: 'hourglass', unit: 'seconds',
-                        help: 'A hijack IP the probes stop seeing is forgotten after this long.'},
+                    {field: 'probe_interval_secs', label: t("Probe Interval"), icon: 'timer', unit: t("seconds"),
+                        help: t("Time between probe rounds against each upstream.")},
+                    {field: 'probe_timeout_ms', label: t("Probe Timeout"), icon: 'clock', unit: t("milliseconds"),
+                        help: t("How long a probe waits for an upstream's answer.")},
+                    {field: 'probes_per_round', label: t("Probes per Round"), icon: 'hash', unit: t("probes"), max: 255,
+                        help: t("Random .invalid names sent to each upstream per round.")},
+                    {field: 'hijack_ip_ttl_secs', label: t("Hijack IP TTL"), icon: 'hourglass', unit: t("seconds"),
+                        help: t("A hijack IP the probes stop seeing is forgotten after this long.")},
                 ],
                 response_ip_filter: [
-                    {field: 'refresh_interval_secs', label: 'Refresh Interval', icon: 'refresh-cw', unit: 'seconds',
-                        help: 'Time between feed downloads.'},
-                    {field: 'ip_ttl_secs', label: 'IP TTL', icon: 'hourglass', unit: 'seconds',
-                        help: 'An IP no feed lists any more is dropped after this long. Keep it at or above the refresh interval, or IPs expire before the next download.'},
+                    {field: 'refresh_interval_secs', label: t("Refresh Interval"), icon: 'refresh-cw', unit: t("seconds"),
+                        help: t("Time between feed downloads.")},
+                    {field: 'ip_ttl_secs', label: t("IP TTL"), icon: 'hourglass', unit: t("seconds"),
+                        help: t("An IP no feed lists any more is dropped after this long. Keep it at or above the refresh interval, or IPs expire before the next download.")},
                 ],
             },
             malwareListRows: {
                 response_ip_filter: [
-                    {field: 'ip_list_urls', label: 'Feed URLs', icon: 'rss', placeholder: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt',
-                        help: 'HTTP or HTTPS URLs of IP feeds: one IP per line, # comments allowed, up to 64 MiB each. At least one is needed while the filter is on.'},
+                    {field: 'ip_list_urls', label: t("Feed URLs"), icon: 'rss', placeholder: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt',
+                        help: t("HTTP or HTTPS URLs of IP feeds: one IP per line, # comments allowed, up to 64 MiB each. At least one is needed while the filter is on.")},
                 ],
             },
             settings: {
@@ -349,11 +349,11 @@
                             };
                         }
                     } else {
-                        this.showAlert('error', 'Failed to load configuration')
+                        this.showAlert('error', t("Failed to load configuration"))
                     }
                 } catch (e) {
                     console.error('Load config error:', e);
-                    this.showAlert('error', 'Failed to load: ' + e.message)
+                    this.showAlert('error', t("Failed to load: ") + e.message)
                 } finally {
                     this.loading = false
                 }
@@ -443,7 +443,7 @@
                 const known = new Set(this.clientGroups.map(g => g.id));
                 const missing = (pool.groups || []).filter(id => !known.has(id)).map(id => ({
                     id,
-                    name: this.clientGroupsLoaded ? `Group ${id} (deleted)` : `Group ${id}`,
+                    name: this.clientGroupsLoaded ? t("Group {0} (deleted)", {0: id}) : t("Group {0}", {0: id}),
                     missing: this.clientGroupsLoaded
                 }));
                 return [...this.clientGroups, ...missing];
@@ -454,7 +454,7 @@
                 const known = new Set(this.clientGroups.map(g => g.id));
                 const wanted = [...new Set(pools.flatMap(p => this.poolRouting(p).groups))].sort((a, b) => a - b);
                 const id = wanted.find(g => !known.has(g));
-                return id === undefined ? '' : `A pool is routed for client group ${id}, which does not exist`;
+                return id === undefined ? '' : t("A pool is routed for client group {0}, which does not exist", {0: id});
             },
             // Mirrors normalize_route_domain (crates/domain/src/config/upstream.rs):
             // only what the backend rejects too is flagged, with its message.
@@ -462,22 +462,22 @@
                 let d = domain.trim();
                 if (d.startsWith('.')) d = d.slice(1);
                 if (d.endsWith('.')) d = d.slice(0, -1);
-                if (d.includes('*')) return 'a wildcard is not needed: a domain already covers every name under it';
+                if (d.includes('*')) return t("a wildcard is not needed: a domain already covers every name under it");
                 if (!/^[\x00-\x7F]*$/.test(d)) {
                     try {
                         d = new URL(`http://${d}/`).hostname;
                     } catch {
-                        return 'not a valid domain name';
+                        return t("not a valid domain name");
                     }
                 }
                 d = d.toLowerCase();
-                if (!d) return 'Domain cannot be empty';
-                if (d.length > 253) return 'Domain cannot exceed 253 characters';
+                if (!d) return t("Domain cannot be empty");
+                if (d.length > 253) return t("Domain cannot exceed 253 characters");
                 for (const label of d.split('.')) {
-                    if (!label) return 'Domain cannot contain an empty label';
-                    if (label.length > 63) return 'Domain label cannot exceed 63 characters';
+                    if (!label) return t("Domain cannot contain an empty label");
+                    if (label.length > 63) return t("Domain label cannot exceed 63 characters");
                     if (!/^[A-Za-z0-9_-]+$/.test(label)) {
-                        return 'Domain contains invalid characters (only alphanumeric, hyphens and underscores are allowed)';
+                        return t("Domain contains invalid characters (only alphanumeric, hyphens and underscores are allowed)");
                     }
                 }
                 return '';
@@ -493,14 +493,14 @@
             // Mirrors validate_pool_routes, messages included.
             firstRoutingError(pools) {
                 if (pools.length > 0 && pools.every(p => this.poolRouting(p).domains.length > 0)) {
-                    return 'At least one pool must have no domains, to answer every other query';
+                    return t("At least one pool must have no domains, to answer every other query");
                 }
                 const claimed = new Map();
                 for (const p of pools) {
                     const routing = this.poolRouting(p);
                     for (const domain of routing.domains) {
                         const reason = this.routeDomainError(domain);
-                        if (reason) return `Pool '${p.name}': domain '${domain}': ${reason}`;
+                        if (reason) return t("Pool '{0}': domain '{1}': {2}", {0: p.name, 1: domain, 2: reason});
                     }
                     const scopes = routing.groups.length > 0 ? routing.groups : [null];
                     for (const domain of new Set(routing.domains.map(d => this.routeDomainKey(d)))) {
@@ -508,8 +508,8 @@
                             const key = `${domain}\u0000${scope}`;
                             const owner = claimed.get(key);
                             if (owner !== undefined && owner !== p.name) {
-                                const clients = scope === null ? 'every client' : `client group ${scope}`;
-                                return `Domain '${domain}' is routed to both pool '${owner}' and pool '${p.name}' for ${clients}`;
+                                const clients = scope === null ? t("every client") : t("client group {0}", {0: scope});
+                                return t("Domain '{0}' is routed to both pool '{1}' and pool '{2}' for {3}", {0: domain, 1: owner, 2: p.name, 3: clients});
                             }
                             claimed.set(key, p.name);
                         }
@@ -537,10 +537,10 @@
                     case 'quic': {
                         const written = rest.replace(/\/+$/, '');
                         const port = this.hostPortError(written) === null ? ':853' : '';
-                        return `'quic://' is not a supported scheme — write DNS-over-QUIC as doq://${written}${port}`;
+                        return t("'quic://' is not a supported scheme — write DNS-over-QUIC as doq://{0}{1}", {0: written, 1: port});
                     }
                     default:
-                        return `unknown scheme '${scheme}://' — use udp://, tcp://, tls://, doq://, https:// or h3://`;
+                        return t("unknown scheme '{0}://' — use udp://, tcp://, tls://, doq://, https:// or h3://", {0: scheme});
                 }
             },
             // '' when `s` is HOST:PORT or [IPv6]:PORT, null when only the port is missing.
@@ -548,10 +548,10 @@
                 let host, port;
                 if (s.startsWith('[')) {
                     const end = s.indexOf(']');
-                    if (end < 0) return 'unterminated IPv6 literal';
+                    if (end < 0) return t("unterminated IPv6 literal");
                     const after = s.slice(end + 1);
                     if (!after) return null;
-                    if (!after.startsWith(':')) return 'unexpected characters after IPv6 literal';
+                    if (!after.startsWith(':')) return t("unexpected characters after IPv6 literal");
                     host = s.slice(1, end);
                     port = after.slice(1);
                 } else {
@@ -560,18 +560,18 @@
                     host = s.slice(0, colon);
                     port = s.slice(colon + 1);
                 }
-                if (!host) return 'missing host';
+                if (!host) return t("missing host");
                 return this.portError(port);
             },
             portError(port) {
                 return /^\+?\d+$/.test(port) && Number(port) <= 65535
-                    ? '' : `invalid port '${port}' — use a number from 0 to 65535`;
+                    ? '' : t("invalid port '{0}' — use a number from 0 to 65535", {0: port});
             },
             missingPortHint(scheme, written) {
                 const [protocol, port] = scheme === 'tls' ? ['DNS-over-TLS', 853]
-                    : scheme === 'doq' ? ['DNS-over-QUIC', 853] : ['plain DNS', 53];
+                    : scheme === 'doq' ? ['DNS-over-QUIC', 853] : [t("plain DNS"), 53];
                 const prefix = scheme ? `${scheme}://` : '';
-                return `missing port — ${protocol} usually uses ${port}, e.g. ${prefix}${written}:${port}`;
+                return t("missing port — {0} usually uses {1}, e.g. {2}{3}:{4}", {0: protocol, 1: port, 2: prefix, 3: written, 4: port});
             },
             urlAuthorityError(rest) {
                 const authority = rest.split(/[/?#]/)[0];
@@ -580,17 +580,17 @@
                 if (authority.startsWith('[')) {
                     // The backend also checks the literal is IPv6; that message comes from Rust.
                     const end = authority.indexOf(']');
-                    if (end < 0) return 'unterminated IPv6 literal';
+                    if (end < 0) return t("unterminated IPv6 literal");
                     host = authority.slice(1, end);
                     const after = authority.slice(end + 1);
-                    if (after && !after.startsWith(':')) return 'unexpected characters after IPv6 literal';
+                    if (after && !after.startsWith(':')) return t("unexpected characters after IPv6 literal");
                     if (after) port = after.slice(1);
                 } else if ((authority.match(/:/g) || []).length > 1) {
-                    return `IPv6 addresses must be in brackets, e.g. [${authority}]`;
+                    return t("IPv6 addresses must be in brackets, e.g. [{0}]", {0: authority});
                 } else if (authority.includes(':')) {
                     [host, port] = authority.split(':');
                 }
-                if (!host) return 'missing host';
+                if (!host) return t("missing host");
                 return port === null ? '' : this.portError(port);
             },
             // Only IP:PORT may omit the scheme. A bracketed IPv6 one is left to the backend.
@@ -603,8 +603,8 @@
                 if (new RegExp(`^${ipv4}$`).test(s)) return this.missingPortHint('', s);
                 if (s.includes(':') && this.isIpv6(s)) return this.missingPortHint('', `[${s}]`);
                 const hostLike = s.match(/^[A-Za-z0-9._-]+(:\d+)?$/);
-                if (hostLike) return `add a scheme, e.g. udp://${s}${hostLike[1] ? '' : ':53'} — only IP:PORT may omit it`;
-                return 'unrecognized server address — use a URL such as doq://dns.adguard-dns.com:853 or IP:PORT such as 8.8.8.8:53';
+                if (hostLike) return t("add a scheme, e.g. udp://{0}{1} — only IP:PORT may omit it", {0: s, 1: hostLike[1] ? '' : ':53'});
+                return t("unrecognized server address — use a URL such as doq://dns.adguard-dns.com:853 or IP:PORT such as 8.8.8.8:53");
             },
             isIpv6(s) {
                 try {
@@ -625,32 +625,32 @@
                 for (const p of pools) {
                     for (const s of p.servers) {
                         const hint = this.upstreamUrlError(s);
-                        if (hint) return `Pool '${p.name}': Invalid server '${s}': ${hint}`;
+                        if (hint) return t("Pool '{0}': Invalid server '{1}': {2}", {0: p.name, 1: s, 2: hint});
                     }
                 }
                 return '';
             },
             malwareNumberError(section, row) {
                 const value = this.config.dns[section][row.field];
-                if (value === '' || value === null || value === undefined) return 'Required';
-                if (typeof value !== 'number' || Number.isNaN(value)) return 'Must be a number';
+                if (value === '' || value === null || value === undefined) return t("Required");
+                if (typeof value !== 'number' || Number.isNaN(value)) return t("Must be a number");
                 if (row.float) {
-                    return value > 0 && value <= row.max ? '' : `Must be greater than 0 and at most ${row.max}`;
+                    return value > 0 && value <= row.max ? '' : t("Must be greater than 0 and at most {0}", {0: row.max});
                 }
-                if (!Number.isInteger(value)) return 'Must be a whole number';
+                if (!Number.isInteger(value)) return t("Must be a whole number");
                 if (row.max !== undefined) {
-                    return value >= 1 && value <= row.max ? '' : `Must be from 1 to ${row.max}`;
+                    return value >= 1 && value <= row.max ? '' : t("Must be from 1 to {0}", {0: row.max});
                 }
-                return value >= 1 ? '' : 'Must be at least 1';
+                return value >= 1 ? '' : t("Must be at least 1");
             },
             // Mirrors validate_url in crates/domain/src/value_objects/validators.rs.
             // Blank entries are dropped on save.
             malwareEntryError(entry) {
                 const value = (entry || '').trim();
                 if (!value) return '';
-                if (value.length > 2048) return 'URL cannot exceed 2048 characters';
+                if (value.length > 2048) return t("URL cannot exceed 2048 characters");
                 if (!value.startsWith('http://') && !value.startsWith('https://')) {
-                    return 'URL must start with http:// or https://';
+                    return t("URL must start with http:// or https://");
                 }
                 return '';
             },
@@ -675,7 +675,7 @@
                     }
                 }
                 if (this.responseIpFilterNeedsFeed()) {
-                    return 'Response IP Filtering › Feed URLs: add at least one feed URL, or turn the filter off';
+                    return t("Response IP Filtering › Feed URLs: add at least one feed URL, or turn the filter off");
                 }
                 return '';
             },
@@ -695,7 +695,7 @@
                     .map(p => ({...p, servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0), ...this.poolRouting(p)}))
                     .filter(p => p.servers.length > 0);
                 if ((this.config.dns.pools || []).length > 0 && cleanedPools.length === 0) {
-                    this.showAlert('error', 'Each pool needs at least one server. Add a server or remove the empty pool.');
+                    this.showAlert('error', t("Each pool needs at least one server. Add a server or remove the empty pool."));
                     return;
                 }
                 // Only send `pools` when they actually changed since load/last save —
@@ -706,20 +706,20 @@
                 const invalidServer = poolsChanged ? this.firstInvalidServer(cleanedPools) : '';
                 if (invalidServer) {
                     this.showServerErrors = true;
-                    this.showAlert('error', 'Failed to save: ' + invalidServer);
+                    this.showAlert('error', t("Failed to save: ") + invalidServer);
                     return;
                 }
                 const routingError = poolsChanged
                     ? this.firstRoutingError(cleanedPools) || this.missingGroupError(cleanedPools)
                     : '';
                 if (routingError) {
-                    this.showAlert('error', 'Failed to save: ' + routingError);
+                    this.showAlert('error', t("Failed to save: ") + routingError);
                     return;
                 }
                 this.cleanMalwareLists();
                 const malwareError = this.malwareSettingsError();
                 if (malwareError) {
-                    this.showAlert('error', 'Failed to save: ' + malwareError);
+                    this.showAlert('error', t("Failed to save: ") + malwareError);
                     return;
                 }
                 const dnsPayload = {...this.config.dns};
@@ -744,13 +744,13 @@
                         this.showServerErrors = false;
                         // Only upstream pools are hot-applied; honor the backend flag for everything else.
                         if (data.restart_required) this.restartRequired = true;
-                        this.showAlert('success', data.message || 'Configuration saved.');
+                        this.showAlert('success', data.message || t("Configuration saved."));
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', 'Failed to save: ' + (data.error || data.message || 'Unknown error'))
+                        this.showAlert('error', t("Failed to save: ") + (data.error || data.message || t("Unknown error")))
                     }
                 } catch (e) {
-                    this.showAlert('error', 'Failed to save: ' + e.message)
+                    this.showAlert('error', t("Failed to save: ") + e.message)
                 }
             },
             async saveDnsSettings() {
@@ -764,17 +764,17 @@
                     if (r.ok && data.success !== false) {
                         if (data.restart_required) {
                             this.restartRequired = true;
-                            this.showAlert('success', 'DNS settings saved. Restart the server to apply changes.');
+                            this.showAlert('success', t("DNS settings saved. Restart the server to apply changes."));
                         } else {
-                            this.showAlert('success', 'DNS settings saved.');
+                            this.showAlert('success', t("DNS settings saved."));
                         }
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                        this.showAlert('error', t("Failed: ") + (data.error || data.message || t("Unknown error")))
                     }
                 } catch (e) {
                     console.error(e);
-                    this.showAlert('error', 'Error: ' + e.message)
+                    this.showAlert('error', t("Error: ") + e.message)
                 }
             },
             toggleLocalDomain() {
@@ -795,16 +795,16 @@
                     if (r.ok && data.success !== false) {
                         if (data.restart_required) {
                             this.restartRequired = true;
-                            this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
+                            this.showAlert('success', t("Pi-hole compatibility setting saved. Restart required."));
                         } else {
-                            this.showAlert('success', 'Pi-hole compatibility setting saved.');
+                            this.showAlert('success', t("Pi-hole compatibility setting saved."));
                         }
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                        this.showAlert('error', t("Failed: ") + (data.error || data.message || t("Unknown error")))
                     }
                 } catch (e) {
-                    this.showAlert('error', 'Error: ' + e.message)
+                    this.showAlert('error', t("Error: ") + e.message)
                 }
             },
             async loadSystemStatus() {
@@ -833,12 +833,12 @@
                 const h = Math.floor((total % 86400) / 3600);
                 const m = Math.floor((total % 3600) / 60);
                 const s = total % 60;
-                if (d > 0) return `${d}d ${h}h ${m}m`;
+                if (d > 0) return t("{0}d {1}h {2}m", {0: d, 1: h, 2: m});
                 if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m`;
                 return `${m}m ${s}s`;
             },
             kbToGb(kb) {
-                return (kb / 1048576).toFixed(1);
+                return FerrousI18n.decimal(kb / 1048576, 1);
             },
             toggleUpstream(addr) {
                 const idx = this.expandedUpstreams.indexOf(addr);
@@ -849,12 +849,12 @@
                 return this.expandedUpstreams.includes(addr);
             },
             formatNumber(n) {
-                return (n || 0).toLocaleString();
+                return (n || 0).toLocaleString(FerrousI18n.formatLocale());
             },
             formatTime(ms) {
                 if (!ms) return '0 ms';
                 if (ms < 1) return `${Math.round(ms * 1000)} µs`;
-                return `${ms.toFixed(1)} ms`;
+                return `${FerrousI18n.decimal(ms, 1)} ms`;
             },
             // --- Security tab methods ---
             async saveAuthConfig() {
@@ -871,12 +871,12 @@
                         }})
                     });
                     if (r.ok) {
-                        this.showAlert('success', 'Authentication settings saved');
+                        this.showAlert('success', t("Authentication settings saved"));
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', 'Failed: ' + (data.error || 'Unknown error'));
+                        this.showAlert('error', t("Failed: ") + (data.error || t("Unknown error")));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async changePassword() {
                 if (!this.changePass.current || !this.changePass.newPassword || this.changePass.newPassword !== this.changePass.confirm) return;
@@ -888,14 +888,14 @@
                     });
                     if (r.ok || r.status === 204) {
                         this.changePass = {current: '', newPassword: '', confirm: ''};
-                        this.showAlert('success', 'Password updated successfully');
+                        this.showAlert('success', t("Password updated successfully"));
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to change password');
+                        this.showAlert('error', data.error || t("Failed to change password"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
-            mfaMsg(text, isErr) { this.mfa.msg = text; this.mfa.msgErr = !!isErr; },
+            mfaMsg(text, isErr) { this.mfa.msg = t(text); this.mfa.msgErr = !!isErr; },
             async loadMfa() {
                 try {
                     const r = await apiFetch(`${API_BASE}/auth/2fa/status`);
@@ -919,9 +919,9 @@
                         scheduleLucide(50);
                     } else {
                         const d = await r.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Could not start setup', true);
+                        this.mfaMsg(d.error || t("Could not start setup"), true);
                     }
-                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+                } catch (e) { this.mfaMsg(t("Error: ") + e.message, true); }
             },
             async confirmTotp() {
                 if (!this.mfa.confirmCode) return;
@@ -938,12 +938,12 @@
                         this.mfa.confirmCode = '';
                         this.mfa.recoveryCodes = d.recovery_codes || [];
                         await this.loadMfa();
-                        this.mfaMsg('Authenticator enabled', false);
+                        this.mfaMsg(t("Authenticator enabled"), false);
                     } else {
                         const d = await r.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Invalid code', true);
+                        this.mfaMsg(d.error || t("Invalid code"), true);
                     }
-                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+                } catch (e) { this.mfaMsg(t("Error: ") + e.message, true); }
             },
             async disableMfa() {
                 if (!this.mfa.disablePassword) return;
@@ -957,15 +957,15 @@
                     if (r.ok || r.status === 204) {
                         this.mfa.disablePassword = '';
                         await this.loadMfa();
-                        this.mfaMsg('Two-factor authentication disabled', false);
+                        this.mfaMsg(t("Two-factor authentication disabled"), false);
                     } else {
                         const d = await r.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Failed to disable', true);
+                        this.mfaMsg(d.error || t("Failed to disable"), true);
                     }
-                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+                } catch (e) { this.mfaMsg(t("Error: ") + e.message, true); }
             },
             async registerPasskey() {
-                if (!webauthnSupported()) { this.mfaMsg('Passkeys not supported in this browser', true); return; }
+                if (!webauthnSupported()) { this.mfaMsg(t("Passkeys not supported in this browser"), true); return; }
                 this.mfaMsg('');
                 try {
                     const startRes = await apiFetch(`${API_BASE}/auth/webauthn/register/start`, {
@@ -975,7 +975,7 @@
                     });
                     if (!startRes.ok) {
                         const d = await startRes.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Could not start registration', true);
+                        this.mfaMsg(d.error || t("Could not start registration"), true);
                         return;
                     }
                     const start = await startRes.json();
@@ -987,13 +987,13 @@
                     });
                     if (finishRes.ok || finishRes.status === 204) {
                         await this.loadMfa();
-                        this.mfaMsg('Passkey registered', false);
+                        this.mfaMsg(t("Passkey registered"), false);
                     } else {
                         const d = await finishRes.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Registration failed', true);
+                        this.mfaMsg(d.error || t("Registration failed"), true);
                     }
                 } catch (e) {
-                    this.mfaMsg((e && e.name === 'NotAllowedError') ? 'Passkey prompt dismissed' : 'Error: ' + e.message, true);
+                    this.mfaMsg((e && e.name === 'NotAllowedError') ? t("Passkey prompt dismissed") : t("Error: ") + e.message, true);
                 }
             },
             async deletePasskey(id) {
@@ -1001,12 +1001,12 @@
                     const r = await apiFetch(`${API_BASE}/auth/webauthn/${id}`, {method: 'DELETE'});
                     if (r.ok || r.status === 204) {
                         await this.loadMfa();
-                        this.mfaMsg('Passkey removed', false);
+                        this.mfaMsg(t("Passkey removed"), false);
                     } else {
                         const d = await r.json().catch(() => ({}));
-                        this.mfaMsg(d.error || 'Failed to remove passkey', true);
+                        this.mfaMsg(d.error || t("Failed to remove passkey"), true);
                     }
-                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+                } catch (e) { this.mfaMsg(t("Error: ") + e.message, true); }
             },
             async loadUsers() {
                 try {
@@ -1029,27 +1029,27 @@
                         this.showAddUser = false;
                         this.resetNewUser();
                         await this.loadUsers();
-                        this.showAlert('success', 'User created');
+                        this.showAlert('success', t("User created"));
                         scheduleLucide(50);
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to create user');
+                        this.showAlert('error', data.error || t("Failed to create user"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async deleteUser(id) {
-                if (!confirm('Delete this user?')) return;
+                if (!confirm(t("Delete this user?"))) return;
                 try {
                     const r = await apiFetch(`${API_BASE}/users/${id}`, {method: 'DELETE'});
                     if (r.ok || r.status === 204) {
                         await this.loadUsers();
-                        this.showAlert('success', 'User deleted');
+                        this.showAlert('success', t("User deleted"));
                         scheduleLucide(50);
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to delete user');
+                        this.showAlert('error', data.error || t("Failed to delete user"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async loadApiTokens() {
                 try {
@@ -1079,9 +1079,9 @@
                         scheduleLucide(50);
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to create token');
+                        this.showAlert('error', data.error || t("Failed to create token"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             startEditToken(token) {
                 this.editingToken = token.id;
@@ -1111,27 +1111,27 @@
                         this.editTokenName = '';
                         this.editTokenCustomKey = '';
                         await this.loadApiTokens();
-                        this.showAlert('success', 'Token updated');
+                        this.showAlert('success', t("Token updated"));
                         scheduleLucide(50);
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to update token');
+                        this.showAlert('error', data.error || t("Failed to update token"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async revokeApiToken(id) {
-                if (!confirm('Revoke this API token?')) return;
+                if (!confirm(t("Revoke this API token?"))) return;
                 try {
                     const r = await apiFetch(`${API_BASE}/api-tokens/${id}`, {method: 'DELETE'});
                     if (r.ok || r.status === 204) {
                         await this.loadApiTokens();
-                        this.showAlert('success', 'Token revoked');
+                        this.showAlert('success', t("Token revoked"));
                         scheduleLucide(50);
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to revoke token');
+                        this.showAlert('error', data.error || t("Failed to revoke token"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async loadActiveSessions() {
                 try {
@@ -1140,17 +1140,17 @@
                 } catch (e) { console.error('Load sessions:', e); }
             },
             async revokeSession(id) {
-                if (!confirm('Revoke this session?')) return;
+                if (!confirm(t("Revoke this session?"))) return;
                 try {
                     const r = await apiFetch(`${API_BASE}/auth/sessions/${id}`, {method: 'DELETE'});
                     if (r.ok || r.status === 204) {
                         await this.loadActiveSessions();
-                        this.showAlert('success', 'Session revoked');
+                        this.showAlert('success', t("Session revoked"));
                     } else {
                         const data = await r.json().catch(() => ({}));
-                        this.showAlert('error', data.error || 'Failed to revoke session');
+                        this.showAlert('error', data.error || t("Failed to revoke session"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             // --- TLS methods ---
             async loadTlsStatus() {
@@ -1172,9 +1172,11 @@
             certExpiryNote() {
                 const expires = this.certExpiresAtMs();
                 if (expires === null || !certificateExpiresSoon(expires)) return '';
-                if (expires <= Date.now()) return ' (expired)';
+                if (expires <= Date.now()) return ' (' + t("expired") + ')';
                 const days = daysUntil(expires);
-                return days === 0 ? ' (expires today)' : days === 1 ? ' (expires tomorrow)' : ` (${days} days left)`;
+                const note = days === 0 ? t("expires today") : days === 1 ? t("expires tomorrow")
+                    : tn('{count} day left', '{count} days left', days);
+                return ' (' + note + ')';
             },
             async saveWebTlsConfig() {
                 try {
@@ -1189,18 +1191,18 @@
                     });
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
-                        this.showAlert('success', 'HTTPS settings saved');
+                        this.showAlert('success', t("HTTPS settings saved"));
                         if (data.restart_required) this.restartRequired = true;
                     } else {
-                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'));
+                        this.showAlert('error', t("Failed: ") + (data.error || data.message || t("Unknown error")));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async uploadCerts() {
                 const certInput = document.getElementById('tls-cert-input');
                 const keyInput = document.getElementById('tls-key-input');
                 if (!certInput?.files[0] || !keyInput?.files[0]) {
-                    this.showAlert('error', 'Please select both certificate and key files');
+                    this.showAlert('error', t("Please select both certificate and key files"));
                     return;
                 }
                 const fd = new FormData();
@@ -1215,9 +1217,9 @@
                         if (data.restart_required) this.restartRequired = true;
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', data.message || 'Upload failed');
+                        this.showAlert('error', data.message || t("Upload failed"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             async generateSelfSigned() {
                 const force = this.tlsStatus.cert_exists ? '?force=true' : '';
@@ -1230,15 +1232,15 @@
                         if (data.restart_required) this.restartRequired = true;
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', data.message || 'Generation failed');
+                        this.showAlert('error', data.message || t("Generation failed"));
                     }
-                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+                } catch (e) { this.showAlert('error', t("Error: ") + e.message); }
             },
             // --- Backup methods ---
             async exportConfig() {
                 try {
                     const res = await apiFetch(`${API_BASE}/config/export`);
-                    if (!res.ok) { this.showAlert('error', 'Export failed'); return; }
+                    if (!res.ok) { this.showAlert('error', t("Export failed")); return; }
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1246,14 +1248,14 @@
                     a.download = `ferrous-backup-${new Date().toISOString().slice(0, 10)}.bin`;
                     a.click();
                     URL.revokeObjectURL(url);
-                    this.showAlert('success', 'Backup downloaded successfully');
+                    this.showAlert('success', t("Backup downloaded successfully"));
                 } catch (e) {
-                    this.showAlert('error', 'Export failed: ' + e.message);
+                    this.showAlert('error', t("Export failed: ") + e.message);
                 }
             },
             async importConfig() {
                 const input = document.getElementById('backup-import-input');
-                if (!input?.files[0]) { this.showAlert('error', 'Please select a backup file'); return; }
+                if (!input?.files[0]) { this.showAlert('error', t("Please select a backup file")); return; }
                 this.backupImporting = true;
                 this.backupImportResult = null;
                 this.backupImportErrors = [];
@@ -1271,22 +1273,22 @@
                         this.backupImportErrors = data.errors || [];
                         if (data.success === false) {
                             const count = this.backupImportErrors.length;
-                            this.showAlert('error', `Imported with ${count} error${count === 1 ? '' : 's'}; see the summary below`);
+                            this.showAlert('error', tn('Imported with {count} error; see the summary below', 'Imported with {count} errors; see the summary below', count));
                         } else {
-                            this.showAlert('success', 'Import completed successfully');
+                            this.showAlert('success', t("Import completed successfully"));
                         }
                         scheduleLucide(50);
                     } else {
-                        this.showAlert('error', data.error || data.message || `Import failed (HTTP ${res.status})`);
+                        this.showAlert('error', data.error || data.message || t("Import failed (HTTP {0})", {0: res.status}));
                     }
                 } catch (e) {
-                    this.showAlert('error', 'Import failed: ' + e.message);
+                    this.showAlert('error', t("Import failed: ") + e.message);
                 } finally {
                     this.backupImporting = false;
                 }
             },
             showAlert(type, msg) {
-                this.alert = {show: true, type, message: msg};
+                this.alert = {show: true, type, message: t(msg)};
                 setTimeout(() => {
                     this.alert.show = false
                 }, 5000)

@@ -48,10 +48,10 @@
     };
 
     function formatSourceKey(key) {
-        if (key === 'non_fqdn') return 'Non-FQDN';
-        if (key === 'private_ptr') return 'Private PTR';
-        if (key === 'cname_cloaking') return 'CNAME Cloaking';
-        if (key === 'dns_cookie') return 'DNS Cookie';
+        if (key === 'non_fqdn') return t("Non-FQDN");
+        if (key === 'private_ptr') return t("Private PTR");
+        if (key === 'cname_cloaking') return t("CNAME Cloaking");
+        if (key === 'dns_cookie') return t("DNS Cookie");
         if (key.includes(':')) {
             const parts = key.split(':');
             const pool = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
@@ -61,13 +61,13 @@
                 .replace(/:\d+$/, '');
             return pool + ': ' + server;
         }
-        return key
+        return t(key
             .replace(/^blocked_by_/, '')
             .replace(/_hits$/, '')
             .replace(/_/g, ' ')
             .split(' ')
             .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ');
+            .join(' '));
     }
 
     function app() {
@@ -232,8 +232,8 @@
                             label: function(context) {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const val = context.parsed;
-                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                                return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                                const pct = total > 0 ? FerrousI18n.decimal((val / total) * 100, 1) : 0;
+                                return ` ${context.label}: ${val.toLocaleString(FerrousI18n.formatLocale())} (${pct}%)`;
                             }
                         }
                     };
@@ -286,8 +286,8 @@
                         label: function(context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const val = context.parsed;
-                            const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                            return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                            const pct = total > 0 ? FerrousI18n.decimal((val / total) * 100, 1) : 0;
+                            return ` ${context.label}: ${val.toLocaleString(FerrousI18n.formatLocale())} (${pct}%)`;
                         }
                     }
                 };
@@ -397,7 +397,7 @@
                                     return mins === 0 ? `${Math.floor(i / 4)}:00` : '';
                                 }),
                                 datasets: [{
-                                    label: 'Blocked',
+                                    label: t("Blocked"),
                                     data: Array(96).fill(0),
                                     borderColor: '#EF4444',
                                     backgroundColor: 'rgba(239,68,68,0.5)',
@@ -406,7 +406,7 @@
                                     pointRadius: 1,
                                     pointHoverRadius: 3
                                 }, {
-                                    label: 'Unblocked',
+                                    label: t("Unblocked"),
                                     data: Array(96).fill(0),
                                     borderColor: '#3B82F6',
                                     backgroundColor: 'rgba(59,130,246,0.5)',
@@ -415,7 +415,7 @@
                                     pointRadius: 1,
                                     pointHoverRadius: 3
                                 }, {
-                                    label: 'Malware Detection',
+                                    label: t("Malware Detection"),
                                     data: Array(96).fill(0),
                                     borderColor: '#F59E0B',
                                     backgroundColor: 'rgba(245,158,11,0.5)',
@@ -486,10 +486,10 @@
             formatTime(ms) {
                 if (!ms) return '0 ms';
                 if (ms < 1) return `${Math.round(ms * 1000)} µs`;
-                return `${ms.toFixed(1)} ms`
+                return `${FerrousI18n.decimal(ms, 1)} ms`
             },
             formatNumber(n) {
-                return (n || 0).toLocaleString();
+                return (n || 0).toLocaleString(FerrousI18n.formatLocale());
             }
         }
     }

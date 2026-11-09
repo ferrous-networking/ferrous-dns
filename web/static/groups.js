@@ -97,21 +97,21 @@
                         this.cancelForm();
                     } else {
                         const errorText = await res.text();
-                        this.error = errorText || 'Failed to save group';
+                        this.error = errorText || t("Failed to save group");
                     }
                 } catch (e) {
                     console.error('Error saving group:', e);
-                    this.error = 'Network error: ' + e.message;
+                    this.error = t("Network error: ") + e.message;
                 }
             },
 
             async deleteGroup(group) {
                 if (group.is_default) {
-                    alert('Cannot delete the Protected group');
+                    alert(t("Cannot delete the Protected group"));
                     return;
                 }
 
-                if (!confirm(`Are you sure you want to delete the group "${group.name}"?`)) {
+                if (!confirm(t("Are you sure you want to delete the group \"{0}\"?", {0: group.name}))) {
                     return;
                 }
 
@@ -128,12 +128,12 @@
                             // Assigned clients, DoH IDs, or a pool that routes for the group: the server says which.
                             alert(JSON.parse(errorText).error);
                         } else {
-                            alert('Failed to delete group: ' + errorText);
+                            alert(t("Failed to delete group: ") + errorText);
                         }
                     }
                 } catch (e) {
                     console.error('Error deleting group:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
 

@@ -1,7 +1,7 @@
 //! Issue #326: the Query Log labelled four kinds of block "Upstream", because
 //! `formatSource` in `web/static/queries.js` had no branch for them. A blocked
-//! row that reads "Upstream" looks resolved. `web/` has no JS harness, so this
-//! reads the source: every block source the server logs needs a branch there.
+//! row that reads "Upstream" looks resolved. Browserless JavaScript tests cover
+//! localized output; this source check keeps every server block kind represented.
 
 use ferrous_dns_domain::BlockSource;
 
@@ -40,7 +40,7 @@ fn test_query_log_labels_every_block_source() {
 #[test]
 fn test_query_log_labels_any_other_blocked_row_as_blocked() {
     assert!(
-        format_source_body().contains("if (query.blocked) return 'Blocked';"),
+        format_source_body().contains(r#"if (query.blocked) return t("Blocked");"#),
         "formatSource must label any other blocked row \"Blocked\", not \"Upstream\""
     );
 }

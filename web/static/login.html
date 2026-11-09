@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Login</title>
+    <title data-i18n-title="Ferrous DNS - Login">Ferrous DNS - Login</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <link rel="stylesheet" href="/static/login.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 </head>
@@ -20,33 +22,43 @@
         <img src="/static/logo.svg" alt="Ferrous DNS" style="width:56px;height:56px;margin:0 auto">
     </div>
     <h1>Ferrous DNS</h1>
-    <p class="subtitle" x-text="setupRequired ? 'Set up your admin password' : 'Sign in to continue'"></p>
+    <label class="language-selector">
+        <span x-text="t('Language')">Language</span>
+        <select aria-label="Interface language" :aria-label="t('Interface language')"
+                x-init="$el.value = FerrousI18n.locale()"
+                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+        </select>
+    </label>
+
+    <p class="subtitle" x-text="setupRequired ? t(&quot;Set up your admin password&quot;) : t(&quot;Sign in to continue&quot;)"></p>
 
     <!-- Setup mode (first-run) -->
     <template x-if="setupRequired">
         <div>
             <div class="setup-info">
                 <i data-lucide="info" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
-                No password configured yet. Create your admin password to get started.
+                <span x-text="t(&quot;No password configured yet. Create your admin password to get started.&quot;)">No password configured yet. Create your admin password to get started.</span>
             </div>
             <div class="form-group">
-                <label class="form-label">New Password</label>
+                <label class="form-label" x-text="t(&quot;New Password&quot;)">New Password</label>
                 <input type="password" x-model="setupPassword" placeholder="Minimum 8 characters"
-                       @keydown.enter="setupAdmin()">
+                       @keydown.enter="setupAdmin()" :placeholder="t(&quot;Minimum 8 characters&quot;)">
             </div>
             <div class="form-group">
-                <label class="form-label">Confirm Password</label>
+                <label class="form-label" x-text="t(&quot;Confirm Password&quot;)">Confirm Password</label>
                 <input type="password" x-model="setupConfirm" placeholder="Re-enter password"
-                       @keydown.enter="setupAdmin()">
+                       @keydown.enter="setupAdmin()" :placeholder="t(&quot;Re-enter password&quot;)">
             </div>
             <p x-show="setupPassword && setupConfirm && setupPassword !== setupConfirm" x-cloak
-               style="font-size:12px;color:#ef4444;margin-bottom:12px">Passwords do not match.</p>
-            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+               style="font-size:12px;color:#ef4444;margin-bottom:12px" x-text="t(&quot;Passwords do not match.&quot;)">Passwords do not match.</p>
+            <div x-show="error" x-cloak class="error-msg" x-text="t(error)"></div>
             <p x-show="setupPassword && setupPassword.length < 8" x-cloak
-               style="font-size:12px;color:#ef4444;margin-bottom:12px">Password must be at least 8 characters.</p>
+               style="font-size:12px;color:#ef4444;margin-bottom:12px" x-text="t(&quot;Password must be at least 8 characters.&quot;)">Password must be at least 8 characters.</p>
             <button class="login-btn" @click="setupAdmin()" :disabled="loading || !setupPassword || setupPassword.length < 8 || setupPassword !== setupConfirm">
-                <span x-show="!loading">Create Password</span>
-                <span x-show="loading">Setting up...</span>
+                <span x-show="!loading" x-text="t(&quot;Create Password&quot;)">Create Password</span>
+                <span x-show="loading" x-text="t(&quot;Setting up...&quot;)">Setting up...</span>
             </button>
         </div>
     </template>
@@ -56,55 +68,55 @@
         <div>
             <div class="setup-info">
                 <i data-lucide="shield-check" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
-                Two-factor authentication required.
+                <span x-text="t(&quot;Two-factor authentication required.&quot;)">Two-factor authentication required.</span>
             </div>
-            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+            <div x-show="error" x-cloak class="error-msg" x-text="t(error)"></div>
             <template x-if="mfaMethods.includes('totp')">
                 <div class="form-group">
-                    <label class="form-label">Authentication code</label>
+                    <label class="form-label" x-text="t(&quot;Authentication code&quot;)">Authentication code</label>
                     <input type="text" inputmode="numeric" autocomplete="one-time-code" x-model="mfaCode"
-                           placeholder="6-digit code or recovery code" @keydown.enter="verifyMfa()" autofocus>
+                           placeholder="6-digit code or recovery code" @keydown.enter="verifyMfa()" autofocus :placeholder="t(&quot;6-digit code or recovery code&quot;)">
                 </div>
             </template>
             <button x-show="mfaMethods.includes('totp')" class="login-btn" @click="verifyMfa()"
                     :disabled="loading || !mfaCode">
-                <span x-show="!loading">Verify</span>
-                <span x-show="loading">Verifying...</span>
+                <span x-show="!loading" x-text="t(&quot;Verify&quot;)">Verify</span>
+                <span x-show="loading" x-text="t(&quot;Verifying...&quot;)">Verifying...</span>
             </button>
             <button x-show="mfaMethods.includes('webauthn')" class="login-btn" style="margin-top:8px"
                     @click="loginPasskey()" :disabled="loading">
                 <i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
-                Use a passkey
+                <span x-text="t(&quot;Use a passkey&quot;)">Use a passkey</span>
             </button>
             <button class="login-btn" style="margin-top:8px;background:transparent;color:inherit;border:1px solid rgba(128,128,128,.3)"
-                    @click="cancelMfa()">Cancel</button>
+                    @click="cancelMfa()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
         </div>
     </template>
 
     <!-- Login mode -->
     <template x-if="!setupRequired && !mfaRequired">
         <div>
-            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+            <div x-show="error" x-cloak class="error-msg" x-text="t(error)"></div>
             <div class="form-group">
-                <label class="form-label">Username</label>
+                <label class="form-label" x-text="t(&quot;Username&quot;)">Username</label>
                 <input type="text" x-model="username" placeholder="admin" @keydown.enter="login()" autofocus>
             </div>
             <div class="form-group">
-                <label class="form-label">Password</label>
-                <input type="password" x-model="password" placeholder="Enter password" @keydown.enter="login()">
+                <label class="form-label" x-text="t(&quot;Password&quot;)">Password</label>
+                <input type="password" x-model="password" placeholder="Enter password" @keydown.enter="login()" :placeholder="t(&quot;Enter password&quot;)">
             </div>
             <div class="remember-row">
                 <input type="checkbox" id="remember" x-model="rememberMe">
-                <label for="remember">Remember me</label>
+                <label for="remember" x-text="t(&quot;Remember me&quot;)">Remember me</label>
             </div>
             <button class="login-btn" @click="login()" :disabled="loading || !username || !password">
-                <span x-show="!loading">Sign In</span>
-                <span x-show="loading">Signing in...</span>
+                <span x-show="!loading" x-text="t(&quot;Sign In&quot;)">Sign In</span>
+                <span x-show="loading" x-text="t(&quot;Signing in...&quot;)">Signing in...</span>
             </button>
             <button x-show="passkeysAvailable" x-cloak class="login-btn" style="margin-top:8px;background:transparent;color:inherit;border:1px solid rgba(128,128,128,.3)"
                     @click="loginPasskeyDirect()" :disabled="loading">
                 <i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
-                Sign in with a passkey
+                <span x-text="t(&quot;Sign in with a passkey&quot;)">Sign in with a passkey</span>
             </button>
         </div>
     </template>
