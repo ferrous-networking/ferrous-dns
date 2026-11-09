@@ -65,6 +65,13 @@ fi
 
 if [ -n "$FERROUS_BIND_ADDRESS" ] && [ "$FERROUS_BIND_ADDRESS" != "0.0.0.0" ]; then
     ARGS="$ARGS --bind $FERROUS_BIND_ADDRESS"
+elif [ -n "$FERROUS_BIND_ADDRESS" ] && [ "$BESIDE_SERVER" = false ]; then
+    # Applying it now would move every install whose config file names another address,
+    # such as "[::]", back onto IPv4 only.
+    echo "NOTICE: FERROUS_BIND_ADDRESS=0.0.0.0 is ignored: earlier images set it as their default but" >&2
+    echo "        never applied it, so bind_address in the config file decides (\"auto\", IPv4 and IPv6," >&2
+    echo "        in the bundled config). For IPv4 only, set bind_address = \"0.0.0.0\" in that file." >&2
+    echo "        Remove the variable to silence this notice." >&2
 fi
 
 if [ -n "$FERROUS_DATABASE" ] && [ "$FERROUS_DATABASE" != "/data/db/ferrous.db" ]; then

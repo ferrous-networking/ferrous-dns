@@ -72,7 +72,6 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=120s --retries=3 \
 ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
     FERROUS_DNS_PORT="53" \
     FERROUS_WEB_PORT="8080" \
-    FERROUS_BIND_ADDRESS="0.0.0.0" \
     FERROUS_LOG_LEVEL="info"
 
 VOLUME ["/data"]
