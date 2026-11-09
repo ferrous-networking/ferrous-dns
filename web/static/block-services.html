@@ -59,15 +59,6 @@
             <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
-    <label class="language-selector">
-        <span x-text="t('Language')">Language</span>
-        <select aria-label="Interface language" :aria-label="t('Interface language')"
-                x-init="$el.value = FerrousI18n.locale()"
-                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
-            <option value="en" lang="en">English</option>
-            <option value="fr" lang="fr">Français</option>
-        </select>
-    </label>
     <div class="sidebar-meta">
         <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
         <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
@@ -108,7 +99,7 @@
     <div x-show="activeTab === 'catalog'">
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
             <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">
-                <span x-text="t(&quot;Blocked Services (&quot;)">Blocked Services (</span><span x-text="blockedCount"></span>)
+                <span x-text="t(&quot;Blocked Services ({count})&quot;, {count: blockedCount})">Blocked Services (0)</span>
             </h3>
             <template x-if="blockedCount === 0">
                 <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px" x-text="t(&quot;No services are currently blocked for this group.&quot;)">No services are currently blocked for this group.</div>
@@ -127,7 +118,7 @@
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="serviceName(entry.service_id)"></td>
                                     <td><span class="badge-category" x-text="serviceCategory(entry.service_id)"></span></td>
                                     <td style="color:var(--text-secondary)" x-text="groupName(entry.group_id)"></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString(FerrousI18n.locale()) : '—'"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString(FerrousI18n.formatLocale()) : '—'"></td>
                                     <td>
                                         <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)" :title="t(&quot;Unblock&quot;)">
                                             <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
@@ -187,7 +178,7 @@
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                 <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
-                    <span x-text="t(&quot;Custom Services (&quot;)">Custom Services (</span><span x-text="customServices.length"></span>)
+                    <span x-text="t(&quot;Custom Services ({count})&quot;, {count: customServices.length})">Custom Services (0)</span>
                 </h3>
                 <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
                         @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''" x-text="t(&quot;+ New&quot;)">
@@ -239,7 +230,7 @@
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="cs.name"></td>
                                     <td><span class="badge-category" x-text="cs.category_name"></span></td>
                                     <td style="color:var(--text-secondary);font-size:13px" x-text="tn('{count} domain', '{count} domains', cs.domains.length)"></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString(FerrousI18n.formatLocale()) : '—'"></td>
                                     <td>
                                         <div style="display:flex;gap:4px">
                                             <button class="btn-icon" title="Edit" @click="editCustomService(cs)" :title="t(&quot;Edit&quot;)">
@@ -318,7 +309,7 @@
                                                 </span>
                                             </td>
                                             <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.engine === 'youtube' ? t(cfg.youtube_mode) : '—'"></td>
-                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString(FerrousI18n.locale()) : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString(FerrousI18n.formatLocale()) : '—'"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -468,7 +459,7 @@
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                 <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
-                    <span x-text="t(&quot;Schedule Profiles (&quot;)">Schedule Profiles (</span><span x-text="scheduleProfiles.length"></span>)
+                    <span x-text="t(&quot;Schedule Profiles ({count})&quot;, {count: scheduleProfiles.length})">Schedule Profiles (0)</span>
                 </h3>
                 <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
                         @click="openNewProfile()" x-text="t(&quot;+ New Profile&quot;)">+ New Profile</button>

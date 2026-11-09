@@ -123,7 +123,7 @@
 
             formatCachedAt(cachedAt) {
                 if (!cachedAt) return '-';
-                return new Date(cachedAt * 1000).toLocaleTimeString(FerrousI18n.locale());
+                return new Date(cachedAt * 1000).toLocaleTimeString(FerrousI18n.formatLocale());
             },
 
             // Permanent entries never expire; stale ones already hit zero and

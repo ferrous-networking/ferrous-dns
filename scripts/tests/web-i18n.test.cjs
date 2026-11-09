@@ -13,8 +13,10 @@ const runtimeSource = fs.readFileSync(path.join(assets, 'i18n.js'), 'utf8');
 function browser({saved, languages = ['en-US'], storageBlocked = false} = {}) {
     const storage = new Map(saved ? [['ferrous_locale', saved]] : []);
     const listeners = {};
+    const windowListeners = {};
     let reloads = 0;
     const context = vm.createContext({
+        addEventListener: (name, handler) => { windowListeners[name] = handler; },
         navigator: {languages, language: languages[0]},
         localStorage: {
             getItem: key => {
@@ -35,7 +37,7 @@ function browser({saved, languages = ['en-US'], storageBlocked = false} = {}) {
     });
     context.window = context;
     vm.runInContext(catalogSource + '\n' + runtimeSource, context);
-    return {context, storage, listeners, reloads: () => reloads};
+    return {context, storage, listeners, windowListeners, reloads: () => reloads};
 }
 
 test('French browser language selects French before login', () => {
@@ -104,6 +106,56 @@ test('number formatting follows the selected interface language', () => {
     assert.equal(context.FerrousI18n.number(1234.5), (1234.5).toLocaleString('fr'));
 });
 
+test('formatting keeps the browser region within the selected language', () => {
+    const cases = [
+        // English UI: the regional English variant, or the browser default as before localization.
+        [{saved: 'en', languages: ['en-GB', 'en']}, 'en-GB'],
+        [{saved: 'en', languages: ['pt-BR']}, undefined],
+        [{languages: ['en-US']}, 'en-US'],
+        // French UI: a French region when the browser has one, plain French otherwise.
+        [{languages: ['fr-CA', 'en']}, 'fr-CA'],
+        [{saved: 'fr', languages: ['de-CH', 'fr-CH']}, 'fr-CH'],
+        [{saved: 'fr', languages: ['pt-BR']}, 'fr'],
+    ];
+    for (const [options, expected] of cases) {
+        assert.equal(browser(options).context.FerrousI18n.formatLocale(), expected, JSON.stringify(options));
+    }
+    const gb = browser({saved: 'en', languages: ['en-GB']}).context.FerrousI18n;
+    const when = Date.UTC(2026, 10, 8, 14, 30);
+    assert.equal(gb.date(when, {timeZone: 'UTC'}), new Date(when).toLocaleString('en-GB', {timeZone: 'UTC'}));
+    const br = browser({saved: 'en', languages: ['pt-BR']}).context.FerrousI18n;
+    assert.equal(br.number(1234567), (1234567).toLocaleString(undefined));
+});
+
+test('the language is read once per page load, and other tabs reload on a switch', () => {
+    const b = browser({saved: 'fr'});
+    assert.equal(b.context.t('Settings'), 'Paramètres');
+    // Another tab stores English: this page keeps one language until it reloads.
+    b.storage.set('ferrous_locale', 'en');
+    assert.equal(b.context.t('Settings'), 'Paramètres');
+    assert.equal(b.context.FerrousI18n.locale(), 'fr');
+    b.windowListeners.storage({key: 'theme'});
+    assert.equal(b.reloads(), 0);
+    b.windowListeners.storage({key: 'ferrous_locale'});
+    assert.equal(b.reloads(), 1);
+});
+
+test('a domain rule added from the Query Log stores its comment in English', async () => {
+    const {context} = browser({saved: 'fr'});
+    const posted = [];
+    context.API_BASE = '/api';
+    context.confirm = () => true;
+    context.alert = () => {};
+    context.fetch = async (url, init) => { posted.push(JSON.parse(init.body)); return {ok: true, status: 200}; };
+    vm.runInContext(fs.readFileSync(path.join(assets, 'queries.js'), 'utf8'), context);
+    const page = vm.runInContext('app()', context);
+    page.groupLabel = () => 'Default';
+    await page.handleDomainAction({domain: 'ads.example.', blocked: false, group_id: 1});
+    await page.handleDomainAction({domain: 'ok.example.', blocked: true, group_id: 1});
+    assert.deepEqual(posted.map(body => body.comment),
+        ['Added from Query Log (Block)', 'Added from Query Log (Allow)']);
+});
+
 test('page titles are localized without putting translated HTML into the DOM', () => {
     const b = browser({saved: 'fr'});
     b.listeners.DOMContentLoaded();
@@ -149,15 +201,27 @@ test('every literal translation lookup in admin HTML and JavaScript has a French
     assert.ok(checked > 900, `Only checked ${checked} lookups`);
 });
 
-test('all admin pages load local catalogs before page code, and offer a language control', () => {
+test('all admin pages load local catalogs before page code; login and Settings offer the language control', () => {
+    const withControl = ['login.html', 'settings.html'];
     for (const file of fs.readdirSync(assets).filter(f => f.endsWith('.html') && !['api-docs.html', 'index.html'].includes(f))) {
         const source = fs.readFileSync(path.join(assets, file), 'utf8');
+        assert.ok(source.includes('/static/i18n-fr.js'), file);
         assert.ok(source.indexOf('/static/i18n-fr.js') < source.indexOf('/static/i18n.js'), file);
         assert.ok(source.indexOf('/static/i18n.js') < source.indexOf('/static/shared.js'), file);
-        assert.match(source, /FerrousI18n\.setLocale/, file);
-        assert.match(source, /value="en"/, file);
-        assert.match(source, /value="fr"/, file);
+        if (withControl.includes(file)) {
+            assert.match(source, /FerrousI18n\.setLocale/, file);
+            assert.match(source, /<option value="en"/, file);
+            assert.match(source, /<option value="fr"/, file);
+        } else {
+            assert.doesNotMatch(source, /FerrousI18n\.setLocale/, file);
+        }
     }
+    // Settings keeps it next to Theme, in the Appearance tab, not in the sidebar.
+    const settings = fs.readFileSync(path.join(assets, 'settings.html'), 'utf8');
+    const appearance = settings.indexOf('<!-- APPEARANCE TAB -->');
+    assert.ok(appearance > settings.indexOf('</aside>'));
+    assert.ok(settings.indexOf('FerrousI18n.setLocale') > appearance);
+    assert.ok(settings.indexOf('FerrousI18n.setLocale') < settings.indexOf('<!-- API TAB -->'));
     const routes = fs.readFileSync(path.join(root, 'crates/cli/src/server/web.rs'), 'utf8');
     assert.match(routes, /"\/static\/i18n\.js" => \("i18n\.js", JS\)/);
     assert.match(routes, /"\/static\/i18n-fr\.js" => \("i18n-fr\.js", JS\)/);
@@ -168,6 +232,7 @@ test('switching language leaves DNS, security and filtering form payloads unchan
         'settings.js': ['config', 'settings', 'newUser'],
         'block-services.js': ['customForm', 'slotForm'],
         'dns-filter.js': ['form', 'mForm', 'rgForm'],
+        'doh-ids.js': ['form', 'allowUnregisteredIds'],
     };
     for (const [file, fields] of Object.entries(cases)) {
         const state = language => {

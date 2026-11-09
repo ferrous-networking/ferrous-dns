@@ -175,7 +175,7 @@
             },
 
             formatSyncDate(value) {
-                return value ? new Date(value).toLocaleString(FerrousI18n.locale()) : '—';
+                return value ? new Date(value).toLocaleString(FerrousI18n.formatLocale()) : '—';
             },
 
             async toggleGroup(source, groupId, add) {

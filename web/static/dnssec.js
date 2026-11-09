@@ -129,7 +129,7 @@
             formatTime(timestamp) {
                 if (!timestamp) return '-';
                 const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
-                return new Date(utc).toLocaleTimeString(FerrousI18n.locale());
+                return new Date(utc).toLocaleTimeString(FerrousI18n.formatLocale());
             },
 
             formatResponseTime(query) {

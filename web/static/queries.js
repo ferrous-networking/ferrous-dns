@@ -257,7 +257,7 @@
             formatTime(timestamp) {
                 if (!timestamp) return '-';
                 const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
-                return new Date(utc).toLocaleTimeString(FerrousI18n.locale());
+                return new Date(utc).toLocaleTimeString(FerrousI18n.formatLocale());
             },
 
             formatResponseTime(query) {
@@ -272,7 +272,8 @@
                 const domain = query.domain.replace(/\.$/, '');
                 const isBlocked = query.blocked;
                 const action = isBlocked ? 'allow' : 'deny';
-                const label = isBlocked ? t("Allow") : t("Block");
+                // Stored with the rule, so it stays English like other saved data.
+                const label = isBlocked ? 'Allow' : 'Block';
                 // The rule goes where the query was decided: a rule in any other
                 // group would not apply to this client. Rows logged before queries
                 // carried a group fall back to the default group.
@@ -290,7 +291,7 @@
                             domain: domain,
                             action: action,
                             group_id: groupId,
-                            comment: t("Added from Query Log ({0})", {0: label}),
+                            comment: `Added from Query Log (${label})`,
                             enabled: true
                         })
                     });

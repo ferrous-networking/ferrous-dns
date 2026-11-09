@@ -75,7 +75,7 @@
             </a>
             <a href="/doh-ids.html" class="nav-item">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
@@ -106,15 +106,6 @@
             </a>
         </div>
     </nav>
-    <label class="language-selector">
-        <span x-text="t('Language')">Language</span>
-        <select aria-label="Interface language" :aria-label="t('Interface language')"
-                x-init="$el.value = FerrousI18n.locale()"
-                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
-            <option value="en" lang="en">English</option>
-            <option value="fr" lang="fr">Français</option>
-        </select>
-    </label>
     <div class="sidebar-meta">
         <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
         <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>

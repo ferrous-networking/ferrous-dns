@@ -58,7 +58,7 @@
             </a>
             <a href="/doh-ids.html" class="nav-item">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
@@ -81,15 +81,6 @@
                                                          class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
-    <label class="language-selector">
-        <span x-text="t('Language')">Language</span>
-        <select aria-label="Interface language" :aria-label="t('Interface language')"
-                x-init="$el.value = FerrousI18n.locale()"
-                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
-            <option value="en" lang="en">English</option>
-            <option value="fr" lang="fr">Français</option>
-        </select>
-    </label>
     <div class="sidebar-meta">
         <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
         <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
@@ -111,27 +102,27 @@
     <div class="dnssec-grid">
         <div class="dnssec-stat stat-validated">
             <div class="stat-label"><i data-lucide="shield-check" style="width:14px;height:14px"></i><span x-text="t(&quot;Validated&quot;)">Validated</span></div>
-            <div class="stat-value" x-text="stats.validated.toLocaleString(FerrousI18n.locale())">0</div>
-            <div class="stat-sub"><span x-text="coverage"></span><span x-text="t(&quot;% of&quot;)">% of</span> <span x-text="stats.total.toLocaleString(FerrousI18n.locale())"></span> <span x-text="t(&quot;queries&quot;)">queries</span></div>
+            <div class="stat-value" x-text="stats.validated.toLocaleString(FerrousI18n.formatLocale())">0</div>
+            <div class="stat-sub"><span x-text="coverage"></span><span x-text="t(&quot;% of&quot;)">% of</span> <span x-text="stats.total.toLocaleString(FerrousI18n.formatLocale())"></span> <span x-text="t(&quot;queries&quot;)">queries</span></div>
         </div>
         <div class="dnssec-stat stat-secure">
             <div class="stat-label"><i data-lucide="lock" style="width:14px;height:14px"></i><span x-text="t(&quot;Secure&quot;)">Secure</span></div>
-            <div class="stat-value" x-text="stats.secure.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-value" x-text="stats.secure.toLocaleString(FerrousI18n.formatLocale())">0</div>
             <div class="stat-sub" x-text="t(&quot;Signed &amp; verified&quot;)">Signed &amp; verified</div>
         </div>
         <div class="dnssec-stat stat-insecure">
             <div class="stat-label"><i data-lucide="lock-open" style="width:14px;height:14px"></i><span x-text="t(&quot;Insecure&quot;)">Insecure</span></div>
-            <div class="stat-value" x-text="stats.insecure.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-value" x-text="stats.insecure.toLocaleString(FerrousI18n.formatLocale())">0</div>
             <div class="stat-sub" x-text="t(&quot;Unsigned zone&quot;)">Unsigned zone</div>
         </div>
         <div class="dnssec-stat stat-bogus">
             <div class="stat-label"><i data-lucide="shield-alert" style="width:14px;height:14px"></i><span x-text="t(&quot;Bogus&quot;)">Bogus</span></div>
-            <div class="stat-value" x-text="stats.bogus.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-value" x-text="stats.bogus.toLocaleString(FerrousI18n.formatLocale())">0</div>
             <div class="stat-sub" x-text="t(&quot;Validation failed&quot;)">Validation failed</div>
         </div>
         <div class="dnssec-stat stat-indeterminate">
             <div class="stat-label"><i data-lucide="help-circle" style="width:14px;height:14px"></i><span x-text="t(&quot;Indeterminate&quot;)">Indeterminate</span></div>
-            <div class="stat-value" x-text="stats.indeterminate.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-value" x-text="stats.indeterminate.toLocaleString(FerrousI18n.formatLocale())">0</div>
             <div class="stat-sub" x-text="t(&quot;Could not determine&quot;)">Could not determine</div>
         </div>
     </div>

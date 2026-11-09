@@ -233,7 +233,7 @@
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const val = context.parsed;
                                 const pct = total > 0 ? FerrousI18n.decimal((val / total) * 100, 1) : 0;
-                                return ` ${context.label}: ${val.toLocaleString(FerrousI18n.locale())} (${pct}%)`;
+                                return ` ${context.label}: ${val.toLocaleString(FerrousI18n.formatLocale())} (${pct}%)`;
                             }
                         }
                     };
@@ -287,7 +287,7 @@
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const val = context.parsed;
                             const pct = total > 0 ? FerrousI18n.decimal((val / total) * 100, 1) : 0;
-                            return ` ${context.label}: ${val.toLocaleString(FerrousI18n.locale())} (${pct}%)`;
+                            return ` ${context.label}: ${val.toLocaleString(FerrousI18n.formatLocale())} (${pct}%)`;
                         }
                     }
                 };
@@ -489,7 +489,7 @@
                 return `${FerrousI18n.decimal(ms, 1)} ms`
             },
             formatNumber(n) {
-                return (n || 0).toLocaleString(FerrousI18n.locale());
+                return (n || 0).toLocaleString(FerrousI18n.formatLocale());
             }
         }
     }

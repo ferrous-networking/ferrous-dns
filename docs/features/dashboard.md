@@ -157,9 +157,10 @@ The dashboard supports light and dark themes. Toggle via the theme button in the
 ## Interface Language
 
 The administration interface is available in **English** and **French**. Use the
-**Language** selector on the login screen or at the bottom of the sidebar on any
-administration page. Changing it reloads the current page, including chart labels
-and confirmation dialogs; save any unfinished form before switching.
+**Language** selector on the login screen, or under **Settings → Appearance**
+next to the theme once signed in. Changing it reloads the current page, including
+chart labels and confirmation dialogs; save any unfinished form before switching.
+Other open tabs reload into the new language as well.
 
 The initial language follows the first supported browser language, falling back
 to English. An explicit choice is stored as `ferrous_locale` in that browser's
@@ -173,7 +174,10 @@ interface still loads using the browser language, but cannot save a preference.
 
 The translation includes navigation, help text, forms, validation messages,
 authentication and MFA screens, charts, filtering tools, and backup controls.
-Numbers, timestamps and plurals follow the selected language. DNS record types,
+Plurals follow the selected language. Numbers and timestamps follow the selected
+language with the browser's regional conventions: an English interface in an
+en-GB browser keeps `08/11/2026, 14:30:00`, and a fr-CA browser keeps its own
+date format in French. DNS record types,
 protocols, API enum values, configured names, and user-entered data keep their
 original values. Raw technical diagnostics returned by the API and the generated
 OpenAPI reference remain in their original language.

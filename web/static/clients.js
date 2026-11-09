@@ -289,7 +289,7 @@
 
             formatDateTime(timestamp) {
                 if (!timestamp) return '-';
-                return new Date(timestamp).toLocaleString(FerrousI18n.locale());
+                return new Date(timestamp).toLocaleString(FerrousI18n.formatLocale());
             }
         }
     }

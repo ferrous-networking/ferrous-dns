@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - DoH IDs</title>
+    <title data-i18n-title="Ferrous DNS - DoH IDs">Ferrous DNS - DoH IDs</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/doh-ids.css">
@@ -25,94 +27,94 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span>
         </div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span>
+            <span x-text="t(&quot;Active&quot;)">Active</span>
         </div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item">
             <i data-lucide="fingerprint" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
-            <span x-text="`${dohIds.length} ${dohIds.length === 1 ? 'DoH ID' : 'DoH IDs'}`"></span>
+            <span x-text="tn('{count} DoH ID', '{count} DoH IDs', dohIds.length)"></span>
         </div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
             <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard"
-                                                          class="nav-icon"></i><span>Dashboard</span></a>
+                                                          class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
             <a href="/queries.html" class="nav-item"><i data-lucide="file-text"
-                                                        class="nav-icon"></i><span>Query Log</span></a>
+                                                        class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
             </a>
             <a href="/doh-ids.html" class="nav-item active">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
             <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server"
-                                                                   class="nav-icon"></i><span>Local DNS</span></a>
+                                                                   class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
             <a href="/cache-control.html" class="nav-item"><i data-lucide="database"
-                                                              class="nav-icon"></i><span>Cache Control</span></a>
+                                                              class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
             <a href="/settings.html" class="nav-item"><i data-lucide="settings"
-                                                         class="nav-icon"></i><span>Settings</span></a>
+                                                         class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
 
 <main style="padding:24px">
     <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DoH IDs</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Register per-device DNS-over-HTTPS identifiers and assign them to client groups</p>
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)" x-text="t(&quot;DoH IDs&quot;)">DoH IDs</h1>
+        <p style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;Register per-device DNS-over-HTTPS identifiers and assign them to client groups&quot;)">Register per-device DNS-over-HTTPS identifiers and assign them to client groups</p>
     </div>
 
     <div class="card policy-card">
         <div class="policy-info">
-            <h2 class="policy-title">Allow Unregistered Client IDs</h2>
+            <h2 class="policy-title" x-text="t(&quot;Allow Unregistered Client IDs&quot;)">Allow Unregistered Client IDs</h2>
             <p class="policy-desc">
-                When disabled (strict mode), requests to <code>/dns-query/&lt;ClientID&gt;</code> with an unregistered ID are rejected with <code>400 Bad Request</code>.
-                When enabled, valid unregistered IDs are accepted for Query Log attribution and inherit the client IP's group rules.
+                <span x-text="t(&quot;When disabled (strict mode), requests to&quot;)">When disabled (strict mode), requests to</span> <code>/dns-query/&lt;ClientID&gt;</code> <span x-text="t(&quot;with an unregistered ID are rejected with&quot;)">with an unregistered ID are rejected with</span> <code>400 Bad Request</code>.
+                <span x-text="t(&quot;When enabled, valid unregistered IDs are accepted for Query Log attribution and inherit the client IP's group rules.&quot;)">When enabled, valid unregistered IDs are accepted for Query Log attribution and inherit the client IP's group rules.</span>
             </p>
         </div>
         <button type="button" class="toggle-switch" :class="{ active: allowUnregisteredIds }"
                 :disabled="!configWritable || policySaving"
-                :title="configWritable ? 'Toggle unregistered DoH Client ID policy' : 'Configuration file is read-only'"
+                :title="configWritable ? t('Toggle unregistered DoH Client ID policy') : t('Configuration file is read-only')"
                 @click="toggleAllowUnregisteredIds()">
             <div class="toggle-slider"></div>
         </button>
@@ -121,36 +123,38 @@
     <div class="form-container">
         <div class="card" style="padding:24px">
             <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                x-text="editingEntry ? 'Edit DoH ID' : 'Add New DoH ID'"></h2>
+                x-text="editingEntry ? t('Edit DoH ID') : t('Add New DoH ID')"></h2>
 
             <form @submit.prevent="saveEntry()">
                 <div class="form-group">
-                    <label class="form-label">Name</label>
+                    <label class="form-label" x-text="t(&quot;Name&quot;)">Name</label>
                     <input type="text" class="input" x-model="form.name" placeholder="e.g. Alice's iPhone"
+                           :placeholder="t(&quot;e.g. Alice's iPhone&quot;)"
                            maxlength="100" required>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Client ID</label>
+                    <label class="form-label" x-text="t(&quot;Client ID&quot;)">Client ID</label>
                     <div class="doh-id-input-row">
                         <input type="text" class="input" x-model="form.client_id"
-                               :placeholder="editingEntry ? 'Keep current ID or enter a new one' : 'Leave blank for a random UUID, or type e.g. alice-iphone'"
+                               :placeholder="editingEntry ? t('Keep current ID or enter a new one') : t('Leave blank for a random UUID, or type e.g. alice-iphone')"
                                pattern="^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$"
                                title="1–63 lowercase letters, digits, or hyphens; cannot start or end with a hyphen"
+                               :title="t(&quot;1–63 lowercase letters, digits, or hyphens; cannot start or end with a hyphen&quot;)"
                                maxlength="63" spellcheck="false" autocomplete="off">
                         <button type="button" class="btn btn-secondary" @click="generateUuid()">
                             <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
-                            <span>Generate UUID</span>
+                            <span x-text="t(&quot;Generate UUID&quot;)">Generate UUID</span>
                         </button>
                     </div>
                     <p class="form-hint">
-                        Lowercase letters (<code>a-z</code>), digits (<code>0-9</code>), and hyphens (<code>-</code>),
-                        1–63 characters, no leading or trailing hyphen. Leave blank when creating to generate a random UUID v4.
+                        <span x-text="t(&quot;Lowercase letters&quot;)">Lowercase letters</span> (<code>a-z</code>), <span x-text="t(&quot;digits&quot;)">digits</span> (<code>0-9</code>), <span x-text="t(&quot;and hyphens&quot;)">and hyphens</span> (<code>-</code>),
+                        <span x-text="t(&quot;1–63 characters, no leading or trailing hyphen. Leave blank when creating to generate a random UUID v4.&quot;)">1–63 characters, no leading or trailing hyphen. Leave blank when creating to generate a random UUID v4.</span>
                     </p>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Group</label>
+                    <label class="form-label" x-text="t(&quot;Group&quot;)">Group</label>
                     <select class="select" x-model.number="form.group_id" required>
                         <template x-for="group in groups" :key="group.id">
                             <option :value="group.id" x-text="group.name"></option>
@@ -159,17 +163,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Comment (Optional)</label>
+                    <label class="form-label" x-text="t(&quot;Comment (Optional)&quot;)">Comment (Optional)</label>
                     <textarea class="textarea" x-model="form.comment" maxlength="500"
-                              placeholder="Add an optional note about this device"></textarea>
+                              placeholder="Add an optional note about this device"
+                              :placeholder="t(&quot;Add an optional note about this device&quot;)"></textarea>
                 </div>
 
                 <div style="display:flex;gap:12px">
                     <button type="submit" class="btn btn-primary">
-                        <span x-text="editingEntry ? 'Update DoH ID' : 'Create DoH ID'"></span>
+                        <span x-text="editingEntry ? t('Update DoH ID') : t('Create DoH ID')"></span>
                     </button>
                     <button type="button" class="btn btn-secondary" @click="cancelForm()" x-show="editingEntry">
-                        Cancel
+                        <span x-text="t(&quot;Cancel&quot;)">Cancel</span>
                     </button>
                 </div>
 
@@ -184,12 +189,12 @@
             <table class="table">
                 <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Client ID</th>
-                    <th>DoH Path</th>
-                    <th>Group</th>
-                    <th>Comment</th>
-                    <th>Actions</th>
+                    <th x-text="t(&quot;Name&quot;)">Name</th>
+                    <th x-text="t(&quot;Client ID&quot;)">Client ID</th>
+                    <th x-text="t(&quot;DoH Path&quot;)">DoH Path</th>
+                    <th x-text="t(&quot;Group&quot;)">Group</th>
+                    <th x-text="t(&quot;Comment&quot;)">Comment</th>
+                    <th x-text="t(&quot;Actions&quot;)">Actions</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -205,15 +210,15 @@
                             <div class="endpoint-cell">
                                 <code class="code-pill" x-text="`/dns-query/${entry.client_id}`"></code>
                                 <button type="button" @click="copyEndpoint(entry)" class="btn-icon"
-                                        title="Copy DoH path">
+                                        title="Copy DoH path" :title="t(&quot;Copy DoH path&quot;)">
                                     <i data-lucide="copy" style="width:15px;height:15px"></i>
                                 </button>
-                                <span class="copy-badge" x-show="copiedId === entry.id">Copied</span>
+                                <span class="copy-badge" x-show="copiedId === entry.id" x-text="t(&quot;Copied&quot;)">Copied</span>
                             </div>
                         </td>
                         <td>
                             <span class="badge badge-default"
-                                  x-text="entry.group_name || ('Group #' + entry.group_id)"></span>
+                                  x-text="entry.group_name || t('Group #{0}', {0: entry.group_id})"></span>
                         </td>
                         <td>
                             <span style="color:var(--text-secondary);font-size:14px"
@@ -221,10 +226,10 @@
                         </td>
                         <td>
                             <div style="display:flex;gap:8px">
-                                <button type="button" @click="editEntry(entry)" class="btn-icon" title="Edit">
+                                <button type="button" @click="editEntry(entry)" class="btn-icon" title="Edit" :title="t(&quot;Edit&quot;)">
                                     <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                                 </button>
-                                <button type="button" @click="deleteEntry(entry)" class="btn-icon" title="Delete">
+                                <button type="button" @click="deleteEntry(entry)" class="btn-icon" title="Delete" :title="t(&quot;Delete&quot;)">
                                     <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                 </button>
                             </div>
@@ -234,7 +239,7 @@
                 <tr x-show="dohIds.length === 0">
                     <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
                         <i data-lucide="fingerprint" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No DoH IDs registered yet</p>
+                        <p style="margin:0" x-text="t(&quot;No DoH IDs registered yet&quot;)">No DoH IDs registered yet</p>
                     </td>
                 </tr>
                 </tbody>

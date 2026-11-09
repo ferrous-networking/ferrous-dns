@@ -89,7 +89,7 @@
                     if (res.ok) {
                         this.allowUnregisteredIds = next;
                     } else {
-                        let message = 'Failed to update DoH policy';
+                        let message = t('Failed to update DoH policy');
                         try {
                             const data = await res.json();
                             if (data && data.error) message = data.error;
@@ -98,7 +98,7 @@
                     }
                 } catch (e) {
                     console.error('Error updating DoH policy:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t('Network error: {0}', {0: e.message}));
                 } finally {
                     this.policySaving = false;
                 }
@@ -179,7 +179,7 @@
                     if (this.editingEntry) {
                         if (trimmedId && trimmedId !== this.editingEntry.client_id) {
                             const ok = confirm(
-                                `Changing the Client ID from "${this.editingEntry.client_id}" to "${trimmedId}" will cut off any device still configured with /dns-query/${this.editingEntry.client_id}.\n\nContinue?`
+                                t('Changing the Client ID from "{0}" to "{1}" will cut off any device still configured with /dns-query/{0}.\n\nContinue?', {0: this.editingEntry.client_id, 1: trimmedId})
                             );
                             if (!ok) return;
                         }
@@ -200,7 +200,7 @@
                         await this.loadDohIds();
                         this.cancelForm();
                     } else {
-                        let message = 'Failed to save DoH ID';
+                        let message = t('Failed to save DoH ID');
                         try {
                             const data = await res.json();
                             if (data && data.error) message = data.error;
@@ -209,12 +209,12 @@
                     }
                 } catch (e) {
                     console.error('Error saving DoH ID:', e);
-                    this.error = 'Network error: ' + e.message;
+                    this.error = t('Network error: {0}', {0: e.message});
                 }
             },
 
             async deleteEntry(entry) {
-                if (!confirm(`Are you sure you want to delete the DoH ID "${entry.name}"?`)) {
+                if (!confirm(t('Are you sure you want to delete the DoH ID "{0}"?', {0: entry.name}))) {
                     return;
                 }
 
@@ -229,7 +229,7 @@
                         }
                         await this.loadDohIds();
                     } else {
-                        let message = 'Failed to delete DoH ID';
+                        let message = t('Failed to delete DoH ID');
                         try {
                             const data = await res.json();
                             if (data && data.error) message = data.error;
@@ -238,7 +238,7 @@
                     }
                 } catch (e) {
                     console.error('Error deleting DoH ID:', e);
-                    alert('Network error: ' + e.message);
+                    alert(t('Network error: {0}', {0: e.message}));
                 }
             },
 

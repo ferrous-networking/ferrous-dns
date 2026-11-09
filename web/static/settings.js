@@ -849,7 +849,7 @@
                 return this.expandedUpstreams.includes(addr);
             },
             formatNumber(n) {
-                return (n || 0).toLocaleString(FerrousI18n.locale());
+                return (n || 0).toLocaleString(FerrousI18n.formatLocale());
             },
             formatTime(ms) {
                 if (!ms) return '0 ms';
@@ -1172,9 +1172,11 @@
             certExpiryNote() {
                 const expires = this.certExpiresAtMs();
                 if (expires === null || !certificateExpiresSoon(expires)) return '';
-                if (expires <= Date.now()) return ' (expired)';
+                if (expires <= Date.now()) return ' (' + t("expired") + ')';
                 const days = daysUntil(expires);
-                return days === 0 ? ' (expires today)' : days === 1 ? ' (expires tomorrow)' : ` (${days} days left)`;
+                const note = days === 0 ? t("expires today") : days === 1 ? t("expires tomorrow")
+                    : tn('{count} day left', '{count} days left', days);
+                return ' (' + note + ')';
             },
             async saveWebTlsConfig() {
                 try {

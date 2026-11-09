@@ -59,7 +59,7 @@
             </a>
             <a href="/doh-ids.html" class="nav-item">
                 <i data-lucide="fingerprint" class="nav-icon"></i>
-                <span>DoH IDs</span>
+                <span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
@@ -81,15 +81,6 @@
             <a href="/settings.html" class="nav-item active"><i data-lucide="settings" class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
-    <label class="language-selector">
-        <span x-text="t('Language')">Language</span>
-        <select aria-label="Interface language" :aria-label="t('Interface language')"
-                x-init="$el.value = FerrousI18n.locale()"
-                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
-            <option value="en" lang="en">English</option>
-            <option value="fr" lang="fr">Français</option>
-        </select>
-    </label>
     <div class="sidebar-meta">
         <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
         <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
@@ -1700,13 +1691,23 @@
                 <i data-lucide="palette" style="width:20px;height:20px;color:var(--color-primary)"></i>
                 <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)" x-text="t(&quot;Appearance&quot;)">Appearance</h2>
             </div>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px" x-text="t(&quot;Choose the color scheme for the web interface.&quot;)">Choose the color scheme for the web interface.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px" x-text="t(&quot;Choose the color scheme and language of the web interface. Both are saved in this browser only.&quot;)">Choose the color scheme and language of the web interface. Both are saved in this browser only.</p>
             <div class="form-group" style="max-width:240px">
                 <label class="form-label" x-text="t(&quot;Theme&quot;)">Theme</label>
                 <select x-model="theme"
                         @change="localStorage.setItem('theme', theme); document.documentElement.classList.toggle('dark', theme === 'dark'); scheduleLucide()">
                     <option value="light" x-text="t(&quot;Light&quot;)">Light</option>
                     <option value="dark" x-text="t(&quot;Dark&quot;)">Dark</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width:240px">
+                <label class="form-label" for="interface-language" x-text="t(&quot;Language&quot;)">Language</label>
+                <!-- Switching reloads the page so charts, validation messages and dialogs follow. -->
+                <select id="interface-language"
+                        x-init="$el.value = FerrousI18n.locale()"
+                        @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+                    <option value="en" lang="en">English</option>
+                    <option value="fr" lang="fr">Français</option>
                 </select>
             </div>
         </div>
@@ -2449,8 +2450,8 @@
                         <input type="checkbox" x-model="backupKeepHostSettings"
                                style="width:16px;height:16px;margin:2px 0 0;flex-shrink:0;accent-color:var(--color-primary)">
                         <span>
-                            <span style="display:block;font-size:13px;font-weight:500;color:var(--text-primary)">Keep this server's addresses, ports, web TLS and passkey settings</span>
-                            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:2px">Tick it when copying settings to a second resolver. Leave it off to restore this server from its own backup.</span>
+                            <span style="display:block;font-size:13px;font-weight:500;color:var(--text-primary)" x-text="t(&quot;Keep this server's addresses, ports, web TLS and passkey settings&quot;)">Keep this server's addresses, ports, web TLS and passkey settings</span>
+                            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:2px" x-text="t(&quot;Tick it when copying settings to a second resolver. Leave it off to restore this server from its own backup.&quot;)">Tick it when copying settings to a second resolver. Leave it off to restore this server from its own backup.</span>
                         </span>
                     </label>
                 </div>

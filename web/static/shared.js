@@ -174,16 +174,16 @@ function showCertificateBanner(expiresAt) {
     banner.id = 'global-certificate-banner';
     banner.style.cssText = `background:${bg};border:1px solid ${border};border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px`;
     banner.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${border}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><p style="font-size:14px;color:${text};margin:0;font-weight:500"></p>`;
-    const date = new Date(expiresAtMs).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const when = expired ? `expired on ${date}`
-        : days === 0 ? `expires today, ${date}`
-        : days === 1 ? `expires tomorrow, ${date}`
-        : `expires in ${days} days, on ${date}`;
+    const date = new Date(expiresAtMs).toLocaleDateString(FerrousI18n.formatLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
     const message = banner.querySelector('p');
-    message.append(`This server's web TLS certificate ${when}. Replace it under `);
+    message.append(expired ? t("This server's web TLS certificate expired on {date}.", {date})
+        : days === 0 ? t("This server's web TLS certificate expires today, {date}.", {date})
+        : days === 1 ? t("This server's web TLS certificate expires tomorrow, {date}.", {date})
+        : t("This server's web TLS certificate expires in {count} days, on {date}.", {count: FerrousI18n.number(days), date}));
+    message.append(' ' + t("Replace it under") + ' ');
     const link = document.createElement('a');
     link.href = '/settings.html#security';
-    link.textContent = 'Settings → Security';
+    link.textContent = t("Settings → Security");
     link.style.cssText = `color:${text};text-decoration:underline`;
     link.addEventListener('click', event => {
         // Already on Settings, where the hash may not change: tell the page anyway.
@@ -192,7 +192,7 @@ function showCertificateBanner(expiresAt) {
         history.replaceState(null, '', '#security');
         window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
-    message.append(link, ', restart the server, and update any copy of it a reverse proxy or Prometheus checks against.');
+    message.append(link, t(", restart the server, and update any copy of it a reverse proxy or Prometheus checks against."));
     // A page can place it in a slot of its own; otherwise it goes on top, like the restart banner.
     const slot = document.getElementById('certificate-banner-slot');
     if (slot) slot.append(banner);

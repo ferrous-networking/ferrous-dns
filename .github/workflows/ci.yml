@@ -407,6 +407,7 @@ jobs:
       - build
       - fuzz-short
       - docs-consistency
+      - web-i18n
     runs-on: ubuntu-latest
     # `always()` so a failed dependency fails this job instead of skipping it.
     if: always()
@@ -418,6 +419,7 @@ jobs:
              [ "${{ needs.coverage.result }}" != "success" ] || \
              [ "${{ needs.fuzz-short.result }}" != "success" ] || \
              [ "${{ needs.docs-consistency.result }}" != "success" ] || \
+             [ "${{ needs.web-i18n.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ CI failed"
             exit 1

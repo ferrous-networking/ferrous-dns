@@ -346,13 +346,13 @@ textarea:disabled {
     }
 }
 
-/* The language control is available before login and on every admin page. */
+/* The login screen offers the language control before sign-in; admin pages use Settings → Appearance. */
 .language-selector {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 12px 20px;
+    padding: 8px 0 16px;
     color: var(--text-secondary);
     font-size: 13px;
 }
@@ -365,7 +365,4 @@ textarea:disabled {
     background: var(--bg-primary);
     color: var(--text-primary);
     font: inherit;
-}
-.login-card .language-selector {
-    padding: 8px 0 16px;
 }
