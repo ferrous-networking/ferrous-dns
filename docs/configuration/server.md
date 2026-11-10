@@ -10,7 +10,7 @@ The `[server]` section controls ports, bind address, API authentication, and enc
 [server]
 dns_port = 53
 web_port = 8080
-bind_address = "0.0.0.0"
+bind_address = "auto"
 metrics_enabled = false
 trusted_proxies = ["127.0.0.0/8", "::1/128"]
 ```
@@ -19,31 +19,33 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 |:-------|:--------|:------------|
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
-| `bind_address` | `0.0.0.0` | Default address every listener binds to. Use a specific IP to restrict access, or `[::]` for dual-stack. Must be an IP literal; a hostname is rejected at startup |
+| `bind_address` | `auto` | Default address every listener binds to. `auto` serves IPv4 and IPv6 on every interface (see [Dual-stack](#dual-stack)), `0.0.0.0` serves IPv4 only, and a specific IP restricts access to it. Must be `auto` or an IP literal; a hostname is rejected at startup |
 | `web_bind_address` | _(unset)_ | Address the dashboard and REST API bind to instead of `bind_address`. See [Dashboard on its own address](#web-bind-address) |
 | `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
 | `trusted_proxies` | `["127.0.0.0/8", "::1/128"]` | CIDRs (or single addresses) of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are believed on DoH requests. See [DoH client identity](#doh-client-identity) |
 
 ### Dual-stack (IPv4 + IPv6) {#dual-stack}
 
-`bind_address = "[::]"` makes every listener — Do53 (UDP and TCP), DoT, DoH, DoQ, and the web dashboard — serve IPv4 and IPv6 clients on a single dual-stack socket, unless it has a [bind address of its own](#per-listener-bind):
+`bind_address = "auto"`, the default, makes every listener — Do53 (UDP and TCP), DoT, DoH, DoQ, and the web dashboard — serve IPv4 and IPv6 clients on a single dual-stack socket, unless it has a [bind address of its own](#per-listener-bind). A config file without the key, or no config file at all, gets the same:
 
 ```toml
 [server]
-bind_address = "[::]"
+bind_address = "auto"
 ```
 
-IPv4 clients arrive on that socket in v4-mapped form (`::ffff:192.168.1.10`). Do53, DoT, and DoQ normalise them back to plain IPv4 before anything client-facing sees them, so client groups, per-client rules, the per-IP connection limit, and the query log key a device the same way whichever of those protocols it used. The same normalisation is applied to the address a PROXY protocol v2 header carries.
+`"auto"` binds `[::]` (a bare `"::"` works too; all three spellings listen the same way). Every listener opens it with `IPV6_V6ONLY` off, so IPv4 is served whatever the host's `net.ipv6.bindv6only` says. The config file, backups and `GET /ferrous/api/v1/config` keep saying `auto`.
+
+`bind_address = "0.0.0.0"` serves IPv4 only, as it always has. A config that names it, such as the `ferrous-dns.toml` that older releases shipped and that every existing Docker volume holds, keeps listening on IPv4 until that line is changed to `"auto"`.
+
+IPv4 clients arrive on the dual-stack socket in v4-mapped form (`::ffff:192.168.1.10`). Do53, DoT, DoQ and the web server normalise them back to plain IPv4 before anything client-facing sees them, so client groups, per-client rules, the per-IP connection limit, the query log and the [Pi-hole compatible API](../features/pihole-compat.md)'s sessions and `/api/info/client` key a device the same way whichever protocol it used. The same normalisation is applied to the address a PROXY protocol v2 header carries.
 
 DoH is keyed by the socket peer too (canonicalised the same way), except when that peer is one of `trusted_proxies` — see [DoH client identity](#doh-client-identity).
 
 !!! note "Upgrading from a release that stored mapped addresses"
     Earlier releases stored the v4-mapped form for DoT and DoQ clients, so a device could end up with two client rows. A migration runs once on first start and rewrites them: `::ffff:10.0.0.1` becomes `10.0.0.1`, a mapped row is merged into its plain twin (query counts add up, and a group assigned to the mapped row is kept unless the plain row already had one), the query log follows, and a subnet written as `::ffff:10.0.0.0/104` becomes `10.0.0.0/8`. Nothing needs to be done by hand.
 
-A bare `bind_address = "::"` works too; both spellings name the same address.
-
 !!! note "IPv6 must exist in the kernel"
-    The DNS listeners — Do53 (UDP and TCP), DoT, and DoQ — are created as `AF_INET6` sockets with `IPV6_V6ONLY` off, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them, and those listeners will fail to start. IPv6 does not need to be configured on the network — it only needs to be available in the kernel. The dedicated DoH listener and the web dashboard bind the address as given, so they are unaffected.
+    The DNS listeners — Do53 (UDP and TCP), DoT, and DoQ — are created as `AF_INET6` sockets with `IPV6_V6ONLY` off, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them, and those listeners will fail to start. IPv6 does not need to be configured on the network — it only needs to be available in the kernel. The dedicated DoH listener and the web dashboard bind an IPv4 address as `AF_INET`, so on such a kernel they still start on one, such as `bind_address = "0.0.0.0"` or an IPv4 `web_bind_address`. `"auto"` and `"[::]"` are IPv6 addresses: a web server that binds one stops the whole server at startup.
 
 ### Per-listener bind addresses {#per-listener-bind}
 
@@ -70,11 +72,11 @@ See [Encrypted DNS](#encrypted-dns) for the full list of options.
 
 ```toml
 [server]
-bind_address     = "0.0.0.0"     # DNS for the network
+bind_address     = "auto"        # DNS for the network
 web_bind_address = "127.0.0.1"   # dashboard and API for the local reverse proxy only
 ```
 
-Unset, the web server binds `bind_address`, as before. Like `bind_address`, it must be an IP literal.
+Unset, the web server binds `bind_address`, as before. Unlike `bind_address`, it must be an IP literal: `auto` is not accepted here.
 
 Everything served on `web_port` moves with it: the [Pi-hole compatible API](../features/pihole-compat.md), `/metrics`, and DoH when it has no `doh_port` of its own. A Prometheus on another host then has to scrape through the proxy. `--bind` (`FERROUS_BIND_ADDRESS` in Docker) changes `bind_address` only. `--healthcheck` probes the web server at `web_bind_address`.
 

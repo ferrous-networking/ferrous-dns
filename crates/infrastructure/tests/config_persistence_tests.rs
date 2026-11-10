@@ -1,4 +1,4 @@
-use ferrous_dns_domain::{Config, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{BindAddress, Config, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::repositories::config_persistence::save_config_to_file;
 
 fn default_config_toml() -> &'static str {
@@ -552,6 +552,47 @@ fn test_save_removes_a_cleared_web_bind_address() {
     let server = doc.get("server").unwrap().as_table().unwrap();
 
     assert!(server.get("web_bind_address").is_none());
+}
+
+fn saved_bind_address(config: &Config, input: &str) -> Option<String> {
+    let doc = save_and_reparse(config, input);
+    doc.get("server")?
+        .get("bind_address")?
+        .as_str()
+        .map(str::to_string)
+}
+
+#[test]
+fn test_save_keeps_bind_address_auto() {
+    let input =
+        default_config_toml().replace("bind_address = \"0.0.0.0\"", "bind_address = \"auto\"");
+    let config = load_config(&input);
+    assert_eq!(config.server.bind_address, BindAddress::Auto);
+
+    // The running config keeps `auto`, never the `[::]` it listens on.
+    assert_eq!(saved_bind_address(&config, &input).as_deref(), Some("auto"));
+}
+
+#[test]
+fn test_save_writes_auto_for_a_file_without_bind_address() {
+    let input = default_config_toml().replace("bind_address = \"0.0.0.0\"\n", "");
+    let config = load_config(&input);
+
+    assert_eq!(saved_bind_address(&config, &input).as_deref(), Some("auto"));
+}
+
+#[test]
+fn test_save_keeps_explicit_ipv4_and_bracketed_ipv6_bind_addresses() {
+    let config = load_config(default_config_toml());
+    assert_eq!(
+        saved_bind_address(&config, default_config_toml()).as_deref(),
+        Some("0.0.0.0")
+    );
+
+    let input =
+        default_config_toml().replace("bind_address = \"0.0.0.0\"", "bind_address = \"::\"");
+    let config = load_config(&input);
+    assert_eq!(saved_bind_address(&config, &input).as_deref(), Some("[::]"));
 }
 
 #[test]

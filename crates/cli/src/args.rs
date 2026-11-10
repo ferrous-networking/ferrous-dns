@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::net::IpAddr;
+use ferrous_dns_domain::BindAddress;
 
 #[derive(Parser)]
 #[command(name = "ferrous-dns")]
@@ -15,8 +15,9 @@ pub struct Cli {
     #[arg(short = 'w', long)]
     pub web_port: Option<u16>,
 
-    #[arg(short = 'b', long, value_parser = ferrous_dns_domain::config::server::parse_bind_host)]
-    pub bind: Option<IpAddr>,
+    /// Address every listener binds to: "auto" (IPv4 and IPv6) or an IP literal.
+    #[arg(short = 'b', long)]
+    pub bind: Option<BindAddress>,
 
     #[arg(long)]
     pub database: Option<String>,

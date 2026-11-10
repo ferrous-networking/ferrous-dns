@@ -1,7 +1,9 @@
+use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
 
 use ipnetwork::{IpNetwork, Ipv4Network};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::encrypted_dns::EncryptedDnsConfig;
 use super::web_tls::WebTlsConfig;
@@ -12,11 +14,11 @@ pub struct ServerConfig {
 
     pub web_port: u16,
 
-    /// Default address every listener binds to. `"0.0.0.0"` covers all IPv4
-    /// interfaces; `"[::]"` (or a bare `"::"`) covers both families on one
-    /// dual-stack socket.
-    #[serde(deserialize_with = "deserialize_bind_host")]
-    pub bind_address: IpAddr,
+    /// Default address every listener binds to. `"auto"`, the default, and
+    /// `"[::]"` (or a bare `"::"`) cover both families on one dual-stack
+    /// socket; `"0.0.0.0"` covers all IPv4 interfaces only.
+    #[serde(default)]
+    pub bind_address: BindAddress,
 
     /// Address the web dashboard and REST API bind to; falls back to
     /// `bind_address`. Lets the dashboard stay on loopback behind a reverse
@@ -71,14 +73,14 @@ fn default_trusted_proxies() -> Vec<IpNetwork> {
 impl ServerConfig {
     /// Listen address for plain DNS (Do53), shared by the UDP and TCP listeners.
     pub fn dns_listen_address(&self) -> SocketAddr {
-        SocketAddr::new(self.bind_address, self.dns_port)
+        SocketAddr::new(self.bind_address.ip(), self.dns_port)
     }
 
     /// Listen address for the web dashboard and REST API, honouring
     /// `web_bind_address` when it is set.
     pub fn web_listen_address(&self) -> SocketAddr {
         SocketAddr::new(
-            self.web_bind_address.unwrap_or(self.bind_address),
+            self.web_bind_address.unwrap_or(self.bind_address.ip()),
             self.web_port,
         )
     }
@@ -89,7 +91,7 @@ impl ServerConfig {
         SocketAddr::new(
             self.encrypted_dns
                 .dot_bind_address
-                .unwrap_or(self.bind_address),
+                .unwrap_or(self.bind_address.ip()),
             self.encrypted_dns.dot_port,
         )
     }
@@ -100,7 +102,7 @@ impl ServerConfig {
         SocketAddr::new(
             self.encrypted_dns
                 .doq_bind_address
-                .unwrap_or(self.bind_address),
+                .unwrap_or(self.bind_address.ip()),
             self.encrypted_dns.doq_port,
         )
     }
@@ -112,9 +114,66 @@ impl ServerConfig {
         Some(SocketAddr::new(
             self.encrypted_dns
                 .doh_bind_address
-                .unwrap_or(self.bind_address),
+                .unwrap_or(self.bind_address.ip()),
             port,
         ))
+    }
+}
+
+/// `[server] bind_address`: `"auto"` or an IP literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BindAddress {
+    #[default]
+    Auto,
+    Ip(IpAddr),
+}
+
+impl BindAddress {
+    /// The address the listeners bind. `Auto` is `[::]`, which every listener
+    /// opens with `IPV6_V6ONLY` off, so it serves IPv4 clients too.
+    pub fn ip(self) -> IpAddr {
+        match self {
+            Self::Auto => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            Self::Ip(ip) => ip,
+        }
+    }
+}
+
+impl FromStr for BindAddress {
+    type Err = String;
+
+    fn from_str(host: &str) -> Result<Self, Self::Err> {
+        if host == "auto" {
+            return Ok(Self::Auto);
+        }
+        parse_bind_host(host).map(Self::Ip).map_err(|_| {
+            format!(
+                "invalid bind address '{host}': it must be \"auto\" or an IPv4 or IPv6 literal such as 0.0.0.0 or [::], not a hostname"
+            )
+        })
+    }
+}
+
+impl fmt::Display for BindAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Auto => f.write_str("auto"),
+            Self::Ip(ip) => ip.fmt(f),
+        }
+    }
+}
+
+impl Serialize for BindAddress {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for BindAddress {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -132,11 +191,6 @@ pub fn parse_bind_host(host: &str) -> Result<IpAddr, String> {
     })
 }
 
-fn deserialize_bind_host<'de, D: Deserializer<'de>>(deserializer: D) -> Result<IpAddr, D::Error> {
-    let host = String::deserialize(deserializer)?;
-    parse_bind_host(&host).map_err(serde::de::Error::custom)
-}
-
 pub(super) fn deserialize_optional_bind_host<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<IpAddr>, D::Error> {
@@ -150,7 +204,7 @@ impl Default for ServerConfig {
         Self {
             dns_port: 53,
             web_port: 8080,
-            bind_address: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            bind_address: BindAddress::Auto,
             web_bind_address: None,
             cors_allowed_origins: default_cors_origins(),
             encrypted_dns: EncryptedDnsConfig::default(),

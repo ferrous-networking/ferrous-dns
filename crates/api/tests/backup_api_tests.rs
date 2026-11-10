@@ -3,7 +3,9 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use ferrous_dns_domain::{Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{
+    BindAddress, Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy,
+};
 use helpers::{get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -372,6 +374,50 @@ async fn test_import_of_a_null_web_bind_address_unsets_it() {
     assert_eq!(response.status(), StatusCode::OK);
 
     assert_eq!(config_b.read().await.server.web_bind_address, None);
+}
+
+#[tokio::test]
+async fn test_bind_address_auto_survives_export_import_roundtrip() {
+    let TestApp {
+        router: app_a,
+        config: config_a,
+        ..
+    } = test_app().await;
+    config_a.write().await.server.bind_address = BindAddress::Auto;
+    let (status, exported) = do_export(app_a).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(exported["config"]["server"]["bind_address"], "auto");
+
+    let TestApp {
+        router: app_b,
+        config: config_b,
+        ..
+    } = test_app().await;
+    config_b.write().await.server.bind_address = "0.0.0.0".parse().unwrap();
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(config_b.read().await.server.bind_address, BindAddress::Auto);
+}
+
+#[tokio::test]
+async fn test_import_restores_an_explicit_ipv4_bind_address() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.server.bind_address = BindAddress::Auto;
+    assert_eq!(
+        minimal_backup_json()["config"]["server"]["bind_address"],
+        "0.0.0.0"
+    );
+
+    let payload = serde_json::to_vec(&minimal_backup_json()).unwrap();
+    let response = router.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        config.read().await.server.bind_address,
+        BindAddress::Ip("0.0.0.0".parse().unwrap())
+    );
 }
 
 /// This server's own listener, web TLS and passkey settings.

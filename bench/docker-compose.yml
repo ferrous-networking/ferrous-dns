@@ -96,7 +96,6 @@ services:
       FERROUS_CONFIG: /data/config/ferrous-dns-config.toml
       FERROUS_DNS_PORT: 5353
       FERROUS_WEB_PORT: 9090
-      FERROUS_BIND_ADDRESS: 0.0.0.0
       FERROUS_DATABASE: /data/db/ferrous-bench.db
       FERROUS_LOG_LEVEL: info
       RUST_LOG: info

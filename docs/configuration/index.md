@@ -36,7 +36,7 @@ Designed for Raspberry Pi 3/4/Zero 2W, Orange Pi, GL.iNet routers, and any devic
 [server]
 dns_port     = 53
 web_port     = 8080
-bind_address = "0.0.0.0"
+bind_address = "auto"
 
 # ── DNS ───────────────────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ Suitable for dedicated home servers, Intel NUCs, Beelink / Minisforum mini PCs, 
 [server]
 dns_port     = 53
 web_port     = 8080
-bind_address = "0.0.0.0"
+bind_address = "auto"
 
 # ── Authentication ────────────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ For environments handling thousands of clients simultaneously: enterprise networ
 [server]
 dns_port     = 53
 web_port     = 8080
-bind_address = "0.0.0.0"
+bind_address = "auto"
 
 # ── Authentication ────────────────────────────────────────────────────────────
 
@@ -428,7 +428,7 @@ Complete annotated TOML with all available options and their defaults.
 [server]
 dns_port     = 53                           # UDP/TCP port for DNS queries
 web_port     = 8080                         # HTTP port for the dashboard and REST API
-bind_address = "0.0.0.0"                    # Listen on all interfaces
+bind_address = "auto"                       # IPv4 and IPv6 on every interface; "0.0.0.0" for IPv4 only
 # cors_allowed_origins = ["*"]              # CORS origins for the REST API
 # pihole_compat = false                     # Pi-hole v6 compatible API at /api/*
 # proxy_protocol_enabled = false            # PROXY Protocol v2 on TCP/DoT listeners

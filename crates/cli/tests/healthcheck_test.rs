@@ -102,6 +102,14 @@ fn test_healthcheck_exits_0_against_a_healthy_server() {
     assert_eq!(run_healthcheck(&config).code(), Some(0));
 }
 
+#[test]
+fn test_healthcheck_passes_with_bind_address_auto() {
+    let config = TestConfig::with_bind_address(Some("auto"), "", "enabled = false");
+    let _server = config.start();
+
+    assert_eq!(run_healthcheck(&config).code(), Some(0));
+}
+
 /// Docker copies the client's proxy settings into every container's environment.
 #[test]
 fn test_healthcheck_ignores_a_proxy_set_in_the_environment() {

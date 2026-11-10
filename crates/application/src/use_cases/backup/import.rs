@@ -38,13 +38,13 @@ pub struct ImportOptions {
 /// The settings that belong to the server a backup came from: where it
 /// listens, its web certificate files and the name its passkeys are bound to.
 fn restore_host_settings(config: &mut Config, sc: &SnapshotConfig) -> Result<(), String> {
+    let not_restored = |e: String| format!("Config section not restored: {e}");
     let parse = |host: &str| {
-        ferrous_dns_domain::config::server::parse_bind_host(host)
-            .map_err(|e| format!("Config section not restored: {e}"))
+        ferrous_dns_domain::config::server::parse_bind_host(host).map_err(not_restored)
     };
     config.server.dns_port = sc.server.dns_port;
     config.server.web_port = sc.server.web_port;
-    config.server.bind_address = parse(&sc.server.bind_address)?;
+    config.server.bind_address = sc.server.bind_address.parse().map_err(not_restored)?;
     if let Some(web_bind_address) = &sc.server.web_bind_address {
         config.server.web_bind_address = web_bind_address.as_deref().map(parse).transpose()?;
     }

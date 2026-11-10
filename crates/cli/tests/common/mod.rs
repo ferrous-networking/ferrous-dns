@@ -360,6 +360,22 @@ pub fn dual_stack_loopback_available() -> bool {
     server.recv_from(&mut buf).is_ok()
 }
 
+/// True when a client can reach the IPv6 loopback: a kernel with IPv6 can
+/// still have it off on `lo`, as in a container started without IPv6.
+pub fn ipv6_loopback_available() -> bool {
+    std::net::UdpSocket::bind("[::1]:0").is_ok()
+}
+
+/// Prints why and returns true when `test` cannot run here: it needs a `[::]`
+/// socket that also receives IPv4, and the IPv6 loopback.
+pub fn skip_without_dual_stack(test: &str) -> bool {
+    if dual_stack_loopback_available() && ipv6_loopback_available() {
+        return false;
+    }
+    eprintln!("skipping {test}: no dual-stack or IPv6 loopback available");
+    true
+}
+
 fn bind_dual_stack_probe_socket() -> Option<std::net::UdpSocket> {
     let socket = socket2::Socket::new(
         socket2::Domain::IPV6,

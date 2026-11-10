@@ -39,7 +39,7 @@ pub use nxdomain_hijack::{NxdomainHijackAction, NxdomainHijackConfig};
 pub use rate_limit::RateLimitConfig;
 pub use response_ip_filter::{ResponseIpFilterAction, ResponseIpFilterConfig};
 pub use root::Config;
-pub use server::ServerConfig;
+pub use server::{BindAddress, ServerConfig};
 pub use tunneling::{TunnelingAction, TunnelingDetectionConfig};
 pub use upstream::{UpstreamPool, UpstreamStrategy};
 pub use web_tls::WebTlsConfig;

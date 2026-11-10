@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -39,7 +40,42 @@ pub fn server_log(dir: &Path) -> String {
     fs::read_to_string(dir.join("server.log")).unwrap_or_default()
 }
 
-/// A config file in its own temp dir, for a server with auth off on loopback.
+/// The status code of a plain HTTP/1.1 GET.
+pub fn http_status(addr: SocketAddr, path: &str) -> u16 {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    // One write: the TLS port's redirect reads a single segment, then closes.
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+        .split(' ')
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .unwrap_or_else(|| panic!("not an HTTP response: {response}"))
+}
+
+pub fn is_refused(addr: SocketAddr) -> bool {
+    matches!(TcpStream::connect(addr), Err(e) if e.kind() == ErrorKind::ConnectionRefused)
+}
+
+/// The DNS listener may come up just after the web one.
+pub fn accepts_within(addr: SocketAddr, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    while TcpStream::connect(addr).is_err() {
+        if Instant::now() > deadline {
+            return false;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    true
+}
+
+/// A config file in its own temp dir, for a server with auth off on loopback
+/// unless a constructor says otherwise.
 pub struct TestConfig {
     pub dir: TempDir,
     pub path: PathBuf,
@@ -57,9 +93,24 @@ impl TestConfig {
     /// `extra` is appended to the `[server]` table, e.g. a `[server.web_tls]` table.
     pub fn with_extra(extra: &str) -> Self {
         Self::with_tables(
+            Some("127.0.0.1"),
             extra,
             r#"upstream_servers = ["127.0.0.1:9"]"#,
             "enabled = false",
+            "enabled = false",
+        )
+    }
+
+    /// A server whose listeners bind `bind_address` as written in the file
+    /// (`None` leaves the key out); `extra` is appended to `[server]` and
+    /// `auth` is the body of `[auth]`.
+    pub fn with_bind_address(bind_address: Option<&str>, extra: &str, auth: &str) -> Self {
+        Self::with_tables(
+            bind_address,
+            extra,
+            r#"upstream_servers = ["127.0.0.1:9"]"#,
+            "enabled = false",
+            auth,
         )
     }
 
@@ -77,6 +128,7 @@ impl TestConfig {
     /// never cached.
     pub fn filtering(upstream: SocketAddr) -> Self {
         Self::with_tables(
+            Some("127.0.0.1"),
             "",
             &format!(
                 "upstream_servers = [\"{upstream}\"]\n\
@@ -84,20 +136,30 @@ impl TestConfig {
                  dnssec_mode = \"Off\""
             ),
             "enabled = true",
+            "enabled = false",
         )
     }
 
-    /// `server_extra` is appended to `[server]`; `dns` and `blocking` are the
-    /// bodies of those tables.
-    fn with_tables(server_extra: &str, dns: &str, blocking: &str) -> Self {
+    /// `server_extra` is appended to `[server]`; `dns`, `blocking` and `auth`
+    /// are the bodies of those tables.
+    fn with_tables(
+        bind_address: Option<&str>,
+        server_extra: &str,
+        dns: &str,
+        blocking: &str,
+        auth: &str,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let dns_port = free_port();
         let web_port = free_port();
+        let bind_line = bind_address
+            .map(|bind| format!("bind_address = \"{bind}\""))
+            .unwrap_or_default();
         let config = format!(
             r#"[server]
 dns_port = {dns_port}
 web_port = {web_port}
-bind_address = "127.0.0.1"
+{bind_line}
 {server_extra}
 
 [dns]
@@ -114,7 +176,7 @@ level = "info"
 path = "{db}"
 
 [auth]
-enabled = false
+{auth}
 "#,
             db = dir.path().join("ferrous.db").display(),
         );
