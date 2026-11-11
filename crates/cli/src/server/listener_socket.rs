@@ -15,7 +15,7 @@ pub(crate) fn open_listener_socket(
         let error = anyhow::Error::from(e);
         if no_ipv6 {
             error.context(format!(
-                "{bind} is an IPv6 address and this kernel has no IPv6: listen on an IPv4 address, or set bind_address = \"auto\""
+                "{bind} is an IPv6 address and this kernel has no IPv6: listen on an IPv4 address instead"
             ))
         } else {
             error
