@@ -137,6 +137,15 @@ impl BindAddress {
             Self::Ip(ip) => ip,
         }
     }
+
+    /// What it stands for on a kernel without IPv6: `Auto` is `0.0.0.0`, and
+    /// an explicit address stays as written, so an IPv6 one still fails to bind.
+    pub fn without_ipv6(self) -> Self {
+        match self {
+            Self::Auto => Self::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            explicit @ Self::Ip(_) => explicit,
+        }
+    }
 }
 
 impl FromStr for BindAddress {

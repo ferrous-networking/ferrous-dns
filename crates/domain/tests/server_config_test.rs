@@ -83,6 +83,48 @@ fn test_per_listener_override_wins_over_auto() {
     assert_eq!(config.dns_listen_address(), addr("[::]:53"));
 }
 
+fn without_ipv6(mut config: ServerConfig) -> ServerConfig {
+    config.bind_address = config.bind_address.without_ipv6();
+    config
+}
+
+#[test]
+fn test_auto_without_ipv6_listens_on_the_unspecified_ipv4_address() {
+    let config = without_ipv6(parse(
+        "dns_port = 53\nweb_port = 8080\nbind_address = \"auto\"\n[encrypted_dns]\ndoh_port = 443",
+    ));
+    assert_eq!(config.dns_listen_address(), addr("0.0.0.0:53"));
+    assert_eq!(config.web_listen_address(), addr("0.0.0.0:8080"));
+    assert_eq!(config.dot_listen_address(), addr("0.0.0.0:853"));
+    assert_eq!(config.doq_listen_address(), addr("0.0.0.0:853"));
+    assert_eq!(config.doh_listen_address(), Some(addr("0.0.0.0:443")));
+}
+
+#[test]
+fn test_explicit_bind_address_is_kept_without_ipv6() {
+    for (spelling, dns) in [
+        ("[::]", "[::]:53"),
+        ("0.0.0.0", "0.0.0.0:53"),
+        ("192.168.1.10", "192.168.1.10:53"),
+    ] {
+        let config = without_ipv6(parse(&format!(
+            "dns_port = 53\nweb_port = 8080\nbind_address = \"{spelling}\""
+        )));
+        assert_eq!(config.dns_listen_address(), addr(dns), "{spelling}");
+    }
+}
+
+#[test]
+fn test_per_listener_override_is_kept_without_ipv6() {
+    let config = without_ipv6(parse(
+        "dns_port = 53\nweb_port = 8080\nbind_address = \"auto\"\nweb_bind_address = \"::1\"\n\
+         [encrypted_dns]\ndot_bind_address = \"[::]\"",
+    ));
+    assert_eq!(config.web_listen_address(), addr("[::1]:8080"));
+    assert_eq!(config.dot_listen_address(), addr("[::]:853"));
+    assert_eq!(config.dns_listen_address(), addr("0.0.0.0:53"));
+}
+
 #[test]
 fn test_web_bind_address_rejects_auto() {
     let err = toml::from_str::<ServerConfig>(&server_toml("web_bind_address = \"auto\""))
