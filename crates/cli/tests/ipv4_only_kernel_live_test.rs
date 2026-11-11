@@ -12,9 +12,10 @@ use hickory_proto::op::Message;
 use rustls::pki_types::ServerName;
 use server_process::{
     accepts_within, free_port, http_get, http_status, private_ptr_query, server_log,
-    skip_without_seccomp, tcp_answers, udp_answers, wait_for_exit, TestConfig, NO_IPV6,
-    PTR_QUERY_ID,
+    skip_without_seccomp, tcp_answers, udp_answers, wait_for_exit, TestConfig, FALLBACK_LINE,
+    NO_IPV6, NO_IPV6_ERROR, PTR_QUERY_ID,
 };
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Arc;
@@ -22,10 +23,6 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// Logged at startup when `"auto"` falls back to IPv4.
-const FALLBACK_LINE: &str = "bind_address \"auto\" listens on IPv4 only";
-/// Follows the address in the bind error for an explicit IPv6 address.
-const NO_IPV6_ERROR: &str = "is an IPv6 address and this kernel has no IPv6";
 const V4: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 const HEALTH: &str = "/ferrous/api/v1/health";
 
@@ -56,6 +53,13 @@ fn log_contains_within(dir: &Path, needle: &str, limit: Duration) -> bool {
         sleep(Duration::from_millis(50));
     }
     true
+}
+
+/// `query`'s result, or a failure naming `what` when the server never answers.
+async fn within<T>(what: &str, query: impl Future<Output = T>) -> T {
+    tokio::time::timeout(Duration::from_secs(10), query)
+        .await
+        .unwrap_or_else(|_| panic!("{what}: no answer within 10 s"))
 }
 
 fn write_certificate(dir: &Path) {
@@ -189,14 +193,24 @@ async fn test_auto_fallback_covers_dot_doq_and_doh_without_kernel_ipv6() {
         "DoH:\n{}",
         log()
     );
-    assert_eq!(dot_reply_id(dot).await, PTR_QUERY_ID, "DoT:\n{}", log());
     assert_eq!(
-        doq_reply_id(SocketAddr::new(V4, doq_port)).await,
+        within("DoT", dot_reply_id(dot)).await,
+        PTR_QUERY_ID,
+        "DoT:\n{}",
+        log()
+    );
+    assert_eq!(
+        within("DoQ", doq_reply_id(SocketAddr::new(V4, doq_port))).await,
         PTR_QUERY_ID,
         "DoQ:\n{}",
         log()
     );
-    assert_eq!(doh_reply_id(doh).await, PTR_QUERY_ID, "DoH:\n{}", log());
+    assert_eq!(
+        within("DoH", doh_reply_id(doh)).await,
+        PTR_QUERY_ID,
+        "DoH:\n{}",
+        log()
+    );
 }
 
 #[test]
@@ -228,6 +242,8 @@ fn test_explicit_ipv6_bind_names_the_missing_ipv6_without_kernel_ipv6() {
         log.contains(&format!("[::]:{} {NO_IPV6_ERROR}", config.web_port)),
         "{log}"
     );
+    // An explicit address never falls back.
+    assert!(!log.contains(FALLBACK_LINE), "{log}");
 }
 
 #[test]
@@ -252,6 +268,8 @@ fn test_explicit_ipv6_dns_bind_is_reported_while_the_web_stays_up() {
         http_status(SocketAddr::new(V4, config.web_port), HEALTH),
         503
     );
+    let log = server_log(config.dir.path());
+    assert!(!log.contains(FALLBACK_LINE), "{log}");
 }
 
 #[test]
@@ -269,6 +287,7 @@ fn test_auto_keeps_ipv6_when_af_inet6_is_denied_for_another_reason() {
     // Only EAFNOSUPPORT means "no IPv6"; anything else is reported as it is.
     assert!(status.is_some_and(|status| !status.success()), "{log}");
     assert!(log.contains("Permission denied"), "{log}");
+    assert!(!log.contains(NO_IPV6_ERROR), "{log}");
     assert!(!log.contains(FALLBACK_LINE), "{log}");
 }
 

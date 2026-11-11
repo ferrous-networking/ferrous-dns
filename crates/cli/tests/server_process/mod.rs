@@ -21,6 +21,12 @@ use tempfile::TempDir;
 #[cfg(target_os = "linux")]
 pub const NO_IPV6: libc::c_int = libc::EAFNOSUPPORT;
 
+/// Logged at startup when `"auto"` falls back to IPv4.
+pub const FALLBACK_LINE: &str = "bind_address \"auto\" listens on IPv4 only";
+/// Follows the address in the bind error for an explicit IPv6 address.
+pub const NO_IPV6_ERROR: &str =
+    "is an IPv6 address and this kernel has no IPv6: listen on an IPv4 address instead";
+
 /// This target's `AUDIT_ARCH_*`, which libc does not export; `None` where the
 /// filter below was not written for the syscall ABI.
 #[cfg(target_os = "linux")]
@@ -97,7 +103,10 @@ fn install_seccomp(command: &mut Command, program: [libc::sock_filter; 8]) {
 #[cfg(target_os = "linux")]
 pub fn skip_without_seccomp(test: &str) -> bool {
     let available = AUDIT_ARCH.is_some_and(|arch| {
-        let mut probe = Command::new("true");
+        // The server binary itself, which coverage runs already follow
+        // through exec; `--version` exits at once.
+        let mut probe = Command::new(env!("CARGO_BIN_EXE_ferrous-dns"));
+        probe.arg("--version").stdout(Stdio::null());
         install_seccomp(&mut probe, deny_af_inet6(arch, NO_IPV6));
         probe.status().is_ok_and(|status| status.success())
     });
@@ -402,7 +411,9 @@ path = "{db}"
             .unwrap()
     }
 
-    fn start_with(&self, command: Command) -> Server {
+    /// Starts `command`, built from [`Self::command`], and waits as
+    /// [`Self::start`] does.
+    pub fn start_with(&self, command: Command) -> Server {
         let mut child = self.spawn_logged(command);
         let started = Instant::now();
         while TcpStream::connect((self.web_host, self.web_port)).is_err() {

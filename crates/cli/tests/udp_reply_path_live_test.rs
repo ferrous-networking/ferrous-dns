@@ -13,9 +13,10 @@ use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
 use hickory_proto::rr::rdata::{A, TXT};
 use hickory_proto::rr::{Name, RData, Record, RecordType};
 use hickory_proto::serialize::binary::BinEncodable;
-use server_process::{accepts_within, server_log, TestConfig};
-use std::collections::{BTreeSet, HashMap};
+use server_process::{accepts_within, server_log, Server, TestConfig};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
+use std::process::Command;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -131,9 +132,30 @@ impl Arm {
         runs
     }
 
-    fn start(&self, upstream: &FakeUpstream) -> (TestConfig, server_process::Server) {
+    fn start(&self, upstream: &FakeUpstream) -> (TestConfig, Server) {
+        self.start_with(upstream, |_| {})
+    }
+
+    /// [`Self::start`] with one runtime worker, so the listener has a single
+    /// UDP socket that every client shares.
+    fn start_single_worker(&self, upstream: &FakeUpstream) -> (TestConfig, Server) {
+        let (config, server) = self.start_with(upstream, |command| {
+            command.env("TOKIO_WORKER_THREADS", "1");
+        });
+        let log = server_log(config.dir.path());
+        assert!(log.contains("num_workers=1"), "{}:\n{log}", self.name);
+        (config, server)
+    }
+
+    fn start_with(
+        &self,
+        upstream: &FakeUpstream,
+        configure: impl FnOnce(&mut Command),
+    ) -> (TestConfig, Server) {
         let config = TestConfig::filtering_on(self.bind, upstream.addr);
-        let server = config.start();
+        let mut command = config.command();
+        configure(&mut command);
+        let server = config.start_with(command);
         assert!(
             accepts_within(
                 SocketAddr::from((Ipv4Addr::LOCALHOST, config.dns_port)),
@@ -269,13 +291,15 @@ fn test_a_burst_wider_than_one_batch_is_fully_answered() {
     const PER_CLIENT: u16 = 50;
     let upstream = FakeUpstream::spawn();
     for (i, arm) in ARMS.iter().enumerate().filter(|(_, arm)| arm.runs_here()) {
-        let (config, _server) = arm.start(&upstream);
+        // One runtime worker, so one UDP socket: every client's queries share
+        // its batches, and one sendmmsg answers several peers.
+        let (config, _server) = arm.start_single_worker(&upstream);
         let name = format!("burst{i}.reply-path.example");
         let clients: Vec<_> = (0..CLIENTS).map(|_| arm.client(config.dns_port)).collect();
         ask(arm, &clients[0], 1, &name, RecordType::A);
 
         // Sent before any answer is read, so the listener drains them in
-        // batches of up to 64 and answers several from one sendmmsg.
+        // batches of up to 64.
         for (c, client) in (0..).zip(&clients) {
             for n in 0..PER_CLIENT {
                 client
@@ -284,17 +308,19 @@ fn test_a_burst_wider_than_one_batch_is_fully_answered() {
             }
         }
         for (c, client) in (0..).zip(&clients) {
-            let expected: BTreeSet<u16> =
-                (0..PER_CLIENT).map(|n| 1000 + c * PER_CLIENT + n).collect();
-            let mut answered = BTreeSet::new();
+            let expected: Vec<u16> = (0..PER_CLIENT).map(|n| 1000 + c * PER_CLIENT + n).collect();
+            // Every ID exactly once, to this client: a duplicate or a reply
+            // meant for another peer shows up as a mismatch.
+            let mut answered = Vec::new();
             let mut buf = [0u8; 4096];
             while answered.len() < expected.len() {
                 let Ok(len) = client.recv(&mut buf) else {
                     break;
                 };
                 let reply = Message::from_vec(&buf[..len]).unwrap();
-                answered.insert(reply.id);
+                answered.push(reply.id);
             }
+            answered.sort_unstable();
             assert_eq!(answered, expected, "{}: client {c}", arm.name);
         }
         assert_eq!(

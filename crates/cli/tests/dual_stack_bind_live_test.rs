@@ -8,7 +8,7 @@ mod server_process;
 
 use common::skip_without_dual_stack;
 use server_process::{
-    accepts_within, http_status, is_refused, server_log, udp_answers, TestConfig,
+    accepts_within, http_status, is_refused, server_log, udp_answers, TestConfig, FALLBACK_LINE,
 };
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
@@ -45,7 +45,7 @@ fn test_auto_serves_dns_and_web_on_ipv4_and_ipv6() {
     assert_serves(&config, V6);
     // The IPv4 fallback is only for kernels without IPv6.
     let log = server_log(config.dir.path());
-    assert!(!log.contains("listens on IPv4 only"), "{log}");
+    assert!(!log.contains(FALLBACK_LINE), "{log}");
 }
 
 #[test]
