@@ -1,10 +1,11 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use super::pktinfo;
+use crate::server::listener_socket::open_listener_socket;
 use bytes::Buf;
 use ferrous_dns_domain::{ClientProtocol, DomainError};
 use ferrous_dns_infrastructure::dns::proxy_protocol::read_proxy_v2_client_ip;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
-use socket2::{Domain, Protocol, Socket, Type};
+use socket2::{Protocol, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,17 +13,15 @@ use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, warn};
 
-/// Binds a TCP listener (Do53 TCP, DoT) on `bind`. The socket is always
-/// AF_INET6 with `only_v6` off: an IPv4 `bind` is bound in v4-mapped form and
-/// keeps its v4-only behaviour, while `[::]` serves both families on one
-/// socket. Binding is synchronous, so the listener accepts immediately.
+/// Binds a TCP listener (Do53 TCP, DoT) on `bind`, in the address's family
+/// (see `open_listener_socket`): `[::]` serves both families on one socket.
+/// Binding is synchronous, so the listener accepts immediately.
 pub fn bind_tcp_listener(bind: SocketAddr) -> anyhow::Result<TcpListener> {
-    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
-    socket.set_only_v6(false)?;
+    let socket = open_listener_socket(bind, Type::STREAM, Protocol::TCP)?;
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
-    socket.bind(&pktinfo::v6_mapped_bind_addr(bind).into())?;
+    socket.bind(&bind.into())?;
     socket.listen(1024)?;
     socket.set_nonblocking(true)?;
     let std_listener: std::net::TcpListener = socket.into();
@@ -38,7 +37,7 @@ pub(super) async fn run_tcp_worker(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
-                // The dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`;
+                // A dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`;
                 // normalise so limits, groups, and logs see real IPv4.
                 let peer_addr = pktinfo::unmap_socket_addr(peer_addr);
                 let guard = match conn_limiter.try_acquire(peer_addr.ip()) {

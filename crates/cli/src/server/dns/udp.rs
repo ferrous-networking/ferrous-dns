@@ -4,7 +4,7 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock::coarse_now_secs;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
-use socket2::{Domain, Protocol, Socket, Type};
+use socket2::{Domain, Protocol, Type};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::os::unix::io::AsRawFd;
@@ -15,6 +15,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{error, warn};
 
 use super::pktinfo;
+use crate::server::listener_socket::open_listener_socket;
 
 const PACKETS_BEFORE_YIELD: usize = 256;
 
@@ -50,21 +51,20 @@ impl FallbackAdmission {
     }
 }
 
-/// Binds one SO_REUSEPORT worker socket, always AF_INET6 with `only_v6` off:
-/// an IPv4 `bind` is mapped to `::ffff:a.b.c.d` so the pktinfo path can
-/// assume sockaddr_in6 / in6_pktinfo, and `[::]` serves both families.
+/// Binds one SO_REUSEPORT worker socket in the address's family (see
+/// `open_listener_socket`): AF_INET for an IPv4 `bind`, and a dual-stack
+/// AF_INET6 socket for an IPv6 one, so `[::]` serves both families.
 pub(super) fn create_udp_socket(bind: SocketAddr) -> anyhow::Result<AsyncFd<std::net::UdpSocket>> {
-    let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
-    socket.set_only_v6(false)?;
+    let socket = open_listener_socket(bind, Type::DGRAM, Protocol::UDP)?;
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
     // 4 MB buffers — accommodate ~128 full batches of 64 × 512-byte packets.
     socket.set_recv_buffer_size(4 * 1024 * 1024)?;
     socket.set_send_buffer_size(4 * 1024 * 1024)?;
-    socket.bind(&pktinfo::v6_mapped_bind_addr(bind).into())?;
+    socket.bind(&bind.into())?;
     // Without it every reply would silently leave from a kernel-chosen address.
-    pktinfo::enable_pktinfo(&socket)?;
+    pktinfo::enable_pktinfo(&socket, Domain::for_address(bind))?;
 
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();
@@ -81,15 +81,25 @@ pub(super) async fn run_udp_worker(
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
+    // Replies are encoded for the socket's family.
+    let domain = match socket.get_ref().local_addr() {
+        Ok(local) => Domain::for_address(local),
+        Err(e) => {
+            error!(worker = worker_id, error = %e, "UDP socket has no local address");
+            return;
+        }
+    };
+
     #[cfg(target_os = "linux")]
-    run_udp_worker_batch(socket, handler, admission, worker_id).await;
+    run_udp_worker_batch(socket, domain, handler, admission, worker_id).await;
 
     #[cfg(not(target_os = "linux"))]
-    run_udp_worker_single(socket, handler, admission, worker_id).await;
+    run_udp_worker_single(socket, domain, handler, admission, worker_id).await;
 }
 
 fn spawn_fallback(
     socket: &Arc<AsyncFd<std::net::UdpSocket>>,
+    domain: Domain,
     handler: &Arc<DnsServerHandler>,
     admission: &FallbackAdmission,
     query: &[u8],
@@ -109,7 +119,8 @@ fn spawn_fallback(
             .handle_raw_udp_fallback(&query, peer.ip(), ClientProtocol::Udp)
             .await
         {
-            let _ = pktinfo::try_send_with_src_ip(socket.get_ref(), &response, peer, source);
+            let _ =
+                pktinfo::try_send_with_src_ip(socket.get_ref(), domain, &response, peer, source);
         }
     });
 }
@@ -117,12 +128,13 @@ fn spawn_fallback(
 #[cfg(target_os = "linux")]
 async fn run_udp_worker_batch(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
+    domain: Domain,
     handler: Arc<DnsServerHandler>,
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
     let mut batch = pktinfo::RecvBatch::new();
-    let mut send_batch = pktinfo::SendBatch::new();
+    let mut send_batch = pktinfo::SendBatch::new(domain);
     let mut pending_wire: Vec<pktinfo::PendingWireResponse> =
         Vec::with_capacity(pktinfo::BATCH_SIZE);
 
@@ -207,7 +219,9 @@ async fn run_udp_worker_batch(
                     }
                 }
 
-                spawn_fallback(&socket, &handler, &admission, msg.data, msg.src, msg.dst_ip);
+                spawn_fallback(
+                    &socket, domain, &handler, &admission, msg.data, msg.src, msg.dst_ip,
+                );
             }
 
             if let Err(e) = send_batch.flush(fd) {
@@ -219,6 +233,7 @@ async fn run_udp_worker_batch(
             for resp in &pending_wire {
                 let _ = pktinfo::try_send_with_src_ip(
                     socket.get_ref(),
+                    domain,
                     &resp.data,
                     resp.to,
                     resp.src_ip,
@@ -247,6 +262,7 @@ async fn run_udp_worker_batch(
 #[cfg(not(target_os = "linux"))]
 async fn run_udp_worker_single(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
+    domain: Domain,
     handler: Arc<DnsServerHandler>,
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
@@ -293,6 +309,7 @@ async fn run_udp_worker_single(
                                         )?;
                                         let _ = pktinfo::try_send_with_src_ip(
                                             socket.get_ref(),
+                                            domain,
                                             &wire[..wire_len],
                                             from,
                                             dst_ip,
@@ -313,6 +330,7 @@ async fn run_udp_worker_single(
                                 ) {
                                     let _ = pktinfo::try_send_with_src_ip(
                                         socket.get_ref(),
+                                        domain,
                                         &patched,
                                         from,
                                         dst_ip,
@@ -323,7 +341,9 @@ async fn run_udp_worker_single(
                         }
                     }
 
-                    spawn_fallback(&socket, &handler, &admission, query_buf, from, dst_ip);
+                    spawn_fallback(
+                        &socket, domain, &handler, &admission, query_buf, from, dst_ip,
+                    );
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     guard.clear_ready();
@@ -412,20 +432,16 @@ mod tests {
 
     #[tokio::test]
     async fn saturated_misses_are_dropped_without_delaying_cache_hits() {
-        // Mirror the default deployment: an IPv4 bind on a dual-stack AF_INET6 socket.
+        // Mirror the default deployment (`auto`): IPv4 clients on a dual-stack AF_INET6 socket.
         if !test_support::dual_stack_loopback_available() {
             eprintln!("skipping: no dual-stack loopback available");
             return;
         }
         let resolver = Arc::new(GatedResolver::new());
-        let socket = Arc::new(create_udp_socket("127.0.0.1:0".parse().unwrap()).unwrap());
+        let socket = Arc::new(create_udp_socket("[::]:0".parse().unwrap()).unwrap());
+        let port = socket.get_ref().local_addr().unwrap().port();
         let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        client
-            .connect(test_support::unmap_addr(
-                socket.get_ref().local_addr().unwrap(),
-            ))
-            .await
-            .unwrap();
+        client.connect(("127.0.0.1", port)).await.unwrap();
         let shed = ShedCounters::default();
         let worker = tokio::spawn(run_udp_worker(
             socket,
@@ -487,14 +503,10 @@ mod tests {
             return;
         }
         let resolver = Arc::new(GatedResolver::new());
-        let socket = Arc::new(create_udp_socket("127.0.0.1:0".parse().unwrap()).unwrap());
+        let socket = Arc::new(create_udp_socket("[::]:0".parse().unwrap()).unwrap());
+        let port = socket.get_ref().local_addr().unwrap().port();
         let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        client
-            .connect(test_support::unmap_addr(
-                socket.get_ref().local_addr().unwrap(),
-            ))
-            .await
-            .unwrap();
+        client.connect(("127.0.0.1", port)).await.unwrap();
         // One upstream slot, and room for the burst below in the listener's budget.
         let use_case = HandleDnsQueryUseCase::new(
             resolver.clone(),

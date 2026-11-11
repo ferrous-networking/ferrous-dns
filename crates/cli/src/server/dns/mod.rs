@@ -26,7 +26,7 @@ pub const MAX_UPSTREAM_BOUND_QUERIES: usize = 4096;
 const MAX_IN_FLIGHT_UDP_QUERIES: usize = 2 * MAX_UPSTREAM_BOUND_QUERIES;
 
 /// Starts the Do53 listeners on `bind`: one SO_REUSEPORT UDP socket and TCP
-/// listener per worker, each a dual-stack AF_INET6 socket (see `udp` / `tcp`).
+/// listener per worker, in the address's family (see `udp` / `tcp`).
 /// UDP queries shed for lack of a fallback slot count in `udp_fallback_shed`.
 /// `listening` is set once every worker has bound and cleared if they all exit.
 pub async fn start_dns_server(

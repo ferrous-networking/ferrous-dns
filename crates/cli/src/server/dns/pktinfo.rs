@@ -1,48 +1,48 @@
 use std::io;
-use std::net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::AsRawFd;
 #[cfg(target_os = "linux")]
 use std::os::unix::io::RawFd;
 
 #[cfg(target_os = "linux")]
 use ferrous_dns_infrastructure::dns::wire_response;
-use socket2::Socket;
+use socket2::{Domain, Socket};
 
 #[cfg(target_os = "linux")]
 pub(super) const BATCH_SIZE: usize = 64;
 #[cfg(target_os = "linux")]
 const RECV_BUF_SIZE: usize = 512;
-/// Receive-side control buffer, with room beyond IPV6_PKTINFO so other
+/// Receive-side control buffer, with room beyond the pktinfo message so other
 /// ancillary data cannot truncate it away (MSG_CTRUNC).
 const RECV_CMSG_BUF_SIZE: usize = 128;
 
 /// Offset of a control message's payload from its header.
 // SAFETY: CMSG_LEN is pure size arithmetic.
 const CMSG_HDR_LEN: usize = unsafe { libc::CMSG_LEN(0) } as usize;
-/// `msg_controllen` for a lone IPV6_PKTINFO: `CMSG_LEN`, not `CMSG_SPACE`.
-/// Linux copies control data up to 36 bytes into an on-stack buffer and
-/// kmallocs anything larger; CMSG_SPACE's 4 bytes of tail padding (40) would
-/// cost an allocation and free on every send.
-// SAFETY: CMSG_LEN is pure size arithmetic.
-const PKTINFO_CMSG_LEN: usize =
-    unsafe { libc::CMSG_LEN(size_of::<libc::in6_pktinfo>() as u32) } as usize;
+const _: () = assert!(CMSG_HDR_LEN >= size_of::<libc::cmsghdr>());
+/// Send-side control buffer, with room for either family's pktinfo.
 // SAFETY: CMSG_SPACE is pure size arithmetic.
 const PKTINFO_CMSG_SPACE: usize =
     unsafe { libc::CMSG_SPACE(size_of::<libc::in6_pktinfo>() as u32) } as usize;
 
-/// Asks the kernel to report each datagram's destination (IPV6_PKTINFO), so
-/// replies leave from the address the query reached. The listeners are
-/// AF_INET6 dual-stack sockets on which IPv4 destinations arrive v4-mapped,
-/// so the IPv6 option alone covers both families.
-pub(super) fn enable_pktinfo(socket: &Socket) -> io::Result<()> {
+/// Asks the kernel to report each datagram's destination, so replies leave
+/// from the address the query reached: IP_PKTINFO on an AF_INET socket, and
+/// IPV6_RECVPKTINFO on a dual-stack AF_INET6 one, where IPv4 destinations
+/// arrive v4-mapped, so the IPv6 option covers both families.
+pub(super) fn enable_pktinfo(socket: &Socket, domain: Domain) -> io::Result<()> {
+    let (level, name) = if domain == Domain::IPV4 {
+        (libc::IPPROTO_IP, libc::IP_PKTINFO)
+    } else {
+        (libc::IPPROTO_IPV6, libc::IPV6_RECVPKTINFO)
+    };
     let on: libc::c_int = 1;
     // SAFETY: the fd stays open for the lifetime of `socket`; `on` outlives
     // the call and the length passed is its size.
     let rc = unsafe {
         libc::setsockopt(
             socket.as_raw_fd(),
-            libc::IPPROTO_IPV6,
-            libc::IPV6_RECVPKTINFO,
+            level,
+            name,
             (&raw const on).cast(),
             size_of::<libc::c_int>() as libc::socklen_t,
         )
@@ -76,31 +76,69 @@ impl<const N: usize> CmsgBuf<N> {
         &self.bytes[..len.min(N)]
     }
 
-    /// Writes a lone IPV6_PKTINFO message that sends from `src` on interface
-    /// `ifindex`; it occupies the first `PKTINFO_CMSG_LEN` bytes.
-    fn write_pktinfo(&mut self, src: IpAddr, ifindex: u32) {
-        const { assert!(N >= PKTINFO_CMSG_LEN) };
+    /// Writes a lone pktinfo message that sends from `src` on interface
+    /// `ifindex` (IP_PKTINFO for an AF_INET socket, IPV6_PKTINFO for an
+    /// AF_INET6 one) and returns its length, the `msg_controllen` to send.
+    fn write_pktinfo(&mut self, domain: Domain, src: IpAddr, ifindex: u32) -> usize {
+        match (domain == Domain::IPV4, src) {
+            (true, IpAddr::V4(v4)) => self.write_cmsg(
+                libc::IPPROTO_IP,
+                libc::IP_PKTINFO,
+                libc::in_pktinfo {
+                    ipi_ifindex: ifindex as _,
+                    ipi_spec_dst: in_addr(v4),
+                    ipi_addr: in_addr(Ipv4Addr::UNSPECIFIED),
+                },
+            ),
+            _ => self.write_cmsg(
+                libc::IPPROTO_IPV6,
+                libc::IPV6_PKTINFO,
+                libc::in6_pktinfo {
+                    ipi6_addr: ip_to_in6_addr(src),
+                    ipi6_ifindex: ifindex,
+                },
+            ),
+        }
+    }
+
+    /// Writes a lone control message carrying `payload` at the start of the
+    /// buffer and returns its `msg_controllen`: `CMSG_LEN`, not `CMSG_SPACE`.
+    /// Linux copies control data up to 36 bytes into an on-stack buffer and
+    /// kmallocs anything larger; CMSG_SPACE's 4 bytes of tail padding (40 for
+    /// IPV6_PKTINFO) would cost an allocation and free on every send.
+    fn write_cmsg<T>(&mut self, level: libc::c_int, ty: libc::c_int, payload: T) -> usize {
+        // SAFETY: CMSG_LEN is pure size arithmetic.
+        const { assert!(N >= unsafe { libc::CMSG_LEN(size_of::<T>() as u32) } as usize) };
+        // SAFETY: as above.
+        let len = unsafe { libc::CMSG_LEN(size_of::<T>() as u32) } as usize;
         // Also clears the padding musl's 64-bit `cmsghdr` keeps inside the
         // kernel's `cmsg_len` word.
         self.bytes.fill(0);
         let cmsg = self.bytes.as_mut_ptr().cast::<libc::cmsghdr>();
         // SAFETY: `bytes` sits at offset 0 of this cmsghdr-aligned struct and
-        // holds at least PKTINFO_CMSG_LEN bytes (asserted above), which covers
-        // the header and the in6_pktinfo at CMSG_HDR_LEN; the payload write is
-        // unaligned, so its own alignment is irrelevant.
+        // holds at least `len` bytes (asserted above), which covers the header
+        // and the payload at CMSG_HDR_LEN; the payload write is unaligned, so
+        // its own alignment is irrelevant.
         unsafe {
-            (*cmsg).cmsg_len = PKTINFO_CMSG_LEN as _;
-            (*cmsg).cmsg_level = libc::IPPROTO_IPV6;
-            (*cmsg).cmsg_type = libc::IPV6_PKTINFO;
+            (*cmsg).cmsg_len = len as _;
+            (*cmsg).cmsg_level = level;
+            (*cmsg).cmsg_type = ty;
             cmsg.cast::<u8>()
                 .add(CMSG_HDR_LEN)
-                .cast::<libc::in6_pktinfo>()
-                .write_unaligned(libc::in6_pktinfo {
-                    ipi6_addr: ip_to_in6_addr(src),
-                    ipi6_ifindex: ifindex,
-                });
+                .cast::<T>()
+                .write_unaligned(payload);
         }
+        len
     }
+}
+
+/// Storage for a socket address of either family, sized like `sockaddr_in6`
+/// so a batch slot stays 28 bytes rather than `sockaddr_storage`'s 128.
+#[repr(C)]
+#[derive(Clone, Copy)]
+union SockAddrIn {
+    v4: libc::sockaddr_in,
+    v6: libc::sockaddr_in6,
 }
 
 /// Heap-allocates a zero-filled `T` without building it on the stack first.
@@ -121,7 +159,7 @@ unsafe fn zeroed_box<T>() -> Box<T> {
 pub(super) struct RecvBatch {
     recv_bufs: Box<[[u8; RECV_BUF_SIZE]; BATCH_SIZE]>,
     cmsg_bufs: Box<[CmsgBuf<RECV_CMSG_BUF_SIZE>; BATCH_SIZE]>,
-    src_addrs: Box<[libc::sockaddr_in6; BATCH_SIZE]>,
+    src_addrs: Box<[SockAddrIn; BATCH_SIZE]>,
     iovecs: Box<[libc::iovec; BATCH_SIZE]>,
     hdrs: Box<[libc::mmsghdr; BATCH_SIZE]>,
     /// Headers the last `recv` wrote; only those need their
@@ -138,8 +176,8 @@ unsafe impl Send for RecvBatch {}
 #[cfg(target_os = "linux")]
 impl RecvBatch {
     pub(super) fn new() -> Self {
-        // SAFETY: byte arrays, `CmsgBuf`, and the libc C structs (integers and
-        // raw pointers only) are all valid when zeroed.
+        // SAFETY: byte arrays, `CmsgBuf`, `SockAddrIn` and the libc C structs
+        // (integers and raw pointers only) are all valid when zeroed.
         let mut batch = unsafe {
             Self {
                 recv_bufs: zeroed_box(),
@@ -157,7 +195,7 @@ impl RecvBatch {
             };
             let hdr = &mut batch.hdrs[i].msg_hdr;
             hdr.msg_name = (&raw mut batch.src_addrs[i]).cast();
-            hdr.msg_namelen = size_of::<libc::sockaddr_in6>() as libc::socklen_t;
+            hdr.msg_namelen = size_of::<SockAddrIn>() as libc::socklen_t;
             hdr.msg_iov = &raw mut batch.iovecs[i];
             hdr.msg_iovlen = 1;
             hdr.msg_control = batch.cmsg_bufs[i].bytes.as_mut_ptr().cast();
@@ -210,7 +248,7 @@ impl RecvBatch {
         let control = self.cmsg_bufs[i].filled(hdr.msg_hdr.msg_controllen as _);
         ReceivedMsg {
             data: &self.recv_bufs[i][..hdr.msg_len as usize],
-            src: sockaddr_in6_to_socket_addr(&self.src_addrs[i]),
+            src: sockaddr_to_socket_addr(&self.src_addrs[i]),
             dst_ip: extract_pktinfo_dst(control),
         }
     }
@@ -223,7 +261,7 @@ pub(super) struct ReceivedMsg<'a> {
     pub data: &'a [u8],
     /// Source address of the client (v4-mapped clients normalised to `IpAddr::V4`).
     pub src: SocketAddr,
-    /// Destination IP (our interface) extracted from IPV6_PKTINFO.
+    /// Destination IP (our interface) extracted from the pktinfo message.
     pub dst_ip: IpAddr,
 }
 
@@ -248,10 +286,12 @@ pub(super) struct PendingWireResponse {
 pub(super) struct SendBatch {
     wires: Box<[ResponseBuf; BATCH_SIZE]>,
     cmsg_bufs: Box<[CmsgBuf<PKTINFO_CMSG_SPACE>; BATCH_SIZE]>,
-    dst_addrs: Box<[libc::sockaddr_in6; BATCH_SIZE]>,
+    dst_addrs: Box<[SockAddrIn; BATCH_SIZE]>,
     iovecs: Box<[libc::iovec; BATCH_SIZE]>,
     hdrs: Box<[libc::mmsghdr; BATCH_SIZE]>,
     staged: usize,
+    /// The family of the socket the batch is flushed to.
+    domain: Domain,
 }
 
 // SAFETY: as for `RecvBatch`, the wired raw pointers target only heap arrays
@@ -261,7 +301,7 @@ unsafe impl Send for SendBatch {}
 
 #[cfg(target_os = "linux")]
 impl SendBatch {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(domain: Domain) -> Self {
         // SAFETY: as in `RecvBatch::new`, every field is valid when zeroed.
         let mut batch = unsafe {
             Self {
@@ -271,13 +311,14 @@ impl SendBatch {
                 iovecs: zeroed_box(),
                 hdrs: zeroed_box(),
                 staged: 0,
+                domain,
             }
         };
         for i in 0..BATCH_SIZE {
             batch.iovecs[i].iov_base = batch.wires[i].as_mut_ptr().cast();
             let hdr = &mut batch.hdrs[i].msg_hdr;
             hdr.msg_name = (&raw mut batch.dst_addrs[i]).cast();
-            hdr.msg_namelen = size_of::<libc::sockaddr_in6>() as libc::socklen_t;
+            hdr.msg_namelen = sockaddr_len(domain);
             hdr.msg_iov = &raw mut batch.iovecs[i];
             hdr.msg_iovlen = 1;
             hdr.msg_control = batch.cmsg_bufs[i].bytes.as_mut_ptr().cast();
@@ -302,7 +343,7 @@ impl SendBatch {
             return false;
         };
 
-        self.dst_addrs[i] = socket_addr_to_sockaddr_in6(to);
+        self.dst_addrs[i] = socket_addr_to_sockaddr(self.domain, to);
         self.iovecs[i].iov_len = len;
 
         let hdr = &mut self.hdrs[i].msg_hdr;
@@ -310,8 +351,8 @@ impl SendBatch {
             // No captured destination: let the kernel pick the source address.
             hdr.msg_controllen = 0;
         } else {
-            self.cmsg_bufs[i].write_pktinfo(src_ip, dest_scope_id(to));
-            hdr.msg_controllen = PKTINFO_CMSG_LEN as _;
+            hdr.msg_controllen =
+                self.cmsg_bufs[i].write_pktinfo(self.domain, src_ip, dest_scope_id(to)) as _;
         }
         self.staged += 1;
         true
@@ -355,13 +396,13 @@ pub(super) fn try_recv_with_pktinfo(
         iov_base: buf.as_mut_ptr().cast(),
         iov_len: buf.len(),
     };
-    // SAFETY: sockaddr_in6 and msghdr are C structs; zeroing is the correct way to initialize them.
-    let mut src_addr: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
+    // SAFETY: SockAddrIn and msghdr are C types; zeroing is the correct way to initialize them.
+    let mut src_addr: SockAddrIn = unsafe { std::mem::zeroed() };
     let mut control = CmsgBuf::<RECV_CMSG_BUF_SIZE>::zeroed();
     // SAFETY: as above.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_name = (&raw mut src_addr).cast();
-    msg.msg_namelen = size_of::<libc::sockaddr_in6>() as libc::socklen_t;
+    msg.msg_namelen = size_of::<SockAddrIn>() as libc::socklen_t;
     msg.msg_iov = &raw mut iov;
     msg.msg_iovlen = 1;
     msg.msg_control = control.bytes.as_mut_ptr().cast();
@@ -373,21 +414,23 @@ pub(super) fn try_recv_with_pktinfo(
         return Err(io::Error::last_os_error());
     }
 
-    let from = sockaddr_in6_to_socket_addr(&src_addr);
+    let from = sockaddr_to_socket_addr(&src_addr);
     let dst = extract_pktinfo_dst(control.filled(msg.msg_controllen as _));
 
     Ok((n as usize, from, dst))
 }
 
-/// Sends `buf` to `to` from source address `src`, or from whatever address
-/// the kernel picks when `src` is unspecified (no destination was captured).
+/// Sends `buf` to `to` from source address `src` on a `domain` socket, or
+/// from whatever address the kernel picks when `src` is unspecified (no
+/// destination was captured).
 pub(super) fn try_send_with_src_ip(
     socket: &std::net::UdpSocket,
+    domain: Domain,
     buf: &[u8],
     to: SocketAddr,
     src: IpAddr,
 ) -> io::Result<()> {
-    let dst_addr = socket_addr_to_sockaddr_in6(to);
+    let dst_addr = socket_addr_to_sockaddr(domain, to);
     let iov = libc::iovec {
         iov_base: buf.as_ptr().cast_mut().cast(),
         iov_len: buf.len(),
@@ -396,13 +439,12 @@ pub(super) fn try_send_with_src_ip(
     // SAFETY: msghdr is a C struct; zeroing is the correct initialization before setting fields.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_name = (&raw const dst_addr).cast_mut().cast();
-    msg.msg_namelen = size_of::<libc::sockaddr_in6>() as libc::socklen_t;
+    msg.msg_namelen = sockaddr_len(domain);
     msg.msg_iov = (&raw const iov).cast_mut();
     msg.msg_iovlen = 1;
     if !is_unspecified(src) {
-        control.write_pktinfo(src, dest_scope_id(to));
+        msg.msg_controllen = control.write_pktinfo(domain, src, dest_scope_id(to)) as _;
         msg.msg_control = control.bytes.as_mut_ptr().cast();
-        msg.msg_controllen = PKTINFO_CMSG_LEN as _;
     }
 
     // SAFETY: fd is valid; msg points to dst_addr, iov and control, all live on
@@ -414,24 +456,31 @@ pub(super) fn try_send_with_src_ip(
     Ok(())
 }
 
-/// Destination address carried by an IPV6_PKTINFO message in `control`, or
-/// `::` when there is none. Every read is bounds-checked against `control`,
-/// so arbitrary bytes are handled soundly.
+/// Destination address carried by an IP_PKTINFO or IPV6_PKTINFO message in
+/// `control`, or `::` when there is none. Every read is bounds-checked
+/// against `control`, so arbitrary bytes are handled soundly.
 fn extract_pktinfo_dst(mut control: &[u8]) -> IpAddr {
-    while control.len() >= PKTINFO_CMSG_LEN {
+    while control.len() >= CMSG_HDR_LEN {
         // SAFETY: `control` holds at least a `cmsghdr`; the read is unaligned.
         let hdr = unsafe { control.as_ptr().cast::<libc::cmsghdr>().read_unaligned() };
-        if hdr.cmsg_level == libc::IPPROTO_IPV6 && hdr.cmsg_type == libc::IPV6_PKTINFO {
-            // SAFETY: `control.len() >= PKTINFO_CMSG_LEN` covers the
-            // in6_pktinfo at CMSG_HDR_LEN; the read is unaligned.
-            let pktinfo = unsafe {
-                control
-                    .as_ptr()
-                    .add(CMSG_HDR_LEN)
-                    .cast::<libc::in6_pktinfo>()
-                    .read_unaligned()
-            };
-            return unmap_v4(Ipv6Addr::from(pktinfo.ipi6_addr.s6_addr));
+        match (hdr.cmsg_level, hdr.cmsg_type) {
+            (libc::IPPROTO_IPV6, libc::IPV6_PKTINFO) => {
+                // SAFETY: in6_pktinfo is plain integers, valid for any bytes.
+                return unsafe { read_cmsg_payload::<libc::in6_pktinfo>(control) }
+                    .map_or(IpAddr::V6(Ipv6Addr::UNSPECIFIED), |pktinfo| {
+                        unmap_v4(Ipv6Addr::from(pktinfo.ipi6_addr.s6_addr))
+                    });
+            }
+            (libc::IPPROTO_IP, libc::IP_PKTINFO) => {
+                // The header's destination, as the mapped IPV6_PKTINFO reports
+                // it; `ipi_spec_dst` is the route's local address instead.
+                // SAFETY: in_pktinfo is plain integers, valid for any bytes.
+                return unsafe { read_cmsg_payload::<libc::in_pktinfo>(control) }
+                    .map_or(IpAddr::V6(Ipv6Addr::UNSPECIFIED), |pktinfo| {
+                        IpAddr::V4(Ipv4Addr::from(pktinfo.ipi_addr.s_addr.to_ne_bytes()))
+                    });
+            }
+            _ => {}
         }
         let cmsg_len: usize = hdr.cmsg_len as _;
         let Some(payload) = cmsg_len.checked_sub(CMSG_HDR_LEN) else {
@@ -445,6 +494,18 @@ fn extract_pktinfo_dst(mut control: &[u8]) -> IpAddr {
     }
 
     IpAddr::V6(Ipv6Addr::UNSPECIFIED)
+}
+
+/// The `T` payload of the control message at the start of `control`, or
+/// `None` when `control` ends before it does.
+///
+/// # Safety
+/// Every bit pattern must be a valid `T`.
+unsafe fn read_cmsg_payload<T>(control: &[u8]) -> Option<T> {
+    let payload = control.get(CMSG_HDR_LEN..CMSG_HDR_LEN + size_of::<T>())?;
+    // SAFETY: `payload` holds `size_of::<T>()` bytes, any of which make a
+    // valid `T` (the caller's contract); the read is unaligned.
+    Some(unsafe { payload.as_ptr().cast::<T>().read_unaligned() })
 }
 
 /// Normalises a (possibly v4-mapped) IPv6 address back to a real `IpAddr::V4`
@@ -465,6 +526,12 @@ fn ip_to_in6_addr(ip: IpAddr) -> libc::in6_addr {
     };
     libc::in6_addr {
         s6_addr: v6.octets(),
+    }
+}
+
+fn in_addr(ip: Ipv4Addr) -> libc::in_addr {
+    libc::in_addr {
+        s_addr: u32::from_ne_bytes(ip.octets()),
     }
 }
 
@@ -497,18 +564,58 @@ pub(super) fn unmap_socket_addr(addr: SocketAddr) -> SocketAddr {
     }
 }
 
-/// Rewrites an IPv4 bind address into its v4-mapped form (`::ffff:a.b.c.d`) so
-/// every listener can be created on an AF_INET6 socket. An IPv6 bind is left
-/// alone: combined with `set_only_v6(false)`, a `[::]` bind then serves both
-/// families on a single socket, while a mapped IPv4 bind stays v4-only.
-pub(super) fn v6_mapped_bind_addr(addr: SocketAddr) -> SocketAddr {
-    match addr {
-        SocketAddr::V4(v4) => SocketAddr::new(IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port()),
-        SocketAddr::V6(_) => addr,
+/// The peer the kernel wrote into `addr`, read by its family; v4-mapped
+/// peers come back as plain IPv4.
+fn sockaddr_to_socket_addr(addr: &SockAddrIn) -> SocketAddr {
+    // SAFETY: both members are plain integers, valid for any bytes, and start
+    // with their family at the same offset.
+    let family = unsafe { addr.v4.sin_family };
+    if libc::c_int::from(family) == libc::AF_INET {
+        // SAFETY: as above.
+        let v4 = unsafe { addr.v4 };
+        SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::from(v4.sin_addr.s_addr.to_ne_bytes()),
+            u16::from_be(v4.sin_port),
+        ))
+    } else {
+        // SAFETY: as above.
+        sockaddr_in6_to_socket_addr(unsafe { &addr.v6 })
     }
 }
 
-pub(super) fn sockaddr_in6_to_socket_addr(addr: &libc::sockaddr_in6) -> SocketAddr {
+/// `to` as a `domain` socket's destination: a `sockaddr_in` on AF_INET, and a
+/// `sockaddr_in6` on AF_INET6, with an IPv4 peer v4-mapped.
+fn socket_addr_to_sockaddr(domain: Domain, to: SocketAddr) -> SockAddrIn {
+    match (domain == Domain::IPV4, to) {
+        (true, SocketAddr::V4(v4)) => SockAddrIn {
+            v4: sockaddr_in(v4),
+        },
+        _ => SockAddrIn {
+            v6: socket_addr_to_sockaddr_in6(to),
+        },
+    }
+}
+
+/// The `msg_namelen` of what [`socket_addr_to_sockaddr`] writes for `domain`.
+fn sockaddr_len(domain: Domain) -> libc::socklen_t {
+    let len = if domain == Domain::IPV4 {
+        size_of::<libc::sockaddr_in>()
+    } else {
+        size_of::<libc::sockaddr_in6>()
+    };
+    len as libc::socklen_t
+}
+
+fn sockaddr_in(addr: SocketAddrV4) -> libc::sockaddr_in {
+    // SAFETY: sockaddr_in is a C struct; zeroing is the correct initialization before setting fields.
+    let mut sa: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+    sa.sin_family = libc::AF_INET as libc::sa_family_t;
+    sa.sin_addr = in_addr(*addr.ip());
+    sa.sin_port = addr.port().to_be();
+    sa
+}
+
+fn sockaddr_in6_to_socket_addr(addr: &libc::sockaddr_in6) -> SocketAddr {
     let v6 = Ipv6Addr::from(addr.sin6_addr.s6_addr);
     let port = u16::from_be(addr.sin6_port);
     match unmap_v4(v6) {
@@ -518,7 +625,7 @@ pub(super) fn sockaddr_in6_to_socket_addr(addr: &libc::sockaddr_in6) -> SocketAd
     }
 }
 
-pub(super) fn socket_addr_to_sockaddr_in6(addr: SocketAddr) -> libc::sockaddr_in6 {
+fn socket_addr_to_sockaddr_in6(addr: SocketAddr) -> libc::sockaddr_in6 {
     // SAFETY: sockaddr_in6 is a C struct; zeroing is the correct initialization before setting fields.
     let mut sa: libc::sockaddr_in6 = unsafe { std::mem::zeroed() };
     sa.sin6_family = libc::AF_INET6 as libc::sa_family_t;
@@ -533,7 +640,13 @@ pub(super) fn socket_addr_to_sockaddr_in6(addr: SocketAddr) -> libc::sockaddr_in
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+
+    // SAFETY: CMSG_LEN is pure size arithmetic.
+    const IN6_PKTINFO_CMSG_LEN: usize =
+        unsafe { libc::CMSG_LEN(size_of::<libc::in6_pktinfo>() as u32) } as usize;
+    // SAFETY: as above.
+    const IN_PKTINFO_CMSG_LEN: usize =
+        unsafe { libc::CMSG_LEN(size_of::<libc::in_pktinfo>() as u32) } as usize;
 
     #[test]
     fn unmap_v4_returns_real_v4_for_mapped_address() {
@@ -604,18 +717,37 @@ mod tests {
     }
 
     #[test]
-    fn v6_mapped_bind_addr_maps_ipv4_binds() {
-        let v4: SocketAddr = "192.0.2.1:853".parse().unwrap();
+    fn sockaddr_round_trip_on_af_inet() {
+        let addr: SocketAddr = "192.0.2.1:5353".parse().unwrap();
+        let sa = socket_addr_to_sockaddr(Domain::IPV4, addr);
+        // SAFETY: a plain-integer union member.
         assert_eq!(
-            v6_mapped_bind_addr(v4),
-            "[::ffff:192.0.2.1]:853".parse::<SocketAddr>().unwrap()
+            unsafe { sa.v4.sin_family },
+            libc::AF_INET as libc::sa_family_t
         );
+        assert_eq!(
+            sockaddr_len(Domain::IPV4) as usize,
+            size_of::<libc::sockaddr_in>()
+        );
+        assert_eq!(sockaddr_to_socket_addr(&sa), addr);
     }
 
     #[test]
-    fn v6_mapped_bind_addr_keeps_ipv6_binds() {
-        let wildcard: SocketAddr = "[::]:853".parse().unwrap();
-        assert_eq!(v6_mapped_bind_addr(wildcard), wildcard);
+    fn an_ipv4_peer_on_af_inet6_is_still_mapped() {
+        let addr: SocketAddr = "192.0.2.1:53".parse().unwrap();
+        let sa = socket_addr_to_sockaddr(Domain::IPV6, addr);
+        // SAFETY: a plain-integer union member.
+        let v6 = unsafe { sa.v6 };
+        assert_eq!(v6.sin6_family, libc::AF_INET6 as libc::sa_family_t);
+        assert_eq!(
+            v6.sin6_addr.s6_addr,
+            "::ffff:192.0.2.1".parse::<Ipv6Addr>().unwrap().octets()
+        );
+        assert_eq!(
+            sockaddr_len(Domain::IPV6) as usize,
+            size_of::<libc::sockaddr_in6>()
+        );
+        assert_eq!(sockaddr_to_socket_addr(&sa), addr);
     }
 
     fn put_cmsg_header(buf: &mut [u8], level: libc::c_int, ty: libc::c_int, len: usize) {
@@ -633,13 +765,79 @@ mod tests {
         };
     }
 
+    /// Writes a received-style IP_PKTINFO: `dst` is the header's destination,
+    /// `spec_dst` the route's local address. Returns its length.
+    fn put_in_pktinfo(buf: &mut [u8], dst: Ipv4Addr, spec_dst: Ipv4Addr) -> usize {
+        put_cmsg_header(buf, libc::IPPROTO_IP, libc::IP_PKTINFO, IN_PKTINFO_CMSG_LEN);
+        let pktinfo = libc::in_pktinfo {
+            ipi_ifindex: 2,
+            ipi_spec_dst: in_addr(spec_dst),
+            ipi_addr: in_addr(dst),
+        };
+        assert!(buf.len() >= IN_PKTINFO_CMSG_LEN);
+        // SAFETY: bounds asserted above; the write is unaligned.
+        unsafe {
+            buf.as_mut_ptr()
+                .add(CMSG_HDR_LEN)
+                .cast::<libc::in_pktinfo>()
+                .write_unaligned(pktinfo)
+        };
+        IN_PKTINFO_CMSG_LEN
+    }
+
     #[test]
     fn written_pktinfo_is_read_back() {
         let mut control = CmsgBuf::<PKTINFO_CMSG_SPACE>::zeroed();
-        control.write_pktinfo(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7)), 3);
+        let len = control.write_pktinfo(Domain::IPV6, IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7)), 3);
+        assert_eq!(len, IN6_PKTINFO_CMSG_LEN);
         assert_eq!(
-            extract_pktinfo_dst(control.filled(PKTINFO_CMSG_LEN)),
+            extract_pktinfo_dst(control.filled(len)),
             IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7))
+        );
+    }
+
+    #[test]
+    fn ipv4_pktinfo_sends_from_its_spec_dst() {
+        let mut control = CmsgBuf::<PKTINFO_CMSG_SPACE>::zeroed();
+        let len = control.write_pktinfo(Domain::IPV4, IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7)), 0);
+
+        assert_eq!(len, IN_PKTINFO_CMSG_LEN);
+        // SAFETY: the buffer holds a whole header and in_pktinfo; reads are unaligned.
+        let (hdr, pktinfo) = unsafe {
+            (
+                control
+                    .bytes
+                    .as_ptr()
+                    .cast::<libc::cmsghdr>()
+                    .read_unaligned(),
+                read_cmsg_payload::<libc::in_pktinfo>(control.filled(len)).unwrap(),
+            )
+        };
+        assert_eq!(
+            (hdr.cmsg_level, hdr.cmsg_type),
+            (libc::IPPROTO_IP, libc::IP_PKTINFO)
+        );
+        // The kernel takes the source from `ipi_spec_dst` and lets the route
+        // pick the interface, as it does for a mapped IPV6_PKTINFO.
+        assert_eq!(
+            pktinfo.ipi_spec_dst.s_addr,
+            in_addr(Ipv4Addr::new(192, 0, 2, 7)).s_addr
+        );
+        assert_eq!(pktinfo.ipi_ifindex, 0);
+    }
+
+    #[test]
+    fn ipv4_pktinfo_destination_is_the_header_destination() {
+        let mut control = [0u8; RECV_CMSG_BUF_SIZE];
+        let len = put_in_pktinfo(
+            &mut control,
+            Ipv4Addr::new(192, 0, 2, 9),
+            Ipv4Addr::new(10, 0, 0, 1),
+        );
+
+        assert_eq!(
+            extract_pktinfo_dst(&control[..len]),
+            IpAddr::V4(Ipv4Addr::new(192, 0, 2, 9))
         );
     }
 
@@ -651,13 +849,37 @@ mod tests {
         let mut control = [0u8; RECV_CMSG_BUF_SIZE];
         put_cmsg_header(&mut control, libc::SOL_SOCKET, 99, other_len as usize);
         let mut pktinfo = CmsgBuf::<PKTINFO_CMSG_SPACE>::zeroed();
-        pktinfo.write_pktinfo("2001:db8::53".parse().unwrap(), 0);
-        control[offset..offset + PKTINFO_CMSG_LEN]
-            .copy_from_slice(&pktinfo.bytes[..PKTINFO_CMSG_LEN]);
+        pktinfo.write_pktinfo(Domain::IPV6, "2001:db8::53".parse().unwrap(), 0);
+        control[offset..offset + IN6_PKTINFO_CMSG_LEN]
+            .copy_from_slice(&pktinfo.bytes[..IN6_PKTINFO_CMSG_LEN]);
 
         assert_eq!(
-            extract_pktinfo_dst(&control[..offset + PKTINFO_CMSG_LEN]),
+            extract_pktinfo_dst(&control[..offset + IN6_PKTINFO_CMSG_LEN]),
             "2001:db8::53".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn ipv4_pktinfo_after_another_control_message_is_found() {
+        // SAFETY: CMSG_LEN / CMSG_SPACE are pure size arithmetic.
+        let (other_len, other_space) = unsafe { (libc::CMSG_LEN(8), libc::CMSG_SPACE(8)) };
+        let offset = other_space as usize;
+        let mut control = [0u8; RECV_CMSG_BUF_SIZE];
+        put_cmsg_header(
+            &mut control,
+            libc::IPPROTO_IP,
+            libc::IP_TTL,
+            other_len as usize,
+        );
+        let len = put_in_pktinfo(
+            &mut control[offset..],
+            Ipv4Addr::new(192, 0, 2, 53),
+            Ipv4Addr::new(10, 0, 0, 1),
+        );
+
+        assert_eq!(
+            extract_pktinfo_dst(&control[..offset + len]),
+            IpAddr::V4(Ipv4Addr::new(192, 0, 2, 53))
         );
     }
 
@@ -676,11 +898,44 @@ mod tests {
 
         // A pktinfo header whose payload was cut off is not read.
         let mut pktinfo = CmsgBuf::<PKTINFO_CMSG_SPACE>::zeroed();
-        pktinfo.write_pktinfo(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7)), 0);
+        pktinfo.write_pktinfo(Domain::IPV6, IpAddr::V4(Ipv4Addr::new(192, 0, 2, 7)), 0);
         assert_eq!(
-            extract_pktinfo_dst(&pktinfo.bytes[..PKTINFO_CMSG_LEN - 1]),
+            extract_pktinfo_dst(&pktinfo.bytes[..IN6_PKTINFO_CMSG_LEN - 1]),
             unspecified
         );
+
+        // So is a cut-off IP_PKTINFO.
+        let mut control = [0u8; RECV_CMSG_BUF_SIZE];
+        let len = put_in_pktinfo(
+            &mut control,
+            Ipv4Addr::new(192, 0, 2, 9),
+            Ipv4Addr::new(10, 0, 0, 1),
+        );
+        assert_eq!(extract_pktinfo_dst(&control[..len - 1]), unspecified);
+
+        // An IPPROTO_IP message of another type is not mistaken for one.
+        let mut control = [0u8; RECV_CMSG_BUF_SIZE];
+        put_cmsg_header(
+            &mut control,
+            libc::IPPROTO_IP,
+            libc::IP_TTL,
+            IN_PKTINFO_CMSG_LEN,
+        );
+        assert_eq!(
+            extract_pktinfo_dst(&control[..IN_PKTINFO_CMSG_LEN]),
+            unspecified
+        );
+    }
+
+    #[test]
+    fn enable_pktinfo_succeeds_on_af_inet() {
+        let v4_only = Socket::new(
+            socket2::Domain::IPV4,
+            socket2::Type::DGRAM,
+            Some(socket2::Protocol::UDP),
+        )
+        .unwrap();
+        assert!(enable_pktinfo(&v4_only, Domain::IPV4).is_ok());
     }
 
     #[test]
@@ -691,6 +946,7 @@ mod tests {
             Some(socket2::Protocol::UDP),
         )
         .unwrap();
-        assert!(enable_pktinfo(&v4_only).is_err());
+        // The IPv6 option on an AF_INET socket.
+        assert!(enable_pktinfo(&v4_only, Domain::IPV6).is_err());
     }
 }

@@ -8,7 +8,7 @@ use axum::{
 };
 use ferrous_dns_api::{create_api_router_with_openapi, metrics_routes, AppState};
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
-use socket2::{Domain, Protocol, Socket, Type};
+use socket2::{Protocol, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -20,6 +20,7 @@ use utoipa::openapi::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
 use super::doh::{dns_query_handler, dns_query_with_id_handler, DohContext};
+use super::listener_socket::open_listener_socket;
 use super::web_tls;
 
 /// Where the Ferrous API answers, whether or not `pihole_compat` is on.
@@ -73,10 +74,7 @@ pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::R
 /// IPv4 bind stays AF_INET and needs no IPv6 in the kernel. Unlike the DNS
 /// listeners there is no `SO_REUSEPORT`: a second server must fail to bind.
 pub fn bind_web_listener(bind: SocketAddr) -> anyhow::Result<TcpListener> {
-    let socket = Socket::new(Domain::for_address(bind), Type::STREAM, Some(Protocol::TCP))?;
-    if bind.is_ipv6() {
-        socket.set_only_v6(false)?;
-    }
+    let socket = open_listener_socket(bind, Type::STREAM, Protocol::TCP)?;
     socket.set_reuse_address(true)?;
     socket.bind(&bind.into())?;
     socket.listen(1024)?;
