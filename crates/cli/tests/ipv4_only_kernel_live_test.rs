@@ -283,6 +283,8 @@ fn test_healthcheck_passes_on_the_ipv4_fallback() {
         SocketAddr::new(V4, config.dns_port),
         Duration::from_secs(10)
     ));
+    let log = server_log(config.dir.path());
+    assert!(log.contains(FALLBACK_LINE), "{log}");
 
     let probe = config
         .command_without_ipv6(NO_IPV6)
