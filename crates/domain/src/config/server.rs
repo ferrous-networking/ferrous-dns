@@ -16,7 +16,8 @@ pub struct ServerConfig {
 
     /// Default address every listener binds to. `"auto"`, the default, and
     /// `"[::]"` (or a bare `"::"`) cover both families on one dual-stack
-    /// socket; `"0.0.0.0"` covers all IPv4 interfaces only.
+    /// socket, `"auto"` only IPv4 on a kernel without IPv6; `"0.0.0.0"`
+    /// covers all IPv4 interfaces only.
     #[serde(default)]
     pub bind_address: BindAddress,
 
@@ -135,6 +136,15 @@ impl BindAddress {
         match self {
             Self::Auto => IpAddr::V6(Ipv6Addr::UNSPECIFIED),
             Self::Ip(ip) => ip,
+        }
+    }
+
+    /// What it stands for on a kernel without IPv6: `Auto` is `0.0.0.0`, and
+    /// an explicit address stays as written, so an IPv6 one still fails to bind.
+    pub fn without_ipv6(self) -> Self {
+        match self {
+            Self::Auto => Self::Ip(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            explicit @ Self::Ip(_) => explicit,
         }
     }
 }

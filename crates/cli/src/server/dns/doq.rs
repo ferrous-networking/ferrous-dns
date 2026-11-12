@@ -1,10 +1,11 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use super::pktinfo;
+use crate::server::listener_socket::open_listener_socket;
 use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use quinn::crypto::rustls::QuicServerConfig;
 use quinn::VarInt;
-use socket2::{Domain, Protocol, Socket, Type};
+use socket2::{Protocol, Type};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,9 +30,8 @@ const DOQ_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// (the caller sets `doq`). Binding is synchronous, so the returned endpoint is
 /// ready to accept connections immediately.
 ///
-/// Like the Do53 and DoT listeners, the socket is always AF_INET6 with
-/// `only_v6` off: an IPv4 `bind` is bound in v4-mapped form and keeps its
-/// v4-only behaviour, while `[::]` serves both families on one socket.
+/// Like the Do53 and DoT listeners, the socket takes the address's family
+/// (see `open_listener_socket`): `[::]` serves both families on one socket.
 pub fn bind_doq_endpoint(
     bind: SocketAddr,
     tls_config: Arc<rustls::ServerConfig>,
@@ -44,9 +44,8 @@ pub fn bind_doq_endpoint(
     let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(quic_crypto));
     server_config.transport_config(Arc::new(transport));
 
-    let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
-    socket.set_only_v6(false)?;
-    socket.bind(&pktinfo::v6_mapped_bind_addr(bind).into())?;
+    let socket = open_listener_socket(bind, Type::DGRAM, Protocol::UDP)?;
+    socket.bind(&bind.into())?;
     socket.set_nonblocking(true)?;
     let runtime = quinn::default_runtime()
         .ok_or_else(|| anyhow::anyhow!("no async runtime available for the DoQ endpoint"))?;
@@ -65,8 +64,7 @@ pub async fn start_doq_server(
     doq_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let endpoint = bind_doq_endpoint(bind, tls_config)?;
-    // `local_addr` reports the v4-mapped form of an IPv4 bind; report the
-    // address the operator configured.
+    // An explicit `::ffff:a.b.c.d` bind is still AF_INET6; log it as IPv4.
     let local_addr = pktinfo::unmap_socket_addr(endpoint.local_addr()?);
     info!(bind_address = %local_addr, "Starting DoQ server (DNS-over-QUIC, RFC 9250)");
     serve_doq(endpoint, handler, doq_conn_limiter).await;

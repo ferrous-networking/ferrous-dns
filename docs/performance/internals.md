@@ -30,17 +30,17 @@ On Linux the UDP path reads and writes datagrams in batches of **64** using `rec
 
 Receives are nonblocking: a single available query is processed immediately, without waiting to fill the batch. Sparse-query latency should be measured with idle gaps between requests, not inferred from a saturated throughput benchmark.
 
-This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with the same behaviour and lower throughput. Every target needs dual-stack `AF_INET6` sockets (IPv4 is handled as v4-mapped addresses); platforms without them, such as kernels built without IPv6, are not supported.
+This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with the same behaviour and lower throughput. Each socket takes the family of its bind address (`AF_INET` for IPv4, a dual-stack `AF_INET6` socket for IPv6), so a kernel without IPv6 is served on an IPv4 address. Linux is the supported platform: the non-Linux loop builds on macOS, but not on FreeBSD or OpenBSD, whose `libc` bindings have no `IP_PKTINFO`.
 
 Workers yield at batch boundaries after processing 256 datagrams, so a continuously readable socket cannot monopolize a Tokio worker. The non-Linux loop uses the same packet budget.
 
 ---
 
-## Correct source address on multi-homed hosts (IPV6_PKTINFO)
+## Correct source address on multi-homed hosts (IP_PKTINFO / IPV6_PKTINFO)
 
-A server bound to a wildcard address on a machine with several addresses can answer from the *wrong* source IP, and clients will drop such replies. Ferrous DNS enables `IPV6_RECVPKTINFO` on its UDP sockets, records the destination address of each incoming query from the control message, and writes it back as a control message on the reply — so the answer always leaves from the address the client sent to.
+A server bound to a wildcard address on a machine with several addresses can answer from the *wrong* source IP, and clients will drop such replies. Ferrous DNS asks the kernel for each query's destination address (`IP_PKTINFO` on its IPv4 UDP sockets, `IPV6_RECVPKTINFO` on its IPv6 ones), records it from the control message, and writes it back as a control message on the reply — so the answer always leaves from the address the client sent to.
 
-The DNS sockets are dual-stack `AF_INET6`: an IPv4 `bind_address` is bound in v4-mapped form (`::ffff:a.b.c.d`) and IPv4 clients arrive the same way, so a single `IPV6_PKTINFO` path covers both families. Client addresses are normalised back to plain IPv4 before they reach logging, grouping, and blocking.
+An IPv4 `bind_address` gets an `AF_INET` socket and the `IP_PKTINFO` path. An IPv6 one, `[::]` included, and `"auto"` on a kernel with IPv6, gets a dual-stack `AF_INET6` socket on which IPv4 clients arrive in v4-mapped form (`::ffff:a.b.c.d`), so its `IPV6_PKTINFO` path covers both families. Client addresses are normalised back to plain IPv4 before they reach logging, grouping, and blocking.
 
 ---
 

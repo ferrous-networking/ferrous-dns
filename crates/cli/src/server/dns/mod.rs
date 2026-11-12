@@ -26,7 +26,7 @@ pub const MAX_UPSTREAM_BOUND_QUERIES: usize = 4096;
 const MAX_IN_FLIGHT_UDP_QUERIES: usize = 2 * MAX_UPSTREAM_BOUND_QUERIES;
 
 /// Starts the Do53 listeners on `bind`: one SO_REUSEPORT UDP socket and TCP
-/// listener per worker, each a dual-stack AF_INET6 socket (see `udp` / `tcp`).
+/// listener per worker, in the address's family (see `udp` / `tcp`).
 /// UDP queries shed for lack of a fallback slot count in `udp_fallback_shed`.
 /// `listening` is set once every worker has bound and cleared if they all exit.
 pub async fn start_dns_server(
@@ -48,11 +48,12 @@ pub async fn start_dns_server(
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for i in 0..num_workers {
-        let udp_socket = Arc::new(udp::create_udp_socket(bind)?);
+        let (udp_socket, family) = udp::create_udp_socket(bind)?;
+        let udp_socket = Arc::new(udp_socket);
         let handler_udp = handler.clone();
         let admission = udp_admission.clone();
         join_set.spawn(async move {
-            udp::run_udp_worker(udp_socket, handler_udp, admission, i).await;
+            udp::run_udp_worker(udp_socket, family, handler_udp, admission, i).await;
         });
 
         let tcp_listener = Arc::new(tcp::bind_tcp_listener(bind)?);

@@ -7,45 +7,14 @@ mod common;
 mod server_process;
 
 use common::skip_without_dual_stack;
-use hickory_proto::op::{Message, MessageType, OpCode, Query};
-use hickory_proto::rr::{DNSClass, Name, RecordType};
-use server_process::{accepts_within, http_status, is_refused, TestConfig};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
+use server_process::{
+    accepts_within, http_status, is_refused, server_log, udp_answers, TestConfig, FALLBACK_LINE,
+};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
 const V4: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 const V6: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
-const QUERY_ID: u16 = 0x375;
-
-/// A private-range PTR query, which `block_private_ptr` (on by default)
-/// answers without an upstream.
-fn private_ptr_query() -> Vec<u8> {
-    let mut query = Query::new();
-    query.set_name(Name::from_ascii("1.1.168.192.in-addr.arpa.").unwrap());
-    query.set_query_type(RecordType::PTR);
-    query.set_query_class(DNSClass::IN);
-    let mut message = Message::new(QUERY_ID, MessageType::Query, OpCode::Query);
-    message.metadata.recursion_desired = true;
-    message.add_query(query);
-    message.to_vec().unwrap()
-}
-
-fn udp_answers(server: SocketAddr) -> bool {
-    let local: SocketAddr = match server.ip() {
-        IpAddr::V4(_) => "127.0.0.1:0".parse().unwrap(),
-        IpAddr::V6(_) => "[::1]:0".parse().unwrap(),
-    };
-    let socket = UdpSocket::bind(local).unwrap();
-    socket
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    socket.send_to(&private_ptr_query(), server).unwrap();
-    let mut buf = [0u8; 512];
-    match socket.recv_from(&mut buf) {
-        Ok((len, _)) => Message::from_vec(&buf[..len]).is_ok_and(|reply| reply.id == QUERY_ID),
-        Err(_) => false,
-    }
-}
 
 fn assert_serves(config: &TestConfig, ip: IpAddr) {
     let dns = SocketAddr::new(ip, config.dns_port);
@@ -74,6 +43,9 @@ fn test_auto_serves_dns_and_web_on_ipv4_and_ipv6() {
 
     assert_serves(&config, V4);
     assert_serves(&config, V6);
+    // The IPv4 fallback is only for kernels without IPv6.
+    let log = server_log(config.dir.path());
+    assert!(!log.contains(FALLBACK_LINE), "{log}");
 }
 
 #[test]

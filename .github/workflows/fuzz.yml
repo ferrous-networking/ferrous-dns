@@ -48,6 +48,8 @@ jobs:
 
       - name: Setup mold linker
         uses: rui314/setup-mold@v1
+        # mold only speeds up linking: a failed download keeps the system linker.
+        continue-on-error: true
 
       - name: Cache cargo-fuzz binary
         id: cache-cargo-fuzz

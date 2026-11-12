@@ -162,7 +162,8 @@ async fn async_main() -> anyhow::Result<()> {
 
     let shutdown = bootstrap::shutdown_signal().context("Failed to listen for shutdown signals")?;
 
-    let dns_addr = config.server.dns_listen_address();
+    let listen = bootstrap::resolve_listen_config(&config.server);
+    let dns_addr = listen.dns_listen_address();
     let handler_use_case = dns_services.handler_use_case;
     let responses = dns_services.responses;
     let tcp_conn_limiter = dns_services.tcp_conn_limiter;
@@ -209,7 +210,7 @@ async fn async_main() -> anyhow::Result<()> {
         )?;
         if let Some(tls_cfg) = dot_tls_config {
             record_certificate(TlsListener::Dot, &config.server.encrypted_dns.tls_cert_path);
-            let dot_addr = config.server.dot_listen_address();
+            let dot_addr = listen.dot_listen_address();
             let dot_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
@@ -241,7 +242,7 @@ async fn async_main() -> anyhow::Result<()> {
         )?;
         if let Some(tls_cfg) = doq_tls_config {
             record_certificate(TlsListener::Doq, &config.server.encrypted_dns.tls_cert_path);
-            let doq_addr = config.server.doq_listen_address();
+            let doq_addr = listen.doq_listen_address();
             let doq_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
@@ -271,7 +272,7 @@ async fn async_main() -> anyhow::Result<()> {
             config: app_state.config.clone(),
         })
     });
-    let web_doh = match (doh, config.server.doh_listen_address()) {
+    let web_doh = match (doh, listen.doh_listen_address()) {
         (Some(doh), Some(doh_addr)) => {
             tokio::spawn(async move {
                 if let Err(e) = server::start_doh_server(doh_addr, doh).await {
@@ -283,7 +284,7 @@ async fn async_main() -> anyhow::Result<()> {
         (doh, _) => doh,
     };
 
-    let web_addr = config.server.web_listen_address();
+    let web_addr = listen.web_listen_address();
 
     let web_server = server::start_web_server(
         web_addr,

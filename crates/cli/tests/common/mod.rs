@@ -388,16 +388,3 @@ fn bind_dual_stack_probe_socket() -> Option<std::net::UdpSocket> {
     socket.bind(&addr.into()).ok()?;
     Some(socket.into())
 }
-
-/// Normalises the address a listener reports back to the family it was asked
-/// to bind. The listeners are AF_INET6, so an IPv4 bind resolves to
-/// `::ffff:127.0.0.1`, which an IPv4 client socket cannot send to.
-pub fn unmap_addr(addr: std::net::SocketAddr) -> std::net::SocketAddr {
-    match addr.ip() {
-        std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(v4) => std::net::SocketAddr::new(std::net::IpAddr::V4(v4), addr.port()),
-            None => addr,
-        },
-        std::net::IpAddr::V4(_) => addr,
-    }
-}

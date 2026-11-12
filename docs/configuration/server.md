@@ -19,7 +19,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 |:-------|:--------|:------------|
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
-| `bind_address` | `auto` | Default address every listener binds to. `auto` serves IPv4 and IPv6 on every interface (see [Dual-stack](#dual-stack)), `0.0.0.0` serves IPv4 only, and a specific IP restricts access to it. Must be `auto` or an IP literal; a hostname is rejected at startup |
+| `bind_address` | `auto` | Default address every listener binds to. `auto` serves IPv4 and IPv6 on every interface (see [Dual-stack](#dual-stack)), or IPv4 only on a [kernel without IPv6](#kernel-without-ipv6); `0.0.0.0` serves IPv4 only, and a specific IP restricts access to it. Must be `auto` or an IP literal; a hostname is rejected at startup |
 | `web_bind_address` | _(unset)_ | Address the dashboard and REST API bind to instead of `bind_address`. See [Dashboard on its own address](#web-bind-address) |
 | `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
 | `trusted_proxies` | `["127.0.0.0/8", "::1/128"]` | CIDRs (or single addresses) of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are believed on DoH requests. See [DoH client identity](#doh-client-identity) |
@@ -33,7 +33,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 bind_address = "auto"
 ```
 
-`"auto"` binds `[::]` (a bare `"::"` works too; all three spellings listen the same way). Every listener opens it with `IPV6_V6ONLY` off, so IPv4 is served whatever the host's `net.ipv6.bindv6only` says. The config file, backups and `GET /ferrous/api/v1/config` keep saying `auto`.
+`"auto"` binds `[::]`, as `"[::]"` and a bare `"::"` do; only `"auto"` falls back to `0.0.0.0` on a [kernel without IPv6](#kernel-without-ipv6). Every listener opens `[::]` with `IPV6_V6ONLY` off, so IPv4 is served whatever the host's `net.ipv6.bindv6only` says. The config file, backups and `GET /ferrous/api/v1/config` keep saying `auto`.
 
 `bind_address = "0.0.0.0"` serves IPv4 only, as it always has. A config that names it, such as the `ferrous-dns.toml` that older releases shipped and that every existing Docker volume holds, keeps listening on IPv4 until that line is changed to `"auto"`.
 
@@ -44,8 +44,15 @@ DoH is keyed by the socket peer too (canonicalised the same way), except when th
 !!! note "Upgrading from a release that stored mapped addresses"
     Earlier releases stored the v4-mapped form for DoT and DoQ clients, so a device could end up with two client rows. A migration runs once on first start and rewrites them: `::ffff:10.0.0.1` becomes `10.0.0.1`, a mapped row is merged into its plain twin (query counts add up, and a group assigned to the mapped row is kept unless the plain row already had one), the query log follows, and a subnet written as `::ffff:10.0.0.0/104` becomes `10.0.0.0/8`. Nothing needs to be done by hand.
 
-!!! note "IPv6 must exist in the kernel"
-    The DNS listeners — Do53 (UDP and TCP), DoT, and DoQ — are created as `AF_INET6` sockets with `IPV6_V6ONLY` off, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them, and those listeners will fail to start. IPv6 does not need to be configured on the network — it only needs to be available in the kernel. The dedicated DoH listener and the web dashboard bind an IPv4 address as `AF_INET`, so on such a kernel they still start on one, such as `bind_address = "0.0.0.0"` or an IPv4 `web_bind_address`. `"auto"` and `"[::]"` are IPv6 addresses: a web server that binds one stops the whole server at startup.
+### Kernels without IPv6 {#kernel-without-ipv6}
+
+Every listener opens a socket in the family of its address: `AF_INET` for an IPv4 address, which needs no IPv6 in the kernel, and a dual-stack `AF_INET6` socket for an IPv6 one. On a kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6`:
+
+- `bind_address = "auto"` listens on `0.0.0.0`, IPv4 only, and logs `IPv6 is not available in this kernel: bind_address "auto" listens on IPv4 only (0.0.0.0)` at startup. The config file, backups and `GET /ferrous/api/v1/config` still say `auto`, so the same file serves both families again on a kernel with IPv6.
+- An IPv4 address, `"0.0.0.0"` included, binds as it does anywhere else.
+- An explicit IPv6 address, such as `"[::]"` in `bind_address`, `web_bind_address` or a [per-listener bind address](#per-listener-bind), is not changed. Its listener fails to start with an error that names the address and says the kernel has no IPv6. A web listener that cannot bind stops the server. A Do53 listener that cannot bind leaves the dashboard up with `/health` at 503; a DoT, DoQ or dedicated DoH listener only logs its error, and `/health` stays at 200.
+
+IPv6 turned off on the network, or with `net.ipv6.conf.all.disable_ipv6 = 1`, is not this case: the kernel can still create IPv6 sockets, so `"auto"` stays dual-stack and serves IPv4 clients as usual.
 
 ### Per-listener bind addresses {#per-listener-bind}
 
