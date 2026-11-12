@@ -925,6 +925,55 @@ async fn test_import_restores_the_enabled_flag_of_groups_that_already_exist() {
     );
 }
 
+/// Guard: a backup taken before the flag was exported says nothing about it,
+/// so a group that exists here keeps its own.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_the_enabled_flag_here() {
+    let app = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await;
+    sqlx::query("UPDATE groups SET enabled = 0 WHERE is_default = 0")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([{ "name": "IoT", "comment": null }]);
+
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = app
+        .router
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        enabled_flags(app.router).await,
+        [("Protected".to_string(), true), ("IoT".to_string(), false)]
+    );
+}
+
+/// Guard: the import writes the switches without the use case's check, and
+/// a disabled group's clients fall back to the default group, so a backup
+/// must never switch the default group off.
+#[tokio::test]
+async fn test_import_never_disables_the_default_group() {
+    let app = test_app().await.router;
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([
+        { "name": "Protected", "comment": null, "is_default": true, "enabled": false }
+    ]);
+
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = app.clone().oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(enabled_flags(app).await, [("Protected".to_string(), true)]);
+}
+
 #[tokio::test]
 async fn test_import_without_file_returns_bad_request() {
     let app = test_app().await.router;

@@ -361,6 +361,7 @@ impl ImportConfigUseCase {
                 .create_group(
                     group.name.clone(),
                     group.comment.clone(),
+                    group.enabled.unwrap_or(true),
                     group.malware_detection_enabled.unwrap_or(true),
                 )
                 .await
@@ -377,14 +378,15 @@ impl ImportConfigUseCase {
             }
         }
 
-        self.restore_malware_switches(snapshot, errors).await;
+        self.restore_group_switches(snapshot, errors).await;
         (imported, skipped)
     }
 
     /// The create above skips a group that already exists here, the default
-    /// group always among them, so their Malware Detection switch is set from
-    /// the backup on its own. A backup without the switch leaves it as it is.
-    async fn restore_malware_switches(&self, snapshot: &BackupSnapshot, errors: &mut Vec<String>) {
+    /// group always among them, so their Enabled and Malware Detection
+    /// switches are set from the backup on their own. A backup without a
+    /// switch leaves it as it is, and the default group is never disabled.
+    async fn restore_group_switches(&self, snapshot: &BackupSnapshot, errors: &mut Vec<String>) {
         let here = match self.group_repo.get_all().await {
             Ok(groups) => groups,
             Err(e) => {
@@ -392,11 +394,9 @@ impl ImportConfigUseCase {
                 return;
             }
         };
-        let mut changed = false;
+        let mut enabled_changed = false;
+        let mut malware_changed = false;
         for group in &snapshot.data.groups {
-            let Some(enabled) = group.malware_detection_enabled else {
-                continue;
-            };
             let local = here.iter().find(|local| {
                 if group.is_default {
                     local.is_default
@@ -404,27 +404,41 @@ impl ImportConfigUseCase {
                     local.name.as_ref() == group.name
                 }
             });
-            let Some(id) = local
-                .filter(|local| local.malware_detection_enabled != enabled)
-                .and_then(|local| local.id)
-            else {
+            let Some(local) = local else {
+                continue;
+            };
+            let enabled = group
+                .enabled
+                .filter(|&on| !local.is_default && on != local.enabled);
+            let malware = group
+                .malware_detection_enabled
+                .filter(|&on| on != local.malware_detection_enabled);
+            let Some(id) = local.id.filter(|_| enabled.is_some() || malware.is_some()) else {
                 continue;
             };
             match self
                 .group_repo
-                .update(id, None, None, None, Some(enabled))
+                .update(id, None, enabled, None, malware)
                 .await
             {
-                Ok(_) => changed = true,
+                Ok(_) => {
+                    enabled_changed |= enabled.is_some();
+                    malware_changed |= malware.is_some();
+                }
                 Err(e) => {
-                    warn!(name = %group.name, error = %e, "Skipping a group's Malware Detection switch during import");
+                    warn!(name = %group.name, error = %e, "Skipping a group's switches during import");
                     errors.push(format!("Group '{}': {}", group.name, e));
                 }
             }
         }
-        if changed {
+        if malware_changed {
             if let Err(e) = self.malware_exemptions.reload().await {
                 error!(error = %e, "Failed to reload malware detection exemptions after backup import");
+            }
+        }
+        if enabled_changed {
+            if let Err(e) = self.block_filter_engine.load_client_groups().await {
+                error!(error = %e, "Failed to reload client groups after backup import");
             }
         }
     }
