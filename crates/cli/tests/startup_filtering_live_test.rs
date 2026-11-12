@@ -18,6 +18,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -27,7 +28,8 @@ const LISTED: &str = "ads.startup.example";
 const UPSTREAM_IP: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 /// What a blocked A query answers under the default `null_ip` block mode.
 const BLOCKED: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
-/// Longer than any start takes, so an answer before it did not wait for the host.
+/// Under the 30 s startup cap and the 30 s download stall timeout, so a start
+/// that waited for the host would answer only once the host had served it.
 const SLOW_HOST: Duration = Duration::from_secs(10);
 
 /// The fake upstream's answer: `UPSTREAM_IP` for every A query.
@@ -64,6 +66,7 @@ enum Host {
 struct ListHost {
     url: String,
     behaviour: Arc<Mutex<Host>>,
+    served: Arc<AtomicUsize>,
 }
 
 impl ListHost {
@@ -71,22 +74,34 @@ impl ListHost {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/list.txt", listener.local_addr().unwrap());
         let behaviour = Arc::new(Mutex::new(Host::Serves(Duration::ZERO)));
+        let served = Arc::new(AtomicUsize::new(0));
         let current = Arc::clone(&behaviour);
+        let counter = Arc::clone(&served);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let host = *current.lock().unwrap();
-                std::thread::spawn(move || answer_download(stream, host));
+                let counter = Arc::clone(&counter);
+                std::thread::spawn(move || answer_download(stream, host, &counter));
             }
         });
-        Self { url, behaviour }
+        Self {
+            url,
+            behaviour,
+            served,
+        }
     }
 
     fn set(&self, host: Host) {
         *self.behaviour.lock().unwrap() = host;
     }
+
+    /// How many downloads the host has answered with the list so far.
+    fn served(&self) -> usize {
+        self.served.load(Ordering::SeqCst)
+    }
 }
 
-fn answer_download(mut stream: TcpStream, host: Host) {
+fn answer_download(mut stream: TcpStream, host: Host, served: &AtomicUsize) {
     let delay = match host {
         Host::Serves(delay) => delay,
         Host::Hangs => {
@@ -105,11 +120,15 @@ fn answer_download(mut stream: TcpStream, host: Host) {
     }
     sleep(delay);
     let body = format!("{LISTED}\n");
-    let _ = write!(
+    if write!(
         stream,
         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
-    );
+    )
+    .is_ok()
+    {
+        served.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 fn a_query(name: &str) -> Vec<u8> {
@@ -238,16 +257,20 @@ fn test_a_restart_filters_from_its_first_answer_without_waiting_for_the_host() {
     let config = seeded(&upstream, &host);
 
     host.set(Host::Serves(SLOW_HOST));
-    let (_server, first, after) = restart(&config);
+    let served = host.served();
+    // Timed against the host, not the spawn: a slow start (tarpaulin's ptrace)
+    // can take longer than SLOW_HOST before the binary runs at all.
+    let (_server, first, _) = restart(&config);
     assert_eq!(
         first,
         [BLOCKED],
         "the first answer after a restart is filtered:\n{}",
         server_log(config.dir.path())
     );
-    assert!(
-        after < SLOW_HOST,
-        "the restart waited {after:?} for the list host:\n{}",
+    assert_eq!(
+        host.served(),
+        served,
+        "the restart answered only once the host had served the list again:\n{}",
         server_log(config.dir.path())
     );
 }
