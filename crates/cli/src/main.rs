@@ -162,7 +162,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     let shutdown = bootstrap::shutdown_signal().context("Failed to listen for shutdown signals")?;
 
-    let listen = bootstrap::listen_config(&config.server);
+    let listen = bootstrap::resolve_listen_config(&config.server);
     let dns_addr = listen.dns_listen_address();
     let handler_use_case = dns_services.handler_use_case;
     let responses = dns_services.responses;

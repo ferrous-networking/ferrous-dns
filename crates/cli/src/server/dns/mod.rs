@@ -48,11 +48,12 @@ pub async fn start_dns_server(
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for i in 0..num_workers {
-        let udp_socket = Arc::new(udp::create_udp_socket(bind)?);
+        let (udp_socket, family) = udp::create_udp_socket(bind)?;
+        let udp_socket = Arc::new(udp_socket);
         let handler_udp = handler.clone();
         let admission = udp_admission.clone();
         join_set.spawn(async move {
-            udp::run_udp_worker(udp_socket, handler_udp, admission, i).await;
+            udp::run_udp_worker(udp_socket, family, handler_udp, admission, i).await;
         });
 
         let tcp_listener = Arc::new(tcp::bind_tcp_listener(bind)?);

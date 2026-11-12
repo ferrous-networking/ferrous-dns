@@ -53,8 +53,12 @@ impl FallbackAdmission {
 
 /// Binds one SO_REUSEPORT worker socket in the address's family (see
 /// `open_listener_socket`): AF_INET for an IPv4 `bind`, and a dual-stack
-/// AF_INET6 socket for an IPv6 one, so `[::]` serves both families.
-pub(super) fn create_udp_socket(bind: SocketAddr) -> anyhow::Result<AsyncFd<std::net::UdpSocket>> {
+/// AF_INET6 socket for an IPv6 one, so `[::]` serves both families. Returns
+/// the family with the socket, as replies are encoded for it.
+pub(super) fn create_udp_socket(
+    bind: SocketAddr,
+) -> anyhow::Result<(AsyncFd<std::net::UdpSocket>, Domain)> {
+    let family = Domain::for_address(bind);
     let socket = open_listener_socket(bind, Type::DGRAM, Protocol::UDP)?;
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
@@ -64,42 +68,36 @@ pub(super) fn create_udp_socket(bind: SocketAddr) -> anyhow::Result<AsyncFd<std:
     socket.set_send_buffer_size(4 * 1024 * 1024)?;
     socket.bind(&bind.into())?;
     // Without it every reply would silently leave from a kernel-chosen address.
-    pktinfo::enable_pktinfo(&socket, Domain::for_address(bind))?;
+    pktinfo::enable_pktinfo(&socket, family)?;
 
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();
     // SAFETY: the AsyncFd takes ownership of `std_socket`, which owns its fd,
     // so the fd stays open and unchanged for as long as the AsyncFd lives.
-    Ok(unsafe {
+    let socket = unsafe {
         AsyncFd::register_with_interest(std_socket, Interest::READABLE | Interest::WRITABLE)
-    }?)
+    }?;
+    Ok((socket, family))
 }
 
+/// Serves `socket`, whose family `create_udp_socket` returned.
 pub(super) async fn run_udp_worker(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
+    family: Domain,
     handler: Arc<DnsServerHandler>,
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
-    // Replies are encoded for the socket's family.
-    let domain = match socket.get_ref().local_addr() {
-        Ok(local) => Domain::for_address(local),
-        Err(e) => {
-            error!(worker = worker_id, error = %e, "UDP socket has no local address");
-            return;
-        }
-    };
-
     #[cfg(target_os = "linux")]
-    run_udp_worker_batch(socket, domain, handler, admission, worker_id).await;
+    run_udp_worker_batch(socket, family, handler, admission, worker_id).await;
 
     #[cfg(not(target_os = "linux"))]
-    run_udp_worker_single(socket, domain, handler, admission, worker_id).await;
+    run_udp_worker_single(socket, family, handler, admission, worker_id).await;
 }
 
 fn spawn_fallback(
     socket: &Arc<AsyncFd<std::net::UdpSocket>>,
-    domain: Domain,
+    family: Domain,
     handler: &Arc<DnsServerHandler>,
     admission: &FallbackAdmission,
     query: &[u8],
@@ -120,7 +118,7 @@ fn spawn_fallback(
             .await
         {
             let _ =
-                pktinfo::try_send_with_src_ip(socket.get_ref(), domain, &response, peer, source);
+                pktinfo::try_send_with_src_ip(socket.get_ref(), family, &response, peer, source);
         }
     });
 }
@@ -128,13 +126,13 @@ fn spawn_fallback(
 #[cfg(target_os = "linux")]
 async fn run_udp_worker_batch(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
-    domain: Domain,
+    family: Domain,
     handler: Arc<DnsServerHandler>,
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
     let mut batch = pktinfo::RecvBatch::new();
-    let mut send_batch = pktinfo::SendBatch::new(domain);
+    let mut send_batch = pktinfo::SendBatch::new(family);
     let mut pending_wire: Vec<pktinfo::PendingWireResponse> =
         Vec::with_capacity(pktinfo::BATCH_SIZE);
 
@@ -220,7 +218,7 @@ async fn run_udp_worker_batch(
                 }
 
                 spawn_fallback(
-                    &socket, domain, &handler, &admission, msg.data, msg.src, msg.dst_ip,
+                    &socket, family, &handler, &admission, msg.data, msg.src, msg.dst_ip,
                 );
             }
 
@@ -233,7 +231,7 @@ async fn run_udp_worker_batch(
             for resp in &pending_wire {
                 let _ = pktinfo::try_send_with_src_ip(
                     socket.get_ref(),
-                    domain,
+                    family,
                     &resp.data,
                     resp.to,
                     resp.src_ip,
@@ -262,7 +260,7 @@ async fn run_udp_worker_batch(
 #[cfg(not(target_os = "linux"))]
 async fn run_udp_worker_single(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
-    domain: Domain,
+    family: Domain,
     handler: Arc<DnsServerHandler>,
     admission: Arc<FallbackAdmission>,
     worker_id: usize,
@@ -309,7 +307,7 @@ async fn run_udp_worker_single(
                                         )?;
                                         let _ = pktinfo::try_send_with_src_ip(
                                             socket.get_ref(),
-                                            domain,
+                                            family,
                                             &wire[..wire_len],
                                             from,
                                             dst_ip,
@@ -330,7 +328,7 @@ async fn run_udp_worker_single(
                                 ) {
                                     let _ = pktinfo::try_send_with_src_ip(
                                         socket.get_ref(),
-                                        domain,
+                                        family,
                                         &patched,
                                         from,
                                         dst_ip,
@@ -342,7 +340,7 @@ async fn run_udp_worker_single(
                     }
 
                     spawn_fallback(
-                        &socket, domain, &handler, &admission, query_buf, from, dst_ip,
+                        &socket, family, &handler, &admission, query_buf, from, dst_ip,
                     );
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -438,13 +436,15 @@ mod tests {
             return;
         }
         let resolver = Arc::new(GatedResolver::new());
-        let socket = Arc::new(create_udp_socket("[::]:0".parse().unwrap()).unwrap());
+        let (socket, family) = create_udp_socket("[::]:0".parse().unwrap()).unwrap();
+        let socket = Arc::new(socket);
         let port = socket.get_ref().local_addr().unwrap().port();
         let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         client.connect(("127.0.0.1", port)).await.unwrap();
         let shed = ShedCounters::default();
         let worker = tokio::spawn(run_udp_worker(
             socket,
+            family,
             test_support::handler_with_resolver(resolver.clone()),
             Arc::new(FallbackAdmission::new(1, shed.udp_fallback.clone())),
             0,
@@ -503,7 +503,8 @@ mod tests {
             return;
         }
         let resolver = Arc::new(GatedResolver::new());
-        let socket = Arc::new(create_udp_socket("[::]:0".parse().unwrap()).unwrap());
+        let (socket, family) = create_udp_socket("[::]:0".parse().unwrap()).unwrap();
+        let socket = Arc::new(socket);
         let port = socket.get_ref().local_addr().unwrap().port();
         let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         client.connect(("127.0.0.1", port)).await.unwrap();
@@ -516,6 +517,7 @@ mod tests {
         .with_upstream_limit(1, Default::default());
         let worker = tokio::spawn(run_udp_worker(
             socket,
+            family,
             test_support::handler_with_use_case(use_case),
             Arc::new(FallbackAdmission::new(8, Default::default())),
             0,

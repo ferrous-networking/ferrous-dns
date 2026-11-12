@@ -11,14 +11,12 @@ pub(crate) fn open_listener_socket(
     protocol: Protocol,
 ) -> anyhow::Result<Socket> {
     let socket = Socket::new(Domain::for_address(bind), ty, Some(protocol)).map_err(|e| {
-        let no_ipv6 = bind.is_ipv6() && e.raw_os_error() == Some(libc::EAFNOSUPPORT);
-        let error = anyhow::Error::from(e);
-        if no_ipv6 {
-            error.context(format!(
+        if bind.is_ipv6() && e.raw_os_error() == Some(libc::EAFNOSUPPORT) {
+            anyhow::Error::from(e).context(format!(
                 "{bind} is an IPv6 address and this kernel has no IPv6: listen on an IPv4 address instead"
             ))
         } else {
-            error
+            e.into()
         }
     })?;
     if bind.is_ipv6() {
