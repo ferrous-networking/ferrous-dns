@@ -468,7 +468,7 @@ The same applies to a config that is owned by another user: the mount must be wr
 
 ### Cause
 
-The health check calls `GET /ferrous/api/v1/health` through `ferrous-dns --healthcheck`. It fails when the web server does not answer on the port the probe expects, or when the server answers `503` because its DNS listener is down.
+The health check calls `GET /ferrous/api/v1/health` through `ferrous-dns --healthcheck`. It fails when the web server does not answer on the port the probe expects, or when the server answers `503` because its DNS listener is down. During a start, the web port opens only once the blocklists are compiled, at most 30 s later; the image gives a first start two minutes before failures count.
 
 ### Solution
 

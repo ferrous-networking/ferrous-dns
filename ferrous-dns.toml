@@ -359,7 +359,7 @@ level = "info"                          # Log verbosity: "error", "warn", "info"
 # ── Database ──────────────────────────────────────────────────────────────────
 
 [database]
-path = "ferrous-dns.db"                 # Path to the SQLite database file
+path = "ferrous-dns.db"                 # Path to the SQLite database file; the last download of each blocklist is kept in a "lists" directory beside it
 log_queries = true                      # Store every DNS query in the database for analytics
 queries_log_stored = 30                 # Days to retain query log entries; the cleanup runs every 4 hours, first 10 minutes after startup; 0 deletes them all at each run
 

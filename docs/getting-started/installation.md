@@ -355,6 +355,10 @@ The query log's **Allow** button now writes the rule into the group the query wa
 
 A group's **Enabled** switch used to change nothing: the clients of a disabled group still got that group's blocklists and rules. Now they get the rules of the default **Protected** group instead; see [Disabled Groups](../features/client-management.md#disabled-groups). So that no client is filtered differently after the upgrade, the first start switches every disabled group back on. To use the new meaning, switch those groups off again on the **Groups** page. Earlier releases ignore the switch, so rolling back needs no change.
 
+### Blocklists in force from the first answer
+
+A start opens its ports, DNS and web, only once the blocklists are compiled, so a restart no longer answers blocked names for a moment. It waits at most 30 seconds. The server now keeps the last download of each list in a `lists` directory beside the database (`/data/lists` in the image), compiles from it at the next start, and then downloads the lists again in the background. The directory takes about the size of the lists. The first start after the upgrade has no copies yet, so it downloads the lists before it serves. Earlier releases ignore the directory. See [Restarts](../operations/sizing.md#restarts).
+
 ### Docker image cleanup
 
 The image no longer sets `RUST_LOG`, which the server never read: the entrypoint now prints its command line when `FERROUS_LOG_LEVEL` is `debug` or `trace`. It also stops copying the SQL migrations into `/data/migrations`. They are built into the binary, so an existing `/data/migrations` directory in the volume is unused and can be deleted. The bundled `docker-compose.yml` now caps the container log at three 10 MB files.

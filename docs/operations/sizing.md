@@ -65,6 +65,10 @@ Leave free disk space of about the size of the data for [`--backup-database`](ba
 
 ## Restarts
 
-A restart starts cold: the cache is empty, and every blocklist is downloaded and compiled again. Measured here, the server answered 0.17 s after it started. The lists were in force 0.4 s (1 million entries from the LAN), 0.5 s (HaGeZi Pro from GitHub) and 1.4 s (3 million entries) after it started.
+A restart starts with an empty cache. The blocklists come back from the copies the server keeps on disk: the last download of each list, in a `lists` directory beside the database. The server compiles them before it opens any port, DNS or web, so its first answer is already filtered. Once it is serving, it downloads every list again in the background, and a list whose host is down at that moment keeps its copy.
 
-Until the lists are compiled, queries are answered without blocking. A blocked name resolved normally for about 0.2 s after the first health check passed. On a slow link or a small device that window is longer, which is one more reason to keep a [second resolver](redundancy.md).
+Measured here, a restart answered its first query 0.13–0.19 s after it started with HaGeZi Pro, and 0.32–0.34 s with 1 million entries. Before the copies, the server answered after 0.02 s but left blocked names unfiltered until the lists were in force, 0.3–0.45 s after it started.
+
+A first start has no copies, and neither has a server whose `lists` directory was deleted. It downloads the lists before it opens its ports, which took 0.32 s for HaGeZi Pro from GitHub. That wait is capped at 30 seconds: past it, the ports open, `Blocklists not compiled after 30 s` is logged at `WARN`, and queries go unfiltered until the build ends. On a small device the compile takes longer, and on a first start so does a slow link. The ports stay closed during the wait, as they do while the process restarts, so keep a [second resolver](redundancy.md) to answer in the meantime.
+
+The copies take about the size of the list files on disk: 5 MB for HaGeZi Pro, 31 MB for 1 million entries in hosts format.

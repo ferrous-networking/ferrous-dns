@@ -3,6 +3,7 @@ use super::block_index::{
     MANUAL_SOURCE_BIT, MANUAL_SOURCE_BIT_INDEX, UNNAMED_ALLOW_BIT,
 };
 use super::download::ListDownloader;
+use super::list_cache::ListCache;
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::bloom::AtomicBloom;
 use aho_corasick::AhoCorasick;
@@ -232,25 +233,37 @@ fn build_group_masks(sources: &[SourceMeta], all_group_ids: &[i64]) -> HashMap<i
     group_masks
 }
 
-/// Puts the text of every URL into `next`: the copy in `held`, unless `fetch`
-/// asks for a new download or no copy is held. A failed download keeps the
-/// held copy, so a flaky server cannot unblock a whole list. Returns how each
-/// download this call tried went; a reused copy is not tried.
+/// Puts the text of every URL into `next`: the copy in `held`, or else the one
+/// kept in `cache`, unless `fetch` asks for a new download or there is no copy.
+/// A failed download keeps the copy, so a flaky server cannot unblock a whole
+/// list, and a successful one is kept in `cache`. Returns how each download
+/// this call tried went; a reused copy is not tried.
 async fn fetch_lists(
     urls: HashSet<String>,
     downloader: &ListDownloader,
+    cache: Option<&ListCache>,
     held: &HeldLists,
     fetch: ListFetch,
     table: SourceTable,
     next: &mut HeldLists,
 ) -> HashMap<String, ListSyncStatus> {
     let mut to_download = Vec::new();
+    let mut copies = HeldLists::new();
     for url in urls {
-        match held.get(&url) {
+        let copy = match (held.get(&url), cache) {
+            (Some(text), _) => Some(Arc::clone(text)),
+            (None, Some(cache)) => cache.read(&url).await,
+            (None, None) => None,
+        };
+        match copy {
             Some(text) if fetch == ListFetch::ReuseHeld => {
-                next.insert(url, Arc::clone(text));
+                next.insert(url, text);
             }
-            _ => to_download.push(url),
+            Some(text) => {
+                copies.insert(url.clone(), text);
+                to_download.push(url);
+            }
+            None => to_download.push(url),
         }
     }
 
@@ -266,10 +279,13 @@ async fn fetch_lists(
     let kind = table.kind();
     let mut outcomes = HashMap::new();
     for (url, result) in results {
-        let status = match (result, held.get(&url)) {
+        let status = match (result, copies.get(&url)) {
             (Ok(text), _) => {
                 info!(url = %url, "Fetched {kind} source");
-                let unchanged = held.get(&url).is_some_and(|old| old.as_ref() == text);
+                if let Some(cache) = cache {
+                    cache.write(&url, &text).await;
+                }
+                let unchanged = copies.get(&url).is_some_and(|old| old.as_ref() == text);
                 next.insert(url.clone(), Arc::from(text));
                 if unchanged {
                     ListSyncStatus::Unchanged
@@ -584,6 +600,7 @@ fn parse_action(row: &SqliteRow) -> Option<DomainAction> {
 pub(super) async fn compile_block_index(
     pool: &SqlitePool,
     downloader: &ListDownloader,
+    cache: Option<&ListCache>,
     held: &mut HeldLists,
     fetch: ListFetch,
 ) -> Result<BlockIndex, DomainError> {
@@ -598,6 +615,7 @@ pub(super) async fn compile_block_index(
     let outcomes = fetch_lists(
         url_tasks.iter().map(|(_, url)| url.clone()).collect(),
         downloader,
+        cache,
         held,
         fetch,
         SourceTable::Blocklist,
@@ -633,8 +651,11 @@ pub(super) async fn compile_block_index(
     .fetch_all(pool)
     .await
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-    let allowlist_load = load_allowlists(pool, downloader, held, fetch, &mut next).await?;
+    let allowlist_load = load_allowlists(pool, downloader, cache, held, fetch, &mut next).await?;
     *held = next;
+    if let Some(cache) = cache {
+        cache.retain(held.keys()).await;
+    }
 
     let build = move || {
         let group_masks = build_group_masks(&sources, &all_group_ids);
@@ -743,6 +764,7 @@ struct AllowlistLoad {
 async fn load_allowlists(
     pool: &SqlitePool,
     downloader: &ListDownloader,
+    cache: Option<&ListCache>,
     held: &HeldLists,
     fetch: ListFetch,
     next: &mut HeldLists,
@@ -776,6 +798,7 @@ async fn load_allowlists(
     let outcomes = fetch_lists(
         urls.keys().cloned().collect(),
         downloader,
+        cache,
         held,
         fetch,
         SourceTable::Whitelist,

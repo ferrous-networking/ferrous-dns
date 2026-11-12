@@ -11,7 +11,7 @@ use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::auth::SqliteMfaRepository;
 use ferrous_dns_infrastructure::dns::{
-    BlockFilterEngine, GroupMalwareExemptions, SafeSearchEnforcer,
+    BlockFilterEngine, GroupMalwareExemptions, ListCache, SafeSearchEnforcer, StartupBuild,
 };
 use ferrous_dns_infrastructure::repositories::{
     api_token_repository::SqliteApiTokenRepository,
@@ -50,6 +50,8 @@ pub struct Repositories {
     pub custom_service: Arc<SqliteCustomServiceRepository>,
     pub service_catalog: Arc<dyn ServiceCatalogPort>,
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    /// The block filter's first build, which the listeners wait for.
+    pub block_filter_startup: StartupBuild,
     pub safe_search_config: Arc<SqliteSafeSearchConfigRepository>,
     pub safe_search_engine: Arc<dyn SafeSearchEnginePort>,
     pub malware_exemptions: Arc<dyn MalwareExemptionPort>,
@@ -85,13 +87,15 @@ impl Repositories {
 
         let schedule_state: Arc<dyn ScheduleStatePort> = Arc::new(ScheduleStateStore::new());
 
-        let block_filter_engine: Arc<dyn BlockFilterEnginePort> = BlockFilterEngine::new(
+        let (block_filter_engine, block_filter_startup) = BlockFilterEngine::start(
             write_pool.clone(),
             default_group_id,
             schedule_state.clone(),
             blocking_enabled,
+            ListCache::beside_database(&db_config.path),
         )
         .await?;
+        let block_filter_engine: Arc<dyn BlockFilterEnginePort> = block_filter_engine;
 
         let composite = CompositeServiceCatalog::new(ServiceCatalog::load()?);
         let service_catalog: Arc<dyn ServiceCatalogPort> = Arc::new(composite);
@@ -138,6 +142,7 @@ impl Repositories {
             custom_service,
             service_catalog,
             block_filter_engine,
+            block_filter_startup,
             safe_search_config: safe_search_config.clone(),
             safe_search_engine,
             malware_exemptions,

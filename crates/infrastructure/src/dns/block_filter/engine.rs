@@ -5,6 +5,7 @@ use super::decision_cache::{
     BlockDecisionCache,
 };
 use super::download::ListDownloader;
+use super::list_cache::ListCache;
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use aho_corasick::AhoCorasick;
@@ -25,7 +26,8 @@ use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
+use std::time::Duration;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info, warn};
 
 /// Cached entry: (group_id, expiry_secs, epoch_at_insert).
@@ -56,6 +58,17 @@ struct BuildState {
     lists: HeldLists,
 }
 
+/// Ends when the engine's first build has ended, published or failed.
+pub struct StartupBuild(oneshot::Receiver<()>);
+
+impl StartupBuild {
+    /// Waits up to `limit` for the first build; returns whether it ended in time.
+    pub async fn wait(self, limit: Duration) -> bool {
+        // A sender dropped unsent, by a build task that panicked, ends it too.
+        tokio::time::timeout(limit, self.0).await.is_ok()
+    }
+}
+
 pub struct BlockFilterEngine {
     index: ArcSwap<BlockIndex>,
     /// Reload tickets issued so far. A build covers every ticket its Acquire load observes.
@@ -77,15 +90,58 @@ pub struct BlockFilterEngine {
     default_group_id: i64,
     pool: SqlitePool,
     downloader: ListDownloader,
+    /// Where each download is kept for the next start; `None` keeps nothing.
+    list_cache: Option<ListCache>,
 }
 
 impl BlockFilterEngine {
+    /// [`Self::start`] without a list cache or its handle: returns while the
+    /// first build runs.
     pub async fn new(
         pool: SqlitePool,
         default_group_id: i64,
         schedule_state: Arc<dyn ScheduleStatePort>,
         blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
+        let (engine, _) = Self::launch(
+            pool,
+            default_group_id,
+            schedule_state,
+            blocking_enabled,
+            None,
+        )
+        .await?;
+        Ok(engine)
+    }
+
+    /// Builds the engine and compiles its lists in the background, from the
+    /// copies in `list_cache` when an earlier run kept them; those are then
+    /// downloaded again. The handle tells when that first build has ended, so
+    /// a caller can keep its listeners closed until the lists are in force.
+    pub async fn start(
+        pool: SqlitePool,
+        default_group_id: i64,
+        schedule_state: Arc<dyn ScheduleStatePort>,
+        blocking_enabled: bool,
+        list_cache: ListCache,
+    ) -> Result<(Arc<Self>, StartupBuild), DomainError> {
+        Self::launch(
+            pool,
+            default_group_id,
+            schedule_state,
+            blocking_enabled,
+            Some(list_cache),
+        )
+        .await
+    }
+
+    async fn launch(
+        pool: SqlitePool,
+        default_group_id: i64,
+        schedule_state: Arc<dyn ScheduleStatePort>,
+        blocking_enabled: bool,
+        list_cache: Option<ListCache>,
+    ) -> Result<(Arc<Self>, StartupBuild), DomainError> {
         let downloader = ListDownloader::new()?;
 
         let engine = Arc::new_cyclic(|this| Self {
@@ -105,6 +161,7 @@ impl BlockFilterEngine {
             default_group_id,
             pool,
             downloader,
+            list_cache,
         });
 
         engine.load_client_groups_inner().await?;
@@ -112,7 +169,15 @@ impl BlockFilterEngine {
         info!("BlockFilterEngine initialized; blocklist compilation starting in background");
         let ticket = engine.issue_reload_ticket();
         let background_engine = Arc::clone(&engine);
+        let (built, startup) = oneshot::channel();
         tokio::spawn(async move {
+            let has_copies = match &background_engine.list_cache {
+                Some(cache) => cache.has_copies().await,
+                None => false,
+            };
+            if has_copies {
+                info!("Compiling the blocklists kept on disk; they are downloaded again once in force");
+            }
             if let Err(e) = background_engine
                 .rebuild_through(ticket, ListFetch::ReuseHeld)
                 .await
@@ -122,9 +187,19 @@ impl BlockFilterEngine {
                     "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
                 );
             }
+            let _ = built.send(());
+
+            // A start downloads every list, as it did before lists were kept;
+            // a first start just has. A failure is logged by the build.
+            if has_copies {
+                let ticket = background_engine.issue_reload_ticket();
+                let _ = background_engine
+                    .rebuild_through(ticket, ListFetch::Redownload)
+                    .await;
+            }
         });
 
-        Ok(engine)
+        Ok((engine, StartupBuild(startup)))
     }
 
     /// Issued after the caller's database changes are committed.
@@ -144,9 +219,15 @@ impl BlockFilterEngine {
         let covered = self.reload_tickets.load(Ordering::Acquire);
 
         info!("Block filter reload started");
-        let new_index = compile_block_index(&self.pool, &self.downloader, &mut build.lists, fetch)
-            .await
-            .inspect_err(|e| error!(error = %e, "Block filter reload failed"))?;
+        let new_index = compile_block_index(
+            &self.pool,
+            &self.downloader,
+            self.list_cache.as_ref(),
+            &mut build.lists,
+            fetch,
+        )
+        .await
+        .inspect_err(|e| error!(error = %e, "Block filter reload failed"))?;
 
         self.index.store(Arc::new(new_index));
         self.decision_cache.clear();
