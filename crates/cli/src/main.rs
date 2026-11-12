@@ -10,13 +10,19 @@ use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use ferrous_dns_infrastructure::tls::certificate_not_after;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{error, info, level_filters::LevelFilter};
+use tracing::{error, info, level_filters::LevelFilter, warn};
 
 mod args;
 mod bootstrap;
 mod wiring;
 use ferrous_dns::server;
+
+/// The longest a start keeps its listeners closed while the blocklists
+/// compile. A list host that is slow at start delays the server by this much
+/// at most; past it, queries are answered unfiltered until the build ends.
+const STARTUP_HOLD_LIMIT: Duration = Duration::from_secs(30);
 
 fn main() -> anyhow::Result<()> {
     ferrous_dns::install_crypto_provider();
@@ -161,6 +167,7 @@ async fn async_main() -> anyhow::Result<()> {
     }
 
     let shutdown = bootstrap::shutdown_signal().context("Failed to listen for shutdown signals")?;
+    tokio::pin!(shutdown);
 
     let listen = bootstrap::resolve_listen_config(&config.server);
     let dns_addr = listen.dns_listen_address();
@@ -178,6 +185,27 @@ async fn async_main() -> anyhow::Result<()> {
     let dns_handler =
         DnsServerHandler::new(handler_use_case.clone(), block_policy, responses.clone());
     let num_dns_workers = tokio::runtime::Handle::current().metrics().num_workers();
+
+    // No listener opens before the lists are in force, so no query is
+    // answered unfiltered after a start, and the dashboard and `/health`
+    // come up with DNS.
+    info!("Waiting for the blocklists before opening the listeners");
+    tokio::select! {
+        in_force = repos.block_filter_startup.wait(STARTUP_HOLD_LIMIT) => {
+            if !in_force {
+                warn!(
+                    "Blocklists not compiled after {} s; serving without them until the build finishes",
+                    STARTUP_HOLD_LIMIT.as_secs()
+                );
+            }
+        }
+        signal = &mut shutdown => {
+            info!(signal, "Shutdown signal received");
+            bootstrap::close_database(&database_pools).await;
+            info!("Server shutdown complete");
+            return Ok(());
+        }
+    }
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
     let dns_listening = app_state.dns_listening.clone();
@@ -298,7 +326,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     tokio::select! {
         result = web_server => result?,
-        signal = shutdown => {
+        signal = &mut shutdown => {
             info!(signal, "Shutdown signal received");
             bootstrap::close_database(&database_pools).await;
         }

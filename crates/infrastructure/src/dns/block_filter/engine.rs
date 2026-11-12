@@ -25,7 +25,8 @@ use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
+use std::time::Duration;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info, warn};
 
 /// Cached entry: (group_id, expiry_secs, epoch_at_insert).
@@ -56,6 +57,17 @@ struct BuildState {
     lists: HeldLists,
 }
 
+/// Ends when the engine's first build has ended, published or failed.
+pub struct StartupBuild(oneshot::Receiver<()>);
+
+impl StartupBuild {
+    /// Waits up to `limit` for the first build; returns whether it ended in time.
+    pub async fn wait(self, limit: Duration) -> bool {
+        // A sender dropped unsent, by a build task that panicked, ends it too.
+        tokio::time::timeout(limit, self.0).await.is_ok()
+    }
+}
+
 pub struct BlockFilterEngine {
     index: ArcSwap<BlockIndex>,
     /// Reload tickets issued so far. A build covers every ticket its Acquire load observes.
@@ -80,12 +92,27 @@ pub struct BlockFilterEngine {
 }
 
 impl BlockFilterEngine {
+    /// [`Self::start`] without its handle: returns while the first build runs.
     pub async fn new(
         pool: SqlitePool,
         default_group_id: i64,
         schedule_state: Arc<dyn ScheduleStatePort>,
         blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
+        let (engine, _) =
+            Self::start(pool, default_group_id, schedule_state, blocking_enabled).await?;
+        Ok(engine)
+    }
+
+    /// Builds the engine and compiles its lists in the background. The handle
+    /// tells when that first build has ended, so a caller can keep its
+    /// listeners closed until the lists are in force.
+    pub async fn start(
+        pool: SqlitePool,
+        default_group_id: i64,
+        schedule_state: Arc<dyn ScheduleStatePort>,
+        blocking_enabled: bool,
+    ) -> Result<(Arc<Self>, StartupBuild), DomainError> {
         let downloader = ListDownloader::new()?;
 
         let engine = Arc::new_cyclic(|this| Self {
@@ -112,6 +139,7 @@ impl BlockFilterEngine {
         info!("BlockFilterEngine initialized; blocklist compilation starting in background");
         let ticket = engine.issue_reload_ticket();
         let background_engine = Arc::clone(&engine);
+        let (built, startup) = oneshot::channel();
         tokio::spawn(async move {
             if let Err(e) = background_engine
                 .rebuild_through(ticket, ListFetch::ReuseHeld)
@@ -122,9 +150,10 @@ impl BlockFilterEngine {
                     "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
                 );
             }
+            let _ = built.send(());
         });
 
-        Ok(engine)
+        Ok((engine, StartupBuild(startup)))
     }
 
     /// Issued after the caller's database changes are committed.

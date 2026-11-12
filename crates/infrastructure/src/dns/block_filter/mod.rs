@@ -7,4 +7,4 @@ mod suffix_trie;
 
 pub use compiler::{mark_sources_synced, SourceTable};
 pub use download::ListDownloader;
-pub use engine::BlockFilterEngine;
+pub use engine::{BlockFilterEngine, StartupBuild};

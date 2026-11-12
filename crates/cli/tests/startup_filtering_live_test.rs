@@ -4,7 +4,8 @@
 //!
 //! - a restart filters its first answer, without waiting for the list's host;
 //! - the list stays in force when its host fails at start;
-//! - a start with no copy of the list waits for the download before it answers.
+//! - a start with no copy of the list waits for the download before it answers;
+//! - a shutdown signal during that wait closes the database and exits.
 
 mod server_process;
 
@@ -12,10 +13,10 @@ use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
 use hickory_proto::rr::rdata::A;
 use hickory_proto::rr::{Name, RData, Record, RecordType};
 use hickory_proto::serialize::binary::BinEncodable;
-use server_process::{server_log, FakeUpstream, Server, TestConfig};
+use server_process::{is_refused, server_log, wait_for_exit, FakeUpstream, Server, TestConfig};
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
@@ -53,6 +54,8 @@ fn reply(request: &Message) -> Message {
 enum Host {
     /// Sends the list after a delay.
     Serves(Duration),
+    /// Keeps the connection open and never answers.
+    Hangs,
     /// Closes the connection unanswered, so the download fails.
     Fails,
 }
@@ -86,6 +89,10 @@ impl ListHost {
 fn answer_download(mut stream: TcpStream, host: Host) {
     let delay = match host {
         Host::Serves(delay) => delay,
+        Host::Hangs => {
+            sleep(Duration::from_secs(120));
+            return;
+        }
         Host::Fails => return,
     };
     let mut request = Vec::new();
@@ -287,5 +294,49 @@ fn test_a_start_without_copies_waits_for_the_download() {
     assert!(
         after >= delay,
         "answered {after:?} after the start, before the list arrived"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_a_shutdown_during_the_startup_hold_closes_the_database() {
+    let upstream = FakeUpstream::spawn(reply);
+    let host = ListHost::spawn();
+    let config = seeded(&upstream, &host);
+    let _ = fs::remove_dir_all(config.dir.path().join("lists"));
+
+    host.set(Host::Hangs);
+    let mut server = Server {
+        child: config.spawn_logged(config.command()),
+    };
+    wait_for_log(
+        &config,
+        "Waiting for the blocklists before opening the listeners",
+    );
+    assert!(
+        is_refused(SocketAddr::from((config.web_host, config.web_port))),
+        "the web port stays closed while the lists compile"
+    );
+
+    // SAFETY: plain kill(2) on the child this test spawned and still owns.
+    assert_eq!(
+        unsafe { libc::kill(server.child.id() as libc::pid_t, libc::SIGTERM) },
+        0
+    );
+    let Some(status) = wait_for_exit(&mut server.child, Duration::from_secs(5)) else {
+        panic!(
+            "server still running 5 s after SIGTERM during the hold:\n{}",
+            server_log(config.dir.path())
+        );
+    };
+    assert!(
+        status.success(),
+        "server ended with {status} on SIGTERM:\n{}",
+        server_log(config.dir.path())
+    );
+    assert!(
+        !config.dir.path().join("ferrous.db-wal").exists(),
+        "the WAL survived a SIGTERM during the hold:\n{}",
+        server_log(config.dir.path())
     );
 }
