@@ -101,7 +101,11 @@ async fn test_create_group_with_malware_detection_off_reloads_the_exemptions() {
 async fn test_update_group_toggling_malware_detection_reloads_the_exemptions() {
     let groups = Arc::new(MockGroupRepository::new());
     let exempt = exemptions();
-    let use_case = UpdateGroupUseCase::new(groups.clone(), exempt.clone());
+    let use_case = UpdateGroupUseCase::new(
+        groups.clone(),
+        Arc::new(MockBlockFilterEngine::new()),
+        exempt.clone(),
+    );
 
     let updated = use_case
         .execute(1, None, None, None, Some(false))
@@ -121,6 +125,49 @@ async fn test_update_group_toggling_malware_detection_reloads_the_exemptions() {
     assert_eq!(exempt.reload_count(), 1, "nothing to reload");
 }
 
+/// The DNS path reads which group each client resolves to from memory, so
+/// switching a group off or on must reload it; saving the flag a group
+/// already has changes nothing there.
+#[tokio::test]
+async fn test_update_group_toggling_enabled_reloads_client_groups() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let kids = CreateGroupUseCase::new(groups.clone(), exemptions())
+        .execute("Kids".to_string(), None, true, true)
+        .await
+        .unwrap()
+        .id
+        .unwrap();
+    let use_case = UpdateGroupUseCase::new(groups.clone(), engine.clone(), exemptions());
+
+    let disabled = use_case
+        .execute(kids, None, Some(false), None, None)
+        .await
+        .unwrap();
+    assert!(!disabled.enabled);
+    assert_eq!(engine.load_client_groups_count().await, 1);
+
+    use_case
+        .execute(kids, None, Some(false), None, None)
+        .await
+        .unwrap();
+    use_case
+        .execute(kids, Some("Children".to_string()), None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.load_client_groups_count().await,
+        1,
+        "nothing to reload"
+    );
+
+    use_case
+        .execute(kids, None, Some(true), None, None)
+        .await
+        .unwrap();
+    assert_eq!(engine.load_client_groups_count().await, 2);
+}
+
 /// The row is written before the exemptions reload, so a failed reload must
 /// not report the change as failed: the API would answer 500 for a saved
 /// group, and a retried create would get "already exists".
@@ -130,7 +177,11 @@ async fn test_create_and_update_group_succeed_when_the_exemption_reload_fails() 
     let exempt = exemptions();
     exempt.fail_reloads();
     let create = CreateGroupUseCase::new(groups.clone(), exempt.clone());
-    let update = UpdateGroupUseCase::new(groups.clone(), exempt.clone());
+    let update = UpdateGroupUseCase::new(
+        groups.clone(),
+        Arc::new(MockBlockFilterEngine::new()),
+        exempt.clone(),
+    );
 
     let created = create
         .execute("Servers".to_string(), None, true, false)

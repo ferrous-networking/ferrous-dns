@@ -42,7 +42,7 @@ impl AssignClientGroupUseCase {
                 client_id = client_id,
                 group_id = group_id,
                 group_name = %group.name,
-                "Assigning client to disabled group"
+                "Assigning client to disabled group; it gets the default group's rules until the group is enabled"
             );
         }
 
