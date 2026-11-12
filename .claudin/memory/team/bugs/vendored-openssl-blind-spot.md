@@ -1,9 +1,11 @@
 ---
 name: vendored-openssl-blind-spot
-description: The binary statically links a vendored OpenSSL via webauthn-rs that neither Trivy nor cargo audit can see
+description: Resolved by #380 (2a351899, 2026-11-09) — the binary no longer links a vendored OpenSSL; before that, webauthn-rs 0.5 pulled in one that Trivy and cargo audit missed
 type: project
 paths: crates/infrastructure/Cargo.toml
 ---
+
+**Status:** resolved by #380 (`2a351899`, merged 2026-11-09). webauthn-rs 0.6 verifies signatures with RustCrypto instead of OpenSSL. The `openssl = { features = ["vendored"] }` line is gone from `crates/infrastructure/Cargo.toml`, the Docker builder no longer installs perl/make/pkgconfig/openssl packages, and `Cargo.lock` has no `openssl*` crate. RSA now comes from `rsa` 0.10.0-rc.19 (see the RUSTSEC-2023-0071 entry in `.cargo/audit.toml`). The history below is kept for context.
 
 `crates/infrastructure/Cargo.toml` declares `openssl = { version = "0.10",
 features = ["vendored"] }` purely so `webauthn-rs` cross-compiles to

@@ -35,4 +35,9 @@ harness; the PR carries a before/after width table instead.
 **When adding a column** to either table, raise every threshold below it by the new
 column's width, or DOMAIN loses its 220px floor again. That is how #191 and #205
 caused this bug.
+
+**Since PR #377 (`b2d1821d`, merged 2026-11-09)** the Query Log has TIME at 100px and CLIENT at 150px, so
+the fixed sum is still 964 and the thresholds above did not move. A `min-width: 1254px`
+container rule widens CLIENT to 220px (964 + 70 + 220). Widening any column above the
+1184px step means raising that 1254 too.
 Related: [[mobile-layout-overflow]].
