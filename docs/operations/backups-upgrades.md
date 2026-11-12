@@ -10,6 +10,8 @@
 
 The database path is whatever `[database] path` says in your config. With the image's bundled config that is `ferrous-dns.db` in the working directory `/data`, so `/data/ferrous-dns.db`. `FERROUS_DATABASE` overrides it when set, except for `/data/db/ferrous.db`: that old documented default is ignored.
 
+The `lists` directory beside the database (`/var/lib/ferrous-dns/lists`, `/data/lists`) holds the last download of each blocklist and allowlist, which a start compiles from. It needs no backup: a server without it downloads the lists before it serves.
+
 The dashboard's **Settings → Backup → Download Backup** file is not a backup of the server. It carries the settings, groups, blocklist sources and local records, without secrets, users, clients or the query log. It is the tool for copying a setup to a [second instance](redundancy.md), not for getting a dead one back.
 
 ---

@@ -1,6 +1,6 @@
 # Redundancy
 
-When the only resolver on a network restarts, everything that needs a name waits for it: a restart starts with an empty cache, and the blocklists are compiled again (see [Sizing](sizing.md#restarts)). A second resolver turns an upgrade, a reboot or a dead disk into a non-event.
+When the only resolver on a network restarts, everything that needs a name waits for it: a restart starts with an empty cache, and answers nothing until the blocklists are compiled again (see [Sizing](sizing.md#restarts)). A second resolver turns an upgrade, a reboot or a dead disk into a non-event.
 
 ---
 

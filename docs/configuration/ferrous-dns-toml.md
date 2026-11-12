@@ -751,7 +751,7 @@ client_tracking_interval  = 60
 
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
-| `path` | `str` | `"ferrous-dns.db"` | Path to the SQLite database file |
+| `path` | `str` | `"ferrous-dns.db"` | Path to the SQLite database file. The last download of each blocklist is kept in a `lists` directory beside it |
 | `log_queries` | `bool` | `true` | Store every DNS query for analytics and the query log dashboard |
 | `queries_log_stored` | `int` | `30` | Days to retain query log entries. Cleanup runs every 4 hours, the first time 10 minutes after startup, in 1000-row batches paced so other writers are not blocked; `0` deletes every entry at each run |
 | `client_tracking_interval` | `int` | `60` | Minimum seconds between consecutive last-seen writes for the same client IP |

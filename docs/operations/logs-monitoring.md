@@ -48,6 +48,7 @@ Lines worth a look, all logged at `WARN`:
 | `TLS cert file not found — DoT disabled` | A listener that needs a certificate did not start. The same line names DoQ and Web HTTPS. |
 | `Server marked UNHEALTHY` | An upstream failed its health checks. |
 | `Failed to fetch blocklist source; keeping the previous download` | A list could not be downloaded, and the last copy stays in force. |
+| `Blocklists not compiled after 30 s; serving without them until the build finishes` | A start waited as long as it does for the blocklists, then opened its ports. Queries are not filtered until the build ends. See [Restarts](sizing.md#restarts). |
 | `UDP fallback capacity exhausted; queries dropped`, `Upstream query capacity exhausted; queries shed` | The server ran out of slots for queries waiting on an upstream. Clients were not answered, or got SERVFAIL. |
 | `Query log channel full; entries dropped` | The database could not keep up with the query log. The queries were still answered. |
 
@@ -55,7 +56,7 @@ Lines worth a look, all logged at `WARN`:
 
 ## Health check
 
-`GET /ferrous/api/v1/health` needs no authentication. It answers `200` with `{"status":"ok","version":"…"}` while the DNS listener is up, and `503` when it is not. It does not test upstreams or the database: use it to tell a load balancer or an uptime monitor whether the process is serving, and use the alerts below for the rest. `/metrics` exports the same flag as `ferrousdns_dns_listening`.
+`GET /ferrous/api/v1/health` needs no authentication. It answers `200` with `{"status":"ok","version":"…"}` while the DNS listener is up, and `503` when it is not. During a start it does not answer at all: the web port opens with the DNS listeners, once the blocklists are in force (see [Restarts](sizing.md#restarts)). It does not test upstreams or the database: use it to tell a load balancer or an uptime monitor whether the process is serving, and use the alerts below for the rest. `/metrics` exports the same flag as `ferrousdns_dns_listening`.
 
 `ferrous-dns --healthcheck` calls it with the same config and exits `0` or `1`. The Docker image's `HEALTHCHECK` runs it, and so can any script:
 
