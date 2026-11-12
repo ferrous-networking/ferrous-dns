@@ -3,8 +3,7 @@
 
 mod server_process;
 
-use server_process::{free_port, TestConfig};
-use std::path::Path;
+use server_process::{free_port, write_certificate, TestConfig};
 use std::time::{Duration, Instant};
 
 fn client() -> reqwest::Client {
@@ -37,17 +36,6 @@ async fn web_certificate_expires_at(base: &str) -> serde_json::Value {
     let config: serde_json::Value =
         serde_json::from_str(&get(base, "/ferrous/api/v1/config").await).unwrap();
     config["web_certificate_expires_at"].clone()
-}
-
-/// A self-signed certificate valid until 2031-01-02; returns its `notAfter`.
-fn write_certificate(dir: &Path) -> i64 {
-    let key_pair = rcgen::KeyPair::generate().unwrap();
-    let mut params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
-    params.not_after = rcgen::date_time_ymd(2031, 1, 2);
-    let cert = params.self_signed(&key_pair).unwrap();
-    std::fs::write(dir.join("cert.pem"), cert.pem()).unwrap();
-    std::fs::write(dir.join("key.pem"), key_pair.serialize_pem()).unwrap();
-    params.not_after.unix_timestamp()
 }
 
 #[tokio::test]

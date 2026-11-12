@@ -11,9 +11,9 @@ use common::SkipServerVerification;
 use hickory_proto::op::Message;
 use rustls::pki_types::ServerName;
 use server_process::{
-    accepts_within, free_port, http_get, http_status, private_ptr_query, server_log,
-    skip_without_seccomp, tcp_answers, udp_answers, wait_for_exit, TestConfig, FALLBACK_LINE,
-    NO_IPV6, NO_IPV6_ERROR, PTR_QUERY_ID,
+    accepts_within, framed, free_port, http_get, http_status, private_ptr_query, server_log,
+    skip_without_seccomp, tcp_answers, udp_answers, wait_for_exit, write_certificate, TestConfig,
+    FALLBACK_LINE, NO_IPV6, NO_IPV6_ERROR, PTR_QUERY_ID,
 };
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -62,14 +62,6 @@ async fn within<T>(what: &str, query: impl Future<Output = T>) -> T {
         .unwrap_or_else(|_| panic!("{what}: no answer within 10 s"))
 }
 
-fn write_certificate(dir: &Path) {
-    let key_pair = rcgen::KeyPair::generate().unwrap();
-    let params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
-    let cert = params.self_signed(&key_pair).unwrap();
-    std::fs::write(dir.join("cert.pem"), cert.pem()).unwrap();
-    std::fs::write(dir.join("key.pem"), key_pair.serialize_pem()).unwrap();
-}
-
 fn client_tls(alpn: &[u8]) -> rustls::ClientConfig {
     let mut tls = rustls::ClientConfig::builder()
         .dangerous()
@@ -77,13 +69,6 @@ fn client_tls(alpn: &[u8]) -> rustls::ClientConfig {
         .with_no_client_auth();
     tls.alpn_protocols = vec![alpn.to_vec()];
     tls
-}
-
-/// RFC 1035 §4.2.2 framing, shared by DoT and DoQ.
-fn framed(message: &[u8]) -> Vec<u8> {
-    let mut framed = (message.len() as u16).to_be_bytes().to_vec();
-    framed.extend_from_slice(message);
-    framed
 }
 
 async fn dot_reply_id(server: SocketAddr) -> u16 {

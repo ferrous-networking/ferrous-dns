@@ -7,11 +7,14 @@
 
 use hickory_proto::op::{Message, MessageType, OpCode, Query};
 use hickory_proto::rr::{DNSClass, Name, RecordType};
+use hickory_proto::serialize::binary::BinEncodable;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -178,6 +181,70 @@ pub fn is_refused(addr: SocketAddr) -> bool {
     matches!(TcpStream::connect(addr), Err(e) if e.kind() == ErrorKind::ConnectionRefused)
 }
 
+/// A UDP upstream on 127.0.0.1 that sends `answer(query)` back for every
+/// query, counting what it is asked by lowercase name (no trailing dot) and
+/// type.
+pub struct FakeUpstream {
+    pub addr: SocketAddr,
+    asked: Arc<Mutex<HashMap<(String, RecordType), usize>>>,
+}
+
+impl FakeUpstream {
+    pub fn spawn(answer: fn(&Message) -> Message) -> Self {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let addr = socket.local_addr().unwrap();
+        let asked = Arc::new(Mutex::new(HashMap::new()));
+        let counts = Arc::clone(&asked);
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok((len, peer)) = socket.recv_from(&mut buf) {
+                let Ok(request) = Message::from_vec(&buf[..len]) else {
+                    continue;
+                };
+                for query in &request.queries {
+                    let name = query.name().to_ascii().to_ascii_lowercase();
+                    let name = name.trim_end_matches('.').to_string();
+                    *counts
+                        .lock()
+                        .unwrap()
+                        .entry((name, query.query_type()))
+                        .or_default() += 1;
+                }
+                let _ = socket.send_to(&answer(&request).to_bytes().unwrap(), peer);
+            }
+        });
+        Self { addr, asked }
+    }
+
+    pub fn times_asked(&self, name: &str, record_type: RecordType) -> usize {
+        self.asked
+            .lock()
+            .unwrap()
+            .get(&(name.to_string(), record_type))
+            .copied()
+            .unwrap_or(0)
+    }
+}
+
+/// Writes `cert.pem` and `key.pem` for `localhost` into `dir`, valid until
+/// 2031-01-02; returns their `notAfter`.
+pub fn write_certificate(dir: &Path) -> i64 {
+    let key_pair = rcgen::KeyPair::generate().unwrap();
+    let mut params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+    params.not_after = rcgen::date_time_ymd(2031, 1, 2);
+    let cert = params.self_signed(&key_pair).unwrap();
+    fs::write(dir.join("cert.pem"), cert.pem()).unwrap();
+    fs::write(dir.join("key.pem"), key_pair.serialize_pem()).unwrap();
+    params.not_after.unix_timestamp()
+}
+
+/// RFC 1035 §4.2.2 framing for DNS over TCP, DoT and DoQ.
+pub fn framed(message: &[u8]) -> Vec<u8> {
+    let mut framed = (message.len() as u16).to_be_bytes().to_vec();
+    framed.extend_from_slice(message);
+    framed
+}
+
 /// ID of the query [`private_ptr_query`] builds.
 pub const PTR_QUERY_ID: u16 = 0x375;
 
@@ -220,10 +287,7 @@ pub fn tcp_answers(server: SocketAddr) -> bool {
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
-    let query = private_ptr_query();
-    let mut framed = (query.len() as u16).to_be_bytes().to_vec();
-    framed.extend_from_slice(&query);
-    if stream.write_all(&framed).is_err() {
+    if stream.write_all(&framed(&private_ptr_query())).is_err() {
         return false;
     }
     let mut len = [0u8; 2];

@@ -13,66 +13,24 @@ use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
 use hickory_proto::rr::rdata::{A, TXT};
 use hickory_proto::rr::{Name, RData, Record, RecordType};
 use hickory_proto::serialize::binary::BinEncodable;
-use server_process::{accepts_within, server_log, Server, TestConfig};
-use std::collections::HashMap;
+use server_process::{accepts_within, server_log, FakeUpstream, Server, TestConfig};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 use std::process::Command;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const ANSWER: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 const TXT_ANSWER: &str = "ferrous";
 
-/// A UDP upstream that answers every A query with `ANSWER` and every TXT
-/// query with `TXT_ANSWER`, counting what it is asked by name and type.
-struct FakeUpstream {
-    addr: SocketAddr,
-    asked: Arc<Mutex<HashMap<(String, RecordType), usize>>>,
-}
-
-impl FakeUpstream {
-    fn spawn() -> Self {
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let addr = socket.local_addr().unwrap();
-        let asked = Arc::new(Mutex::new(HashMap::new()));
-        let counts = Arc::clone(&asked);
-        std::thread::spawn(move || {
-            let mut buf = [0u8; 4096];
-            while let Ok((len, peer)) = socket.recv_from(&mut buf) {
-                let Ok(request) = Message::from_vec(&buf[..len]) else {
-                    continue;
-                };
-                let _ = socket.send_to(&reply(&request, &counts), peer);
-            }
-        });
-        Self { addr, asked }
-    }
-
-    fn times_asked(&self, name: &str, record_type: RecordType) -> usize {
-        self.asked
-            .lock()
-            .unwrap()
-            .get(&(name.to_string(), record_type))
-            .copied()
-            .unwrap_or(0)
-    }
-}
-
-fn reply(request: &Message, asked: &Mutex<HashMap<(String, RecordType), usize>>) -> Vec<u8> {
+/// The fake upstream's answer: `ANSWER` for every A query and `TXT_ANSWER`
+/// for every TXT one.
+fn reply(request: &Message) -> Message {
     let mut response = Message::new(request.id, MessageType::Response, OpCode::Query);
     response.metadata.recursion_desired = true;
     response.metadata.recursion_available = true;
     response.metadata.response_code = ResponseCode::NoError;
     for query in &request.queries {
         response.add_query(query.clone());
-        let name = query.name().to_ascii().to_ascii_lowercase();
-        let name = name.trim_end_matches('.').to_string();
-        *asked
-            .lock()
-            .unwrap()
-            .entry((name, query.query_type()))
-            .or_default() += 1;
         let data = match query.query_type() {
             RecordType::A => RData::A(A(ANSWER)),
             RecordType::TXT => RData::TXT(TXT::new(vec![TXT_ANSWER.to_string()])),
@@ -80,7 +38,7 @@ fn reply(request: &Message, asked: &Mutex<HashMap<(String, RecordType), usize>>)
         };
         response.add_answer(Record::from_rdata(query.name().clone(), 300, data));
     }
-    response.to_bytes().unwrap()
+    response
 }
 
 /// Where a test's server listens and how its client reaches it.
@@ -221,7 +179,7 @@ fn assert_a_answer(arm: &Arm, answers: &[RData]) {
 
 #[test]
 fn test_a_miss_is_answered_from_the_queried_address() {
-    let upstream = FakeUpstream::spawn();
+    let upstream = FakeUpstream::spawn(reply);
     for (i, arm) in ARMS.iter().enumerate().filter(|(_, arm)| arm.runs_here()) {
         let (config, _server) = arm.start(&upstream);
         let name = format!("miss{i}.reply-path.example");
@@ -240,7 +198,7 @@ fn test_a_miss_is_answered_from_the_queried_address() {
 
 #[test]
 fn test_a_cache_hit_is_answered_from_the_queried_address() {
-    let upstream = FakeUpstream::spawn();
+    let upstream = FakeUpstream::spawn(reply);
     for (i, arm) in ARMS.iter().enumerate().filter(|(_, arm)| arm.runs_here()) {
         let (config, _server) = arm.start(&upstream);
         let name = format!("hit{i}.reply-path.example");
@@ -262,7 +220,7 @@ fn test_a_cache_hit_is_answered_from_the_queried_address() {
 
 #[test]
 fn test_a_wire_data_hit_is_answered_from_the_queried_address() {
-    let upstream = FakeUpstream::spawn();
+    let upstream = FakeUpstream::spawn(reply);
     for (i, arm) in ARMS.iter().enumerate().filter(|(_, arm)| arm.runs_here()) {
         let (config, _server) = arm.start(&upstream);
         let name = format!("txt{i}.reply-path.example");
@@ -289,7 +247,7 @@ fn test_a_wire_data_hit_is_answered_from_the_queried_address() {
 fn test_a_burst_wider_than_one_batch_is_fully_answered() {
     const CLIENTS: u16 = 4;
     const PER_CLIENT: u16 = 50;
-    let upstream = FakeUpstream::spawn();
+    let upstream = FakeUpstream::spawn(reply);
     for (i, arm) in ARMS.iter().enumerate().filter(|(_, arm)| arm.runs_here()) {
         // One runtime worker, so one UDP socket: every client's queries share
         // its batches, and one sendmmsg answers several peers.
