@@ -154,7 +154,7 @@ As in Pi-hole v6, `{list}` is the list's address, URL-encoded or not, and `type`
 | `GET` | `/api/groups` | List all groups |
 | `POST` | `/api/groups` | Add one group or several: `name` is a string or an array |
 | `GET` | `/api/groups/{name}` | Get a group by name |
-| `PUT` | `/api/groups/{name}` | Replace or create a group; a `name` in the body renames it |
+| `PUT` | `/api/groups/{name}` | Replace or create a group; a `name` in the body renames it, and an omitted `enabled` becomes `true`, as in FTL |
 | `DELETE` | `/api/groups/{name}` | Delete a group |
 | `POST` | `/api/groups:batchDelete` | Batch delete: `[{"item": "<name>"}]` |
 
