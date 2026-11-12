@@ -101,6 +101,16 @@ All clients that are not explicitly assigned to a group use the **Default** grou
 
 ---
 
+## Disabled Groups
+
+Switching a group's **Enabled** off on the **Groups** page, or sending `"enabled": false` to [`PUT /ferrous/api/v1/groups/{id}`](../api.md#update-group), keeps its clients, subnets and DoH IDs assigned to it. They are handled as clients of the default **Protected** group instead: Protected's blocklists, managed domains, regex filters, blocked services, Safe Search, schedules, Malware Detection switch and pool routes apply to them, and the Query Log records Protected as the group the query was decided in.
+
+- A match goes straight to Protected. A client whose IP is in a disabled group does not fall through to the group of a subnet it is also in.
+- Switching the group back on restores its own rules at once, with no restart.
+- The default group cannot be disabled.
+
+---
+
 ## Client Dashboard
 
 The Clients section of the dashboard shows:
@@ -116,7 +126,7 @@ The Clients section of the dashboard shows:
 
 Groups themselves are managed one level up, under **Groups**:
 
-![Groups page — the add-group form with Group Enabled and Malware Detection checkboxes, above the Protected default group plus Guest, IoT, Kids, Servers and Work, each with its client count; Servers has Malware Detection off](../assets/dashboard/dashboard-groups.png)
+![Groups page — the add-group form with the Group Enabled and Malware Detection checkboxes, each explained underneath, above the Protected default group plus Guest, IoT, Kids, Servers and Work, each with its client count; Servers has Malware Detection off](../assets/dashboard/dashboard-groups.png)
 
 ---
 
@@ -137,7 +147,7 @@ When a DoH client queries `/dns-query/<ClientID>`:
 2. **Registration policy (`doh_allow_unregistered_ids`)**:
    - **Strict mode (default, `false`)** — only registered Client IDs are accepted; unknown IDs receive `400 Bad Request`.
    - **Permissive mode (`true`)** — valid unregistered Client IDs are accepted, attributed in the Query Log and Dashboard under `<ClientID>`, and inherit the client IP's group rules. This can be toggled live on the **DoH IDs** page (**Allow Unregistered Client IDs**) or set via `[server.encrypted_dns] doh_allow_unregistered_ids = true` in `ferrous-dns.toml`.
-3. **Group resolution order** — a registered DoH ID's assigned group takes highest priority, followed by the connecting IP's explicit client assignment, then matching CIDR subnet rules, and finally the default **Protected** group (`DoH ID → IP → Subnet → Protected`).
+3. **Group resolution order** — a registered DoH ID's assigned group takes highest priority, followed by the connecting IP's explicit client assignment, then matching CIDR subnet rules, and finally the default **Protected** group (`DoH ID → IP → Subnet → Protected`). A match whose group is [disabled](#disabled-groups) resolves to **Protected**.
 4. **Query Log & Dashboard attribution** — DoH queries carrying a `<ClientID>` record both the connecting IP and `doh_client_id`, display the registered DoH ID's **Name** (or the raw `<ClientID>` when unregistered) in the Query Log and Top Clients views, and do not create synthetic entries in the IP-based **Clients** table (so the IP-based **Active clients** count reflects only IP-tracked clients, while **Top Clients** includes DoH IDs).
 
 ---

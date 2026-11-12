@@ -1,6 +1,6 @@
 ---
 name: dns-cookie-strict-mode
-description: DNS Cookies — every reply echoes the client cookie; strict mode is UDP-only, turns the inline cache path off, and answers BADCOOKIE (23) + EDE 18 (branch fix/dns-cookie-echo, issue #279)
+description: DNS Cookies — every reply echoes the client cookie; strict mode is UDP-only, turns the inline cache path off, and answers BADCOOKIE (23) + EDE 18 (issue #279); since #361 the secret rotates per Unix-time window
 type: project
 scope: dns-cookies
 impact: functional
@@ -27,5 +27,12 @@ impact: functional
 - A `cookie` parameter on `try_cache_direct`/`try_cache_wire_direct`, validated in `cache_gate`: it keeps the fast path but duplicates the rule.
 - Keeping REFUSED for bare client cookies.
 - Applying strict mode to stream transports.
+
+**Rotation, added 2026-11-04 by PR #361 (`8d32dcb4`, issue #320):** nothing read `secret_rotation_secs` until then. Viudes chose to implement it rather than retire it.
+- Each window `w = unix_secs / secret_rotation_secs` signs with `HMAC-SHA256(secret, "ferrous-dns cookie window" ‖ w)`. A cookie is accepted in the window that issued it and in the next one. The wire format did not change.
+- The clock is Unix time, not monotonic, so instances that share `server_secret` derive the same keys. Those instances need NTP: a peer a few seconds off costs one BADCOOKIE and a retry when the window turns.
+- The default of 3600 turns rotation on for every install. A strict-mode client idle for longer than a window gets one BADCOOKIE and retries. `0` turns rotation off. Values 1–59 are rejected by `Config::validate` and loaded as `0` by `legacy.rs`.
+- The Query Log records each query's cookie status (`valid`, `client`, `invalid` or none). A strict-mode refusal is logged with `block_source = dns_cookie`.
+- Keep the previous-window acceptance and the Unix clock. A monotonic clock would split the keys of a multi-instance setup.
 
 **Evidence:** issue #279; red runs in commits `f7d4ef0` and `86dc10e`; plan `cheerful-giggling-allen.md`.

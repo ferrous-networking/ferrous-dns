@@ -19,12 +19,12 @@ async fn doh_id_precedence_and_reload_on_real_engine() {
         .await
         .expect("create pool + run migrations");
 
-    // Seed three additional groups: Adults (2, enabled), Subnet (3, enabled), Kids (4, disabled).
+    // Seed three additional groups: Adults (2), Subnet (3) and Kids (4), all enabled.
     sqlx::query(
         "INSERT INTO groups (id, name, enabled, is_default) VALUES
          (2, 'Adults', 1, 0),
          (3, 'SubnetGroup', 1, 0),
-         (4, 'Kids', 0, 0)",
+         (4, 'Kids', 1, 0)",
     )
     .execute(&pool)
     .await
@@ -40,7 +40,7 @@ async fn doh_id_precedence_and_reload_on_real_engine() {
         .await
         .expect("seed subnet");
 
-    // Register 'kids-tablet' in Kids (group 4, which has enabled = 0).
+    // Register 'kids-tablet' in Kids (group 4).
     sqlx::query(
         "INSERT INTO doh_ids (name, client_id, group_id) VALUES ('Kids Tablet', 'kids-tablet', 4)",
     )
@@ -65,8 +65,7 @@ async fn doh_id_precedence_and_reload_on_real_engine() {
     assert!(engine.is_doh_id_registered("kids-tablet"));
     assert!(!engine.is_doh_id_registered("unknown-device"));
 
-    // 1. Registered DoH ID wins over explicit IP group, subnet group, and default group,
-    //    even when its assigned group has `enabled = 0`.
+    // 1. Registered DoH ID wins over explicit IP group, subnet group, and default group.
     assert_eq!(
         engine.resolve_group_for_request(client_ip, Some("kids-tablet")),
         4

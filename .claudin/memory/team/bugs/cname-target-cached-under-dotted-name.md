@@ -20,4 +20,4 @@ paths:
 
 **The target shortcut was removed, not fixed.** Once names matched, it cached an upstream's answer under the target's own name in the shared view, overriding a name another mechanism owns: a conditional pool for every client, a wildcard local record, a `local_domain` name. A guard would need every owner of a name. Do not bring it back without that.
 
-**Status:** fixed by PR #354, merged 2026-11-01 as `975e562e` (closes #325, milestone v1.0.0). The Query Log still labels `cname_cloaking` rows "Upstream" until #326.
+**Status:** fixed by PR #354, merged 2026-11-01 as `975e562e` (closes #325, milestone v1.0.0). The Query Log's "CNAME Cloaking" label came with PR #361 (`8d32dcb4`, 2026-11-04, closes #326).

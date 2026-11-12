@@ -65,4 +65,6 @@ To reach an authenticated session: `POST /ferrous/api/v1/auth/setup {"password":
 
 **Faking this machine's resolver without root:** run the binary under `unshare -rm` with a `resolv.conf` and an `nsswitch.conf` (`hosts: files dns`) bind-mounted over `/etc`. Mounting only `resolv.conf` does nothing here, because nss-resolve goes straight to systemd-resolved. The full recipe is in [[upstream-hostname-startup-only-resolution]]. Watch out for `pkill -f <pattern>`: the pattern also matches the shell running it, which kills your own command.
 
+**IPv6 socket behaviour without root:** under `unshare -rn`, run `ip link set lo up` and `echo 1 > /proc/sys/net/ipv6/bindv6only`. A `[::]` listener that leaves `IPV6_V6ONLY` to the sysctl then refuses IPv4 clients. #385's red proof for the web listeners ran this way on 2026-11-09 ([[bind-address-auto-dual-stack]]). CI cannot run it, because Ubuntu 24.04 runners restrict unprivileged user namespaces.
+
 **Secure-cookie behaviour cannot be reproduced on loopback:** curl and browsers both treat `127.0.0.1` as a secure context and accept a `Secure` cookie over plain HTTP. Bind to the host's LAN address (`--bind <lan-ip>`) to observe the real rejection. This is why [[web-tls-secure-cookie-invariant]] went unnoticed in local development.

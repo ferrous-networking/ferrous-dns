@@ -1268,7 +1268,7 @@ POST /ferrous/api/v1/groups
 }
 ```
 
-`enabled` is optional and defaults to `true`; a group created with `"enabled": false` starts disabled.
+`enabled` is optional and defaults to `true`. The clients of a disabled group, matched by IP, subnet or DoH ID, are handled as clients of the default group: its blocklists, managed domains, regex filters, blocked services, Safe Search, schedules, Malware Detection switch and pool routes apply to them instead of their own group's. See [Disabled Groups](features/client-management.md#disabled-groups). A change applies to the next query, with no restart.
 
 `malware_detection_enabled` is optional and defaults to `true`. With `false`, the five [malware detectors](features/malware-detection.md#exempt-clients) skip the queries of the group's clients; its blocklists, allows and CNAME cloaking checks still apply. Every response carries the field, and the change applies to the next query, with no restart.
 

@@ -351,6 +351,10 @@ Recreate each entry the new way. Both apply at once, with no restart. See [Exemp
 
 The query log's **Allow** button now writes the rule into the group the query was decided in, instead of always the default group, and its confirmation names the group.
 
+### Disabled groups now take effect
+
+A group's **Enabled** switch used to change nothing: the clients of a disabled group still got that group's blocklists and rules. Now they get the rules of the default **Protected** group instead; see [Disabled Groups](../features/client-management.md#disabled-groups). So that no client is filtered differently after the upgrade, the first start switches every disabled group back on. To use the new meaning, switch those groups off again on the **Groups** page. Earlier releases ignore the switch, so rolling back needs no change.
+
 ### Docker image cleanup
 
 The image no longer sets `RUST_LOG`, which the server never read: the entrypoint now prints its command line when `FERROUS_LOG_LEVEL` is `debug` or `trace`. It also stops copying the SQL migrations into `/data/migrations`. They are built into the binary, so an existing `/data/migrations` directory in the volume is unused and can be deleted. The bundled `docker-compose.yml` now caps the container log at three 10 MB files.

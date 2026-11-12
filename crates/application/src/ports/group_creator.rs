@@ -11,6 +11,7 @@ pub trait GroupCreator: Send + Sync {
         &self,
         name: String,
         comment: Option<String>,
+        enabled: bool,
         malware_detection_enabled: bool,
     ) -> Result<Group, DomainError>;
 }

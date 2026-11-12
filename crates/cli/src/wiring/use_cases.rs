@@ -170,6 +170,7 @@ impl UseCases {
             )),
             update_group: Arc::new(UpdateGroupUseCase::new(
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
                 repos.malware_exemptions.clone(),
             )),
             delete_group: Arc::new(DeleteGroupUseCase::new(

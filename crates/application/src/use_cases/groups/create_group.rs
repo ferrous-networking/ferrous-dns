@@ -62,10 +62,10 @@ impl GroupCreator for CreateGroupUseCase {
         &self,
         name: String,
         comment: Option<String>,
+        enabled: bool,
         malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
-        // Backup snapshots carry no enabled flag; restored groups start enabled.
-        self.execute(name, comment, true, malware_detection_enabled)
+        self.execute(name, comment, enabled, malware_detection_enabled)
             .await
     }
 }

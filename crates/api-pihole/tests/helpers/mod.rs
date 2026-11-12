@@ -615,6 +615,7 @@ async fn build_pihole_state(
             )),
             update_group: Arc::new(UpdateGroupUseCase::new(
                 group_repo.clone(),
+                block_filter_engine.clone(),
                 malware_exemptions.clone(),
             )),
             delete_group: Arc::new(DeleteGroupUseCase::new(

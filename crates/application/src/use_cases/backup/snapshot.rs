@@ -179,6 +179,10 @@ pub struct GroupSnapshot {
     pub comment: Option<String>,
     #[serde(default)]
     pub is_default: bool,
+    /// Absent from older backups: a group they create starts enabled, and
+    /// one that exists here keeps its own switch.
+    #[serde(default)]
+    pub enabled: Option<bool>,
     /// Absent from older backups: a group they create starts with the
     /// detectors on, and one that exists here keeps its own switch.
     #[serde(default)]

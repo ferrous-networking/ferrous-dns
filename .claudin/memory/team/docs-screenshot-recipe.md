@@ -46,8 +46,12 @@ dashboard that reads as realistic.
   recaptured with the new footer on 2026-11-01 (feat/malware-exemptions-via-groups),
   by Playwright with a 1920x1080 viewport; the seed script is in that session's
   scratchpad `shots/seed.py` (Guest, IoT, Kids, Work, plus Servers with Malware
-  Detection off).
+  Detection off). `dashboard-groups.png` was recaptured again on 2026-11-12
+  (fix/disabled-group-policy, #382) with the same groups, comments and client
+  counts, for the Group Enabled help text; it now shows the DoH IDs nav item.
 - `dashboard-cache-control.png` lacks the REFRESHES column (#296). Its alt text
   still describes the old columns on purpose.
+- `dashboard-queries.png` predates #377 (`b2d1821d`, 2026-11-09): Query Log rows
+  now stay on one line, with new TIME/CLIENT widths and the first answer plus `+N`.
 
 Recapture these together in one docs PR, using the settings above.

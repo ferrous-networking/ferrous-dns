@@ -187,11 +187,18 @@ impl BlockFilterEngine {
     }
 
     async fn load_client_groups_inner(&self) -> Result<(), DomainError> {
-        let client_rows =
-            sqlx::query("SELECT ip_address, group_id FROM clients WHERE group_id IS NOT NULL")
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+        // Every match whose group is disabled, by IP, subnet or DoH ID, maps
+        // to the default group, so that group's rules apply to the client.
+        let client_rows = sqlx::query(
+            "SELECT c.ip_address AS ip_address,
+                    CASE WHEN g.enabled = 0 THEN ? ELSE c.group_id END AS group_id
+             FROM clients c LEFT JOIN groups g ON g.id = c.group_id
+             WHERE c.group_id IS NOT NULL",
+        )
+        .bind(self.default_group_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
         self.client_groups.clear();
         for row in &client_rows {
@@ -203,8 +210,12 @@ impl BlockFilterEngine {
         }
 
         let subnet_rows = sqlx::query(
-            "SELECT subnet_cidr, group_id FROM client_subnets ORDER BY length(subnet_cidr) DESC",
+            "SELECT s.subnet_cidr AS subnet_cidr,
+                    CASE WHEN g.enabled = 0 THEN ? ELSE s.group_id END AS group_id
+             FROM client_subnets s LEFT JOIN groups g ON g.id = s.group_id
+             ORDER BY length(s.subnet_cidr) DESC",
         )
+        .bind(self.default_group_id)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
@@ -230,11 +241,15 @@ impl BlockFilterEngine {
         };
         self.subnet_matcher.store(Arc::new(matcher));
 
-        // Like IP clients, a DoH ID keeps its group whatever the group's `enabled` flag says.
-        let doh_rows = sqlx::query("SELECT client_id, group_id FROM doh_ids")
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+        let doh_rows = sqlx::query(
+            "SELECT d.client_id AS client_id,
+                    CASE WHEN g.enabled = 0 THEN ? ELSE d.group_id END AS group_id
+             FROM doh_ids d LEFT JOIN groups g ON g.id = d.group_id",
+        )
+        .bind(self.default_group_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
         let mut doh_id_groups =
             DohIdGroups::with_capacity_and_hasher(doh_rows.len(), FxBuildHasher);

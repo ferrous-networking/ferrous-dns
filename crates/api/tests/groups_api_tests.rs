@@ -108,3 +108,17 @@ async fn test_default_group_can_switch_malware_detection_off() {
     assert_eq!(status, StatusCode::OK, "{updated}");
     assert_eq!(updated["malware_detection_enabled"], false);
 }
+
+/// A disabled group's clients get the default group's rules, so the default
+/// group itself can never be disabled.
+#[tokio::test]
+async fn test_update_default_group_to_disabled_returns_400() {
+    let app = TestApp::new().await.router;
+
+    let (status, body) =
+        send_json(app.clone(), "PUT", "/groups/1", json!({"enabled": false})).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    let fetched = get_json(app, "/groups/1").await;
+    assert_eq!(fetched["enabled"], true);
+}

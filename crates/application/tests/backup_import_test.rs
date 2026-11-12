@@ -18,7 +18,8 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::backup::snapshot::{BackupSnapshot, GroupSnapshot};
 use ferrous_dns_application::use_cases::{
-    ConfigDestination, CreateBlocklistSourceUseCase, ImportConfigUseCase, ImportOptions,
+    ConfigDestination, CreateBlocklistSourceUseCase, CreateGroupUseCase, ImportConfigUseCase,
+    ImportOptions,
 };
 use ferrous_dns_domain::{Client, Config, DomainError, Group, LocalDnsRecord};
 use serde_json::json;
@@ -38,6 +39,7 @@ impl GroupCreator for StubGroupCreator {
         &self,
         _name: String,
         _comment: Option<String>,
+        _enabled: bool,
         _malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
         Err(DomainError::IoError("test stub".to_string()))
@@ -453,6 +455,7 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
         name: "Protected".to_string(),
         comment: None,
         is_default: true,
+        enabled: Some(true),
         malware_detection_enabled: Some(true),
     });
 
@@ -461,5 +464,73 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
     assert!(
         matches!(result, Err(DomainError::DatabaseError(_))),
         "got {result:?}"
+    );
+}
+
+/// The DNS path reads which group each client resolves to from memory, so a
+/// group the import switches off must reach it at once: one reload for the
+/// whole import, and none when no flag changes.
+#[tokio::test]
+async fn test_import_reloads_client_groups_once_when_an_enabled_flag_changes() {
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let groups = Arc::new(MockGroupRepository::new());
+    let exemptions = Arc::new(MockMalwareExemptions::new());
+    let create_group = Arc::new(CreateGroupUseCase::new(groups.clone(), exemptions.clone()));
+    for name in ["IoT", "Kids"] {
+        create_group
+            .execute(name.to_string(), None, true, true)
+            .await
+            .unwrap();
+    }
+    let import = ImportConfigUseCase::new(
+        ConfigDestination {
+            config: Arc::new(RwLock::new(Config::default())),
+            writer: Arc::default(),
+            persistence: Arc::new(NullConfigFilePersistence),
+            path: Some("/tmp/ferrous-dns-backup-import-test.toml".to_string()),
+        },
+        create_group,
+        groups.clone(),
+        exemptions,
+        Arc::new(CreateBlocklistSourceUseCase::new(
+            Arc::new(MockBlocklistSourceRepository::new()),
+            groups.clone(),
+            engine.clone(),
+        )),
+        Arc::new(StubLocalRecordCreator),
+        engine.clone(),
+    );
+    let mut snapshot = snapshot_with_sources(&[]);
+    snapshot.data.groups = ["IoT", "Kids"]
+        .map(|name| GroupSnapshot {
+            id: None,
+            name: name.to_string(),
+            comment: None,
+            is_default: false,
+            enabled: Some(false),
+            malware_detection_enabled: None,
+        })
+        .to_vec();
+
+    import
+        .execute(snapshot.clone(), ImportOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(engine.load_client_groups_count().await, 1);
+    assert!(groups
+        .get_all()
+        .await
+        .unwrap()
+        .iter()
+        .all(|g| g.enabled == g.is_default));
+
+    import
+        .execute(snapshot, ImportOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.load_client_groups_count().await,
+        1,
+        "nothing changed"
     );
 }
