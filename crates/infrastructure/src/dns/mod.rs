@@ -20,7 +20,7 @@ pub mod transport;
 pub mod tunneling;
 pub mod wire_response;
 
-pub use block_filter::{BlockFilterEngine, StartupBuild};
+pub use block_filter::{BlockFilterEngine, ListCache, StartupBuild};
 pub use cache::{
     BorrowedKey, CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, CachedWire,
     ColdThresholds, DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, LocalRecordStatus,

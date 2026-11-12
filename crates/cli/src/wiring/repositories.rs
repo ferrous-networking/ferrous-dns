@@ -11,7 +11,7 @@ use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::auth::SqliteMfaRepository;
 use ferrous_dns_infrastructure::dns::{
-    BlockFilterEngine, GroupMalwareExemptions, SafeSearchEnforcer, StartupBuild,
+    BlockFilterEngine, GroupMalwareExemptions, ListCache, SafeSearchEnforcer, StartupBuild,
 };
 use ferrous_dns_infrastructure::repositories::{
     api_token_repository::SqliteApiTokenRepository,
@@ -92,6 +92,7 @@ impl Repositories {
             default_group_id,
             schedule_state.clone(),
             blocking_enabled,
+            ListCache::beside_database(&db_config.path),
         )
         .await?;
         let block_filter_engine: Arc<dyn BlockFilterEnginePort> = block_filter_engine;
