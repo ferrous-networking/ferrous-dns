@@ -16,7 +16,8 @@ pub struct ServerConfig {
 
     /// Default address every listener binds to. `"auto"`, the default, and
     /// `"[::]"` (or a bare `"::"`) cover both families on one dual-stack
-    /// socket; `"0.0.0.0"` covers all IPv4 interfaces only.
+    /// socket, `"auto"` only IPv4 on a kernel without IPv6; `"0.0.0.0"`
+    /// covers all IPv4 interfaces only.
     #[serde(default)]
     pub bind_address: BindAddress,
 

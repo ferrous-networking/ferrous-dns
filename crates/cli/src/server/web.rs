@@ -69,10 +69,9 @@ pub async fn serve_doh(listener: TcpListener, doh: Arc<DohContext>) -> anyhow::R
     Ok(())
 }
 
-/// Binds a web or DoH listener on `bind`. An IPv6 bind turns `IPV6_V6ONLY`
-/// off, so `[::]` serves IPv4 too whatever `net.ipv6.bindv6only` says; an
-/// IPv4 bind stays AF_INET and needs no IPv6 in the kernel. Unlike the DNS
-/// listeners there is no `SO_REUSEPORT`: a second server must fail to bind.
+/// Binds a web or DoH listener on `bind`, in the address's family (see
+/// `open_listener_socket`). Unlike the DNS listeners there is no
+/// `SO_REUSEPORT`: a second server must fail to bind.
 pub fn bind_web_listener(bind: SocketAddr) -> anyhow::Result<TcpListener> {
     let socket = open_listener_socket(bind, Type::STREAM, Protocol::TCP)?;
     socket.set_reuse_address(true)?;

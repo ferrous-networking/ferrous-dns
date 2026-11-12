@@ -64,8 +64,7 @@ pub async fn start_doq_server(
     doq_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let endpoint = bind_doq_endpoint(bind, tls_config)?;
-    // `local_addr` reports the v4-mapped form of a `::ffff:a.b.c.d` bind;
-    // report it as IPv4.
+    // An explicit `::ffff:a.b.c.d` bind is still AF_INET6; log it as IPv4.
     let local_addr = pktinfo::unmap_socket_addr(endpoint.local_addr()?);
     info!(bind_address = %local_addr, "Starting DoQ server (DNS-over-QUIC, RFC 9250)");
     serve_doq(endpoint, handler, doq_conn_limiter).await;

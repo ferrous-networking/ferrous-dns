@@ -33,7 +33,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 bind_address = "auto"
 ```
 
-`"auto"` binds `[::]` (a bare `"::"` works too; all three spellings listen the same way), or `0.0.0.0` on a [kernel without IPv6](#kernel-without-ipv6). Every listener opens `[::]` with `IPV6_V6ONLY` off, so IPv4 is served whatever the host's `net.ipv6.bindv6only` says. The config file, backups and `GET /ferrous/api/v1/config` keep saying `auto`.
+`"auto"` binds `[::]`, as `"[::]"` and a bare `"::"` do; only `"auto"` falls back to `0.0.0.0` on a [kernel without IPv6](#kernel-without-ipv6). Every listener opens `[::]` with `IPV6_V6ONLY` off, so IPv4 is served whatever the host's `net.ipv6.bindv6only` says. The config file, backups and `GET /ferrous/api/v1/config` keep saying `auto`.
 
 `bind_address = "0.0.0.0"` serves IPv4 only, as it always has. A config that names it, such as the `ferrous-dns.toml` that older releases shipped and that every existing Docker volume holds, keeps listening on IPv4 until that line is changed to `"auto"`.
 
@@ -50,7 +50,7 @@ Every listener opens a socket in the family of its address: `AF_INET` for an IPv
 
 - `bind_address = "auto"` listens on `0.0.0.0`, IPv4 only, and logs `IPv6 is not available in this kernel: bind_address "auto" listens on IPv4 only (0.0.0.0)` at startup. The config file, backups and `GET /ferrous/api/v1/config` still say `auto`, so the same file serves both families again on a kernel with IPv6.
 - An IPv4 address, `"0.0.0.0"` included, binds as it does anywhere else.
-- An explicit IPv6 address, such as `"[::]"` in `bind_address`, `web_bind_address` or a [per-listener bind address](#per-listener-bind), is not changed. Its listener fails to start with an error that names the address and says the kernel has no IPv6. A web listener that cannot bind stops the server; a DNS listener that cannot bind leaves the dashboard up and `/health` at 503.
+- An explicit IPv6 address, such as `"[::]"` in `bind_address`, `web_bind_address` or a [per-listener bind address](#per-listener-bind), is not changed. Its listener fails to start with an error that names the address and says the kernel has no IPv6. A web listener that cannot bind stops the server. A Do53 listener that cannot bind leaves the dashboard up with `/health` at 503; a DoT, DoQ or dedicated DoH listener only logs its error, and `/health` stays at 200.
 
 IPv6 turned off on the network, or with `net.ipv6.conf.all.disable_ipv6 = 1`, is not this case: the kernel can still create IPv6 sockets, so `"auto"` stays dual-stack and serves IPv4 clients as usual.
 
