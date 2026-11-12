@@ -840,6 +840,91 @@ async fn test_import_of_an_older_backup_keeps_the_malware_switch_here() {
     assert_eq!(groups[0]["malware_detection_enabled"], false, "{groups}");
 }
 
+/// Whether each group is on, by name, as the target lists them.
+async fn enabled_flags(app: Router) -> Vec<(String, bool)> {
+    let groups = get_json(app, "/groups").await;
+    groups
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| {
+            (
+                g["name"].as_str().unwrap().to_string(),
+                g["enabled"].as_bool().unwrap(),
+            )
+        })
+        .collect()
+}
+
+/// A disabled group stays disabled after a restore, and the groups of a
+/// backup taken before the flag was exported come back enabled.
+#[tokio::test]
+async fn test_group_enabled_flag_survives_export_import_round_trip() {
+    let source = test_app().await;
+    sqlx::query("INSERT INTO groups (name, enabled) VALUES ('Kids', 0)")
+        .execute(&source.pool)
+        .await
+        .unwrap();
+    let (_, exported) = do_export(source.router).await;
+    assert_eq!(
+        exported["data"]["groups"][1]["enabled"], false,
+        "{exported}"
+    );
+
+    let mut backup = exported.clone();
+    backup["data"]["groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "Legacy", "comment": null }));
+    let target = test_app().await.router;
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        enabled_flags(target).await,
+        [
+            ("Protected".to_string(), true),
+            ("Kids".to_string(), false),
+            ("Legacy".to_string(), true),
+        ]
+    );
+}
+
+/// The import creates only the groups the target lacks. One the target
+/// already has still takes the backup's switch.
+#[tokio::test]
+async fn test_import_restores_the_enabled_flag_of_groups_that_already_exist() {
+    let target = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await
+        .router;
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([
+        { "name": "Protected", "comment": null, "is_default": true, "enabled": true },
+        { "name": "IoT", "comment": null, "enabled": false }
+    ]);
+
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        enabled_flags(target).await,
+        [("Protected".to_string(), true), ("IoT".to_string(), false)]
+    );
+}
+
 #[tokio::test]
 async fn test_import_without_file_returns_bad_request() {
     let app = test_app().await.router;
