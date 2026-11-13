@@ -23,8 +23,15 @@ pub struct ApiToken {
 
 impl ApiToken {
     /// A custom key replaces the generated 256-bit one, so it must be long
-    /// enough that guessing it is out of reach.
+    /// enough that guessing it is out of reach. Surrounding whitespace is
+    /// refused rather than trimmed: HTTP drops it from an `X-Api-Key` value,
+    /// so a key that has it could never sign in there.
     pub fn validate_custom_key(key: &str) -> Result<(), DomainError> {
+        if key.trim() != key {
+            return Err(DomainError::InvalidInput(
+                "A custom token cannot start or end with whitespace".to_string(),
+            ));
+        }
         if key.chars().count() < MIN_CUSTOM_KEY_CHARS {
             return Err(DomainError::InvalidInput(format!(
                 "A custom token needs at least {MIN_CUSTOM_KEY_CHARS} characters"
