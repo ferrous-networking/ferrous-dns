@@ -1205,3 +1205,71 @@ async fn discoverable_passkey_start_is_refused_once_the_pending_cap_is_reached()
         Err(DomainError::RateLimited)
     ));
 }
+
+/// Counts `verify` calls, so a test can tell whether a login spent hashing time.
+#[derive(Default)]
+struct CountingHasher {
+    verifies: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl PasswordHasher for CountingHasher {
+    async fn hash(&self, _password: &str) -> Result<String, DomainError> {
+        Ok("$hashed$".to_string())
+    }
+    async fn verify(&self, password: &str, _hash: &str) -> Result<bool, DomainError> {
+        self.verifies
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(password == "correct-password")
+    }
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError> {
+        Ok(passwords.iter().map(|_| "$hashed$".to_string()).collect())
+    }
+    async fn verify_any(&self, _: &str, _: Vec<Arc<str>>) -> Result<Option<usize>, DomainError> {
+        Ok(None)
+    }
+}
+
+/// Verify calls and the outcome of one login as `username`, against an admin
+/// that is `enabled` or not.
+async fn login_cost(
+    username: &str,
+    password: &str,
+    enabled: bool,
+) -> (usize, Result<LoginOutcome, DomainError>) {
+    let mut admin = make_admin_user("$hashed$");
+    admin.enabled = enabled;
+    let hasher = Arc::new(CountingHasher::default());
+    let login_uc = LoginUseCase::new(
+        Arc::new(TestUserProvider { admin }),
+        Arc::new(InMemorySessionRepository::new()),
+        hasher.clone(),
+        no_mfa(),
+        Arc::new(AuthConfig::default()),
+    );
+    let outcome = login_uc
+        .execute(username, password, false, PEER, "127.0.0.1", "test-agent")
+        .await;
+    (
+        hasher.verifies.load(std::sync::atomic::Ordering::SeqCst),
+        outcome,
+    )
+}
+
+/// An unknown or disabled account costs the same password check as a wrong
+/// password, so the response time does not tell which usernames exist.
+#[tokio::test]
+async fn test_login_checks_a_password_for_unknown_and_disabled_users() {
+    for (case, username, password, enabled) in [
+        ("wrong password", "admin", "wrong-password", true),
+        ("unknown user", "nobody", "correct-password", true),
+        ("disabled user", "admin", "correct-password", false),
+    ] {
+        let (verifies, outcome) = login_cost(username, password, enabled).await;
+        assert_eq!(verifies, 1, "{case}");
+        assert!(
+            matches!(outcome, Err(DomainError::InvalidCredentials)),
+            "{case}: expected InvalidCredentials"
+        );
+    }
+}
