@@ -23,6 +23,11 @@ impl UpdateApiTokenUseCase {
         custom_token: Option<&str>,
     ) -> Result<ApiToken, DomainError> {
         ApiToken::validate_name(name)?;
+        // An empty key keeps the current one, matching create's "empty means not provided".
+        let custom_token = custom_token.filter(|token| !token.is_empty());
+        if let Some(token) = custom_token {
+            ApiToken::validate_custom_key(token)?;
+        }
 
         if let Some(existing) = self.repo.get_by_name(name).await? {
             if existing.id != Some(id) {
@@ -30,10 +35,7 @@ impl UpdateApiTokenUseCase {
             }
         }
 
-        // An empty key keeps the current one, matching create's "empty means not provided".
-        let new_key = custom_token
-            .filter(|token| !token.is_empty())
-            .map(super::key_material);
+        let new_key = custom_token.map(super::key_material);
         let updated = self
             .repo
             .update(

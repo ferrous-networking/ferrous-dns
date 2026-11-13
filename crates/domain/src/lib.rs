@@ -13,7 +13,7 @@ pub use config::{
     DEFAULT_DNS64_PREFIX,
 };
 pub use dns_record::RecordType;
-pub use entities::api_token::ApiToken;
+pub use entities::api_token::{ApiToken, MIN_CUSTOM_KEY_CHARS};
 pub use entities::auth_session::AuthSession;
 pub use entities::block_source::BlockSource;
 pub use entities::blocked_service::BlockedService;

@@ -35,7 +35,10 @@ impl CreateApiTokenUseCase {
         ApiToken::validate_name(name)?;
 
         let raw_token = match custom_token {
-            Some(t) if !t.is_empty() => t.to_string(),
+            Some(t) if !t.is_empty() => {
+                ApiToken::validate_custom_key(t)?;
+                t.to_string()
+            }
             _ => random_hex_256()?,
         };
         let (key_prefix, key_hash) = super::key_material(&raw_token);

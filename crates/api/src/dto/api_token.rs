@@ -5,15 +5,17 @@ use utoipa::ToSchema;
 pub struct CreateApiTokenRequest {
     pub name: String,
     /// Optional custom token value (e.g. import an existing Pi-hole API key).
-    /// When omitted, a secure random token is generated automatically.
+    /// At least 32 characters; when omitted or empty, a secure random token
+    /// is generated automatically.
     pub token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateApiTokenRequest {
     pub name: String,
-    /// Optional new token value. When provided, replaces the existing key.
-    /// Useful for importing an API key from another system.
+    /// Optional new token value of at least 32 characters. When provided,
+    /// replaces the existing key. Useful for importing an API key from
+    /// another system.
     pub token: Option<String>,
 }
 

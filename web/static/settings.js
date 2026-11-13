@@ -1,3 +1,6 @@
+    // Mirrors ferrous_dns_domain::MIN_CUSTOM_KEY_CHARS; the server enforces it too.
+    const MIN_CUSTOM_KEY_CHARS = 32;
+
     function app() {
         return {
             theme: 'light',
@@ -1059,6 +1062,10 @@
             },
             async createApiToken() {
                 if (!this.newTokenName.trim()) return;
+                if (this.customKeyTooShort(this.newTokenCustomKey)) {
+                    this.showAlert('error', `A custom token needs at least ${MIN_CUSTOM_KEY_CHARS} characters`);
+                    return;
+                }
                 try {
                     const payload = {name: this.newTokenName.trim()};
                     if (this.newTokenCustomKey.trim()) {
@@ -1083,6 +1090,11 @@
                     }
                 } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
             },
+            // Counted in characters, as the server counts them; empty means "generate" or "keep".
+            customKeyTooShort(key) {
+                const trimmed = key.trim();
+                return trimmed.length > 0 && [...trimmed].length < MIN_CUSTOM_KEY_CHARS;
+            },
             startEditToken(token) {
                 this.editingToken = token.id;
                 this.editTokenName = token.name;
@@ -1096,6 +1108,10 @@
             },
             async saveApiTokenEdit(id) {
                 if (!this.editTokenName.trim()) return;
+                if (this.customKeyTooShort(this.editTokenCustomKey)) {
+                    this.showAlert('error', `A replacement token needs at least ${MIN_CUSTOM_KEY_CHARS} characters`);
+                    return;
+                }
                 try {
                     const payload = {name: this.editTokenName.trim()};
                     if (this.editTokenCustomKey.trim()) {
