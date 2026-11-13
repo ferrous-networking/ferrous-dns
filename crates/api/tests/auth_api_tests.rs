@@ -1206,15 +1206,19 @@ async fn discoverable_passkey_start_is_refused_once_the_pending_cap_is_reached()
     ));
 }
 
-/// Counts `verify` calls, so a test can tell whether a login spent hashing time.
+/// Counts `hash` and `verify` calls, so a test can tell how much hashing time
+/// a login spent.
 #[derive(Default)]
 struct CountingHasher {
+    hashes: std::sync::atomic::AtomicUsize,
     verifies: std::sync::atomic::AtomicUsize,
 }
 
 #[async_trait::async_trait]
 impl PasswordHasher for CountingHasher {
     async fn hash(&self, _password: &str) -> Result<String, DomainError> {
+        self.hashes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok("$hashed$".to_string())
     }
     async fn verify(&self, password: &str, _hash: &str) -> Result<bool, DomainError> {
@@ -1254,6 +1258,42 @@ async fn login_cost(
         hasher.verifies.load(std::sync::atomic::Ordering::SeqCst),
         outcome,
     )
+}
+
+/// Hash and verify calls of the first login a fresh use case serves.
+async fn first_login_hashing(username: &str) -> usize {
+    let hasher = Arc::new(CountingHasher::default());
+    let login_uc = LoginUseCase::new(
+        Arc::new(TestUserProvider {
+            admin: make_admin_user("$hashed$"),
+        }),
+        Arc::new(InMemorySessionRepository::new()),
+        hasher.clone(),
+        no_mfa(),
+        Arc::new(AuthConfig::default()),
+    );
+    let _ = login_uc
+        .execute(
+            username,
+            "wrong-password",
+            false,
+            PEER,
+            "127.0.0.1",
+            "test-agent",
+        )
+        .await;
+    hasher.hashes.load(std::sync::atomic::Ordering::SeqCst)
+        + hasher.verifies.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The stand-in hash is made on the first login after a start; that login
+/// must cost the same whether or not the username exists.
+#[tokio::test]
+async fn test_the_first_login_costs_the_same_for_a_known_and_an_unknown_user() {
+    assert_eq!(
+        first_login_hashing("admin").await,
+        first_login_hashing("nobody").await
+    );
 }
 
 /// An unknown or disabled account costs the same password check as a wrong

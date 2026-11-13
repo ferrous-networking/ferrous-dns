@@ -1818,3 +1818,37 @@ async fn test_import_with_authentication_off_on_both_sides_does_not_warn() {
     assert!(!config.read().await.auth.enabled);
     assert_eq!(json["warnings"], json!([]), "{json}");
 }
+
+/// `login_rate_limit_attempts = 0` switches the lockout off, so a backup
+/// cannot set it either: unlimited password guesses would follow.
+#[tokio::test]
+async fn test_import_never_turns_the_login_lockout_off() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.login_rate_limit_attempts = 5;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(true);
+    backup["config"]["auth"]["login_rate_limit_attempts"] = json!(0);
+
+    let json = import_json(router, &backup).await;
+
+    assert_eq!(config.read().await.auth.login_rate_limit_attempts, 5);
+    assert_eq!(json["success"], true, "{json}");
+    let warnings = json["warnings"].as_array().cloned().unwrap_or_default();
+    assert_eq!(warnings.len(), 1, "{json}");
+    assert!(warnings[0].as_str().unwrap().contains("lockout"), "{json}");
+}
+
+/// Any other limit in the backup is restored as it is.
+#[tokio::test]
+async fn test_import_restores_a_login_lockout_limit() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.login_rate_limit_attempts = 0;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(true);
+    backup["config"]["auth"]["login_rate_limit_attempts"] = json!(10);
+
+    let json = import_json(router, &backup).await;
+
+    assert_eq!(config.read().await.auth.login_rate_limit_attempts, 10);
+    assert_eq!(json["warnings"], json!([]), "{json}");
+}
