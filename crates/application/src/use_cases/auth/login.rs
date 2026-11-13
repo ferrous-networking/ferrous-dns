@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use tokio::sync::OnceCell;
 use tracing::{info, instrument, warn};
 
 use super::login_rate_limiter::LoginRateLimiter;
@@ -31,6 +32,10 @@ pub struct LoginUseCase {
     mfa_repo: Arc<dyn MfaRepository>,
     auth_config: Arc<AuthConfig>,
     rate_limiter: Arc<LoginRateLimiter>,
+    /// A hash of no account's password, made by the same hasher on the first
+    /// login it is needed for, which an unknown or disabled username is checked
+    /// against.
+    stand_in_hash: OnceCell<String>,
 }
 
 impl LoginUseCase {
@@ -49,6 +54,7 @@ impl LoginUseCase {
             mfa_repo,
             auth_config,
             rate_limiter,
+            stand_in_hash: OnceCell::new(),
         }
     }
 
@@ -84,6 +90,13 @@ impl LoginUseCase {
         let user = self.user_provider.get_by_username(username).await?;
         let Some(user) = user.filter(|user| user.enabled) else {
             self.rate_limiter.record_failure(peer_ip);
+            // The same password check a real account costs, so the response
+            // time does not tell which usernames exist.
+            let stand_in = self
+                .stand_in_hash
+                .get_or_try_init(|| self.password_hasher.hash("no account has this password"))
+                .await?;
+            self.password_hasher.verify(password, stand_in).await?;
             return Err(DomainError::InvalidCredentials);
         };
 
