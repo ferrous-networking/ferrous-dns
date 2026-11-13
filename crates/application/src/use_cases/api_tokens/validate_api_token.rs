@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use crate::ports::ApiTokenRepository;
+use crate::use_cases::auth::session_factory::sha256_hex;
 use ferrous_dns_domain::DomainError;
 
 /// Validates a raw API token against stored hashes.
@@ -24,7 +25,7 @@ impl ValidateApiTokenUseCase {
         if raw_token.is_empty() {
             return Err(DomainError::InvalidCredentials);
         }
-        let incoming_hash = super::hash_token(raw_token);
+        let incoming_hash = sha256_hex(raw_token);
 
         match self.repo.get_id_by_hash(&incoming_hash).await? {
             Some(id) => {

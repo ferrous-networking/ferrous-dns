@@ -544,8 +544,10 @@ async fn test_import_restores_the_backups_host_settings_by_default() {
         Some("10.0.0.2")
     );
     assert!(!cfg.server.web_tls.enabled);
-    assert_eq!(cfg.server.web_tls.tls_cert_path, "/etc/dns-a/cert.pem");
-    assert_eq!(cfg.server.web_tls.tls_key_path, "/etc/dns-a/key.pem");
+    // The certificate files stay where this server's config file put them:
+    // `/tls/upload` writes there, so a backup must not choose the path.
+    assert_eq!(cfg.server.web_tls.tls_cert_path, "/etc/dns-b/cert.pem");
+    assert_eq!(cfg.server.web_tls.tls_key_path, "/etc/dns-b/key.pem");
     assert_eq!(cfg.auth.webauthn.rp_id, "dns-a.example");
     assert_eq!(cfg.auth.webauthn.rp_origin, "https://dns-a.example");
     assert!(cfg.server.pihole_compat);

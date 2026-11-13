@@ -35,7 +35,6 @@ impl ApiTokenRepository for MockApiTokenRepo {
         name: &str,
         key_prefix: &str,
         key_hash: &str,
-        key_raw: &str,
     ) -> Result<ApiToken, DomainError> {
         let mut tokens = self.tokens.write().await;
         if tokens.iter().any(|t| t.name.as_ref() == name) {
@@ -49,7 +48,6 @@ impl ApiTokenRepository for MockApiTokenRepo {
             name: Arc::from(name),
             key_prefix: Arc::from(key_prefix),
             key_hash: Arc::from(key_hash),
-            key_raw: Some(Arc::from(key_raw)),
             created_at: Some("2026-01-01 00:00:00".to_string()),
             last_used_at: None,
         };
@@ -103,7 +101,6 @@ impl ApiTokenRepository for MockApiTokenRepo {
         if let Some(key) = new_key {
             token.key_prefix = Arc::from(key.prefix);
             token.key_hash = Arc::from(key.hash);
-            token.key_raw = Some(Arc::from(key.raw));
         }
         Ok(token.clone())
     }
@@ -164,7 +161,8 @@ async fn create_token_with_custom_key() {
     let created = uc.execute("imported", Some(custom)).await.unwrap();
 
     assert_eq!(created.raw_token, custom);
-    assert_eq!(created.token.key_prefix.as_ref(), &custom[..8]);
+    // 29 characters: a quarter is 7.
+    assert_eq!(created.token.key_prefix.as_ref(), &custom[..7]);
 }
 
 #[tokio::test]
@@ -196,12 +194,32 @@ async fn create_token_rejects_duplicate_name() {
 }
 
 #[tokio::test]
-async fn create_token_prefix_from_short_key() {
+async fn test_create_token_shows_none_of_a_key_shorter_than_four() {
     let repo = Arc::new(MockApiTokenRepo::new());
     let uc = CreateApiTokenUseCase::new(repo);
 
     let created = uc.execute("short", Some("abc")).await.unwrap();
-    assert_eq!(created.token.key_prefix.as_ref(), "abc");
+    assert_eq!(created.token.key_prefix.as_ref(), "");
+}
+
+#[tokio::test]
+async fn test_create_token_shows_at_most_a_quarter_of_a_custom_key() {
+    let repo = Arc::new(MockApiTokenRepo::new());
+    let uc = CreateApiTokenUseCase::new(repo);
+
+    for (key, prefix) in [("abcdefgh", "ab"), ("0123456789abcdef", "0123")] {
+        let created = uc.execute(key, Some(key)).await.unwrap();
+        assert_eq!(created.token.key_prefix.as_ref(), prefix, "key {key}");
+    }
+}
+
+#[tokio::test]
+async fn test_create_token_lists_eight_characters_of_a_generated_key() {
+    let repo = Arc::new(MockApiTokenRepo::new());
+    let uc = CreateApiTokenUseCase::new(repo);
+
+    let created = uc.execute("generated", None).await.unwrap();
+    assert_eq!(created.token.key_prefix.as_ref(), &created.raw_token[..8]);
 }
 
 #[tokio::test]
@@ -209,9 +227,9 @@ async fn create_token_prefix_stops_at_char_boundary() {
     let repo = Arc::new(MockApiTokenRepo::new());
     let uc = CreateApiTokenUseCase::new(repo);
 
-    // Byte 8 falls inside the fourth 'é'.
+    // 11 bytes: a quarter is 2, which falls inside the first 'é'.
     let created = uc.execute("utf8", Some("aééééé")).await.unwrap();
-    assert_eq!(created.token.key_prefix.as_ref(), "aééé");
+    assert_eq!(created.token.key_prefix.as_ref(), "a");
 }
 
 #[tokio::test]
@@ -244,7 +262,8 @@ async fn update_token_with_new_key() {
         .unwrap();
 
     assert_ne!(updated.key_hash.as_ref(), old_hash.as_str());
-    assert_eq!(updated.key_prefix.as_ref(), "new-cust");
+    // 20 characters: a quarter is 5.
+    assert_eq!(updated.key_prefix.as_ref(), "new-c");
 }
 
 #[tokio::test]
@@ -488,17 +507,17 @@ async fn app_password_fixture(admin_enabled: bool) -> AppPasswordFixture {
 async fn app_password_login_with_valid_token_creates_session() {
     let fixture = app_password_fixture(true).await;
 
-    let session = fixture
+    let issued = fixture
         .use_case
         .execute("admin", &fixture.token, PEER, "192.0.2.10", "agent")
         .await
         .unwrap();
 
-    assert_eq!(session.username.as_ref(), "admin");
-    assert_eq!(session.role, UserRole::Admin);
+    assert_eq!(issued.session.username.as_ref(), "admin");
+    assert_eq!(issued.session.role, UserRole::Admin);
     let stored = fixture.sessions.get_all_active().await.unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].id, session.id);
+    assert_eq!(stored[0].id, issued.session.id);
 }
 
 #[tokio::test]

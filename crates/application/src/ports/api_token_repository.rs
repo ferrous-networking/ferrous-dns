@@ -1,29 +1,26 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{ApiToken, DomainError};
 
-/// A token key as persisted: display prefix, SHA-256 hash used for lookup, and the raw value.
+/// A token key as persisted: display prefix and the SHA-256 hash used for lookup.
 pub struct ApiKeyMaterial<'a> {
     pub prefix: &'a str,
     pub hash: &'a str,
-    pub raw: &'a str,
 }
 
 /// Port for managing named API tokens in persistent storage.
 ///
-/// Tokens are validated via SHA-256 hashes. The raw token is also persisted
-/// for admin display but never exposed in listing endpoints.
+/// Tokens are validated via SHA-256 hashes; the raw key is never stored.
 #[async_trait]
 pub trait ApiTokenRepository: Send + Sync {
-    /// Store a new token (name + hash + prefix + raw). Returns the persisted entity.
+    /// Store a new token (name + prefix + hash). Returns the persisted entity.
     async fn create(
         &self,
         name: &str,
         key_prefix: &str,
         key_hash: &str,
-        key_raw: &str,
     ) -> Result<ApiToken, DomainError>;
 
-    /// List all tokens (without raw keys — only prefix and metadata).
+    /// List all tokens (only prefix and metadata).
     async fn get_all(&self) -> Result<Vec<ApiToken>, DomainError>;
 
     async fn get_by_id(&self, id: i64) -> Result<Option<ApiToken>, DomainError>;

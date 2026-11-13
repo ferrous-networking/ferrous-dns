@@ -1,6 +1,6 @@
 use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
-    ApiTokenRepository, MfaRepository, SessionRepository, UserRepository,
+    ApiTokenRepository, MfaRepository, PendingChallengeCounter, SessionRepository, UserRepository,
 };
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, CustomServiceRepository, MalwareExemptionPort,
@@ -61,6 +61,8 @@ pub struct Repositories {
     pub user: Arc<dyn UserRepository>,
     pub api_token: Arc<dyn ApiTokenRepository>,
     pub mfa: Arc<dyn MfaRepository>,
+    /// The same store as `mfa`, seen through its one counting method.
+    pub pending_challenges: Arc<dyn PendingChallengeCounter>,
 }
 
 impl Repositories {
@@ -121,6 +123,7 @@ impl Repositories {
         let group = Arc::new(SqliteGroupRepository::new(write_pool.clone()));
         let malware_exemptions: Arc<dyn MalwareExemptionPort> =
             GroupMalwareExemptions::new(group.clone()).await?;
+        let mfa = Arc::new(SqliteMfaRepository::new(write_pool.clone()));
 
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(
@@ -150,7 +153,8 @@ impl Repositories {
             schedule_state,
             session: Arc::new(SqliteSessionRepository::new(write_pool.clone(), read_pool)),
             user: Arc::new(SqliteUserRepository::new(write_pool.clone())),
-            mfa: Arc::new(SqliteMfaRepository::new(write_pool.clone())),
+            mfa: mfa.clone(),
+            pending_challenges: mfa,
             api_token: Arc::new(SqliteApiTokenRepository::new(write_pool)),
         })
     }

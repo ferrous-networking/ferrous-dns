@@ -4,17 +4,15 @@ use std::sync::Arc;
 
 /// A named API token for machine-to-machine authentication.
 ///
-/// The raw token value is persisted for admin display (like a password manager).
-/// The SHA-256 hash is used for runtime validation. The `key_prefix` (first 8 chars)
-/// helps users identify which token is which in listings.
+/// Only the SHA-256 hash of the key is stored, and validation looks it up; the
+/// key itself is shown once, when it is created. The `key_prefix` (first 8
+/// chars) helps users identify which token is which in listings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiToken {
     pub id: Option<i64>,
     pub name: Arc<str>,
     pub key_prefix: Arc<str>,
     pub key_hash: Arc<str>,
-    /// The raw token value, persisted for admin display.
-    pub key_raw: Option<Arc<str>>,
     pub created_at: Option<String>,
     pub last_used_at: Option<String>,
 }

@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use base64::Engine;
 use ferrous_dns_application::ports::BlockFilterEnginePort;
-use ferrous_dns_domain::{Config, DohId};
+use ferrous_dns_domain::{forwarded_client_ip, Config, DohId};
 use ferrous_dns_infrastructure::dns::forwarding::EDNS_MAX_PAYLOAD;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query as DnsQuery};
@@ -159,55 +159,18 @@ fn wants_json(headers: &HeaderMap) -> bool {
 }
 
 /// The client a DoH request is attributed to, and so the group policy it gets.
-///
-/// Only a peer inside `trusted` may name another client, since any client can
-/// send these headers. Each proxy appends the address it received from to
-/// `X-Forwarded-For`, so the hops are walked right to left and the first one
-/// that is not itself a trusted proxy is the client; hops left of it are
-/// client-supplied. Without `X-Forwarded-For`, a trusted peer's `X-Real-IP`
-/// is used.
 fn client_ip(peer: IpAddr, headers: &HeaderMap, trusted: &[IpNetwork]) -> IpAddr {
-    let is_trusted = |ip: IpAddr| trusted.iter().any(|net| net.contains(ip));
-    let peer = peer.to_canonical();
-    if !is_trusted(peer) {
-        return peer;
-    }
-
-    let mut hops = headers
-        .get_all("x-forwarded-for")
-        .iter()
-        .rev()
-        .flat_map(|value| value.to_str().unwrap_or_default().rsplit(','))
-        .peekable();
-    if hops.peek().is_none() {
-        return headers
+    forwarded_client_ip(
+        peer,
+        headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .map(|value| value.to_str().unwrap_or_default()),
+        headers
             .get("x-real-ip")
-            .and_then(|value| value.to_str().ok())
-            .and_then(parse_forwarded_ip)
-            .unwrap_or(peer);
-    }
-
-    let mut client = peer;
-    for hop in hops {
-        // A garbled hop ends the chain: whatever lies left of it is unverifiable.
-        let Some(ip) = parse_forwarded_ip(hop) else {
-            break;
-        };
-        client = ip;
-        if !is_trusted(ip) {
-            break;
-        }
-    }
-    client
-}
-
-/// A forwarded address as proxies write it: a bare IP, `ip:port` or `[v6]:port`.
-fn parse_forwarded_ip(text: &str) -> Option<IpAddr> {
-    let text = text.trim();
-    text.parse::<IpAddr>()
-        .or_else(|_| text.parse::<SocketAddr>().map(|addr| addr.ip()))
-        .ok()
-        .map(|ip| ip.to_canonical())
+            .and_then(|value| value.to_str().ok()),
+        trusted,
+    )
 }
 
 fn decode_base64url(input: &str) -> Result<Vec<u8>, base64::DecodeError> {

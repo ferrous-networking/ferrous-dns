@@ -1,16 +1,17 @@
 use ferrous_dns_api::AuthUseCases;
 use ferrous_dns_application::ports::{
     ApiKeyMaterial, ApiTokenRepository, AuthenticatedCredential, MfaRepository, PasswordHasher,
-    RegisteredCredential, SessionRepository, TotpService, UserProvider, UserRepository,
-    WebauthnService,
+    PendingChallengeCounter, RegisteredCredential, SessionRepository, TotpService, UserProvider,
+    UserRepository, WebauthnService,
 };
 use ferrous_dns_application::use_cases::{
     AuthenticatePasskeyUseCase, ChangePasswordUseCase, ConfirmTotpUseCase, CreateApiTokenUseCase,
     CreateUserUseCase, DeleteApiTokenUseCase, DeletePasskeyUseCase, DeleteUserUseCase,
     DisableMfaUseCase, DiscoverablePasskeyLoginUseCase, GetActiveSessionsUseCase,
     GetApiTokensUseCase, GetAuthStatusUseCase, GetMfaStatusUseCase, GetUsersUseCase, LoginUseCase,
-    LogoutUseCase, RegisterPasskeyUseCase, SetupPasswordUseCase, SetupTotpUseCase,
-    UpdateApiTokenUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
+    LogoutUseCase, RegisterPasskeyUseCase, RevokeSessionUseCase, SetupPasswordUseCase,
+    SetupTotpUseCase, UpdateApiTokenUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
+    VerifyMfaUseCase,
 };
 use ferrous_dns_domain::{
     ApiToken, AuthConfig, AuthSession, Config, DomainError, MfaChallenge, RecoveryCode, User,
@@ -128,7 +129,6 @@ impl ApiTokenRepository for NullApiTokenRepository {
         _name: &str,
         _key_prefix: &str,
         _key_hash: &str,
-        _key_raw: &str,
     ) -> Result<ApiToken, DomainError> {
         Err(DomainError::ConfigError("not implemented".to_string()))
     }
@@ -255,6 +255,15 @@ impl TotpService for NullTotpService {
     }
 }
 
+pub struct NoPendingChallenges;
+
+#[async_trait::async_trait]
+impl PendingChallengeCounter for NoPendingChallenges {
+    async fn count_pending_anonymous(&self) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+}
+
 pub struct NullWebauthnService;
 
 impl WebauthnService for NullWebauthnService {
@@ -333,6 +342,7 @@ pub fn build_test_auth_use_cases() -> AuthUseCases {
             auth_config.clone(),
         )),
         logout: Arc::new(LogoutUseCase::new(session_repo.clone())),
+        revoke_session: Arc::new(RevokeSessionUseCase::new(session_repo.clone())),
         validate_session: Arc::new(ValidateSessionUseCase::new(session_repo.clone())),
         setup_password: Arc::new(SetupPasswordUseCase::new(
             user_provider.clone(),
@@ -394,6 +404,7 @@ pub fn build_test_auth_use_cases() -> AuthUseCases {
         discoverable_passkey_login: Arc::new(DiscoverablePasskeyLoginUseCase::new(
             webauthn,
             mfa_repo.clone(),
+            Arc::new(NoPendingChallenges),
             user_provider,
             session_repo,
             auth_config,

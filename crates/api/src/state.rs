@@ -26,13 +26,13 @@ use ferrous_dns_application::use_cases::{
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
     GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUsersUseCase,
     GetWhitelistSourcesUseCase, ImportConfigUseCase, LoginUseCase, LogoutUseCase,
-    ManageTimeSlotsUseCase, RegisterPasskeyUseCase, ReloadConfigUseCase, SetupPasswordUseCase,
-    SetupTotpUseCase, SyncBlocklistSourcesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateApiTokenUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateDohIdUseCase, UpdateGroupUseCase,
-    UpdateLocalRecordUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
-    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase,
-    ValidateSessionUseCase, VerifyMfaUseCase,
+    ManageTimeSlotsUseCase, RegisterPasskeyUseCase, ReloadConfigUseCase, RevokeSessionUseCase,
+    SetupPasswordUseCase, SetupTotpUseCase, SyncBlocklistSourcesUseCase, TestDomainUseCase,
+    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateApiTokenUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateDohIdUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -151,6 +151,7 @@ pub struct ScheduleUseCases {
 pub struct AuthUseCases {
     pub login: Arc<LoginUseCase>,
     pub logout: Arc<LogoutUseCase>,
+    pub revoke_session: Arc<RevokeSessionUseCase>,
     pub validate_session: Arc<ValidateSessionUseCase>,
     pub setup_password: Arc<SetupPasswordUseCase>,
     pub change_password: Arc<ChangePasswordUseCase>,

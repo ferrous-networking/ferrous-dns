@@ -31,7 +31,6 @@ pub struct ApiTokenResponse {
     pub id: i64,
     pub name: String,
     pub key_prefix: String,
-    pub token: Option<String>,
     pub created_at: Option<String>,
     pub last_used_at: Option<String>,
 }

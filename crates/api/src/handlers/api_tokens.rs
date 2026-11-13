@@ -39,7 +39,6 @@ async fn get_all_api_tokens(
                 id: t.id.unwrap_or(0),
                 name: t.name.to_string(),
                 key_prefix: t.key_prefix.to_string(),
-                token: None,
                 created_at: t.created_at,
                 last_used_at: t.last_used_at,
             })
@@ -109,7 +108,6 @@ async fn update_api_token(
         id: updated.id.unwrap_or(0),
         name: updated.name.to_string(),
         key_prefix: updated.key_prefix.to_string(),
-        token: updated.key_raw.map(|r| r.to_string()),
         created_at: updated.created_at,
         last_used_at: updated.last_used_at,
     }))

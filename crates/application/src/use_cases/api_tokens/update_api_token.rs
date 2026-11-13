@@ -33,7 +33,7 @@ impl UpdateApiTokenUseCase {
         // An empty key keeps the current one, matching create's "empty means not provided".
         let new_key = custom_token
             .filter(|token| !token.is_empty())
-            .map(|raw| (raw, super::key_material(raw)));
+            .map(super::key_material);
         let updated = self
             .repo
             .update(
@@ -41,7 +41,7 @@ impl UpdateApiTokenUseCase {
                 name,
                 new_key
                     .as_ref()
-                    .map(|(raw, (prefix, hash))| ApiKeyMaterial { prefix, hash, raw }),
+                    .map(|(prefix, hash)| ApiKeyMaterial { prefix, hash }),
             )
             .await?;
 

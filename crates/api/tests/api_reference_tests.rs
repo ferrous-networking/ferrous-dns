@@ -224,3 +224,13 @@ async fn test_every_request_example_uses_the_fields_of_its_request_schema() {
         wrong.join("\n  ")
     );
 }
+
+/// Anyone can start a passwordless login, so the spec must show the 429 that
+/// refuses one while too many are pending.
+#[tokio::test]
+async fn test_spec_lists_the_429_of_a_passwordless_login_start() {
+    let spec = spec().await;
+    let responses = &spec["paths"]["/auth/webauthn/discoverable/start"]["post"]["responses"];
+    assert!(responses.is_object(), "no such operation in the spec");
+    assert!(responses.get("429").is_some(), "{responses}");
+}

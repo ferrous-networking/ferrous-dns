@@ -516,7 +516,7 @@ Content-Type: multipart/form-data
 
 **Auth:** session or API key · **Returns:** `200` `TlsUploadResponse` · **Errors:** `400` missing part, invalid PEM or over 64 KB
 
-Uploads a PEM `cert` and `key` pair via multipart form fields.
+Uploads a PEM `cert` and `key` pair via multipart form fields. They are written to `tls_cert_path` and `tls_key_path` from `ferrous-dns.toml`; the API cannot move those paths.
 
 ### Generate Self-Signed
 
@@ -569,7 +569,7 @@ multipart field (`file`). Returns an import summary describing what was applied.
 
 | Parameter | Type | Description |
 |:----------|:-----|:------------|
-| `keep_host_settings` | boolean | `true` keeps this server's `dns_port`, `web_port`, `bind_address`, `web_bind_address`, `[server.web_tls]` `enabled`, `tls_cert_path` and `tls_key_path`, and `[auth.webauthn]` `rp_id` and `rp_origin`, instead of the backup's. Use it to copy a setup to a [second server](operations/redundancy.md); leave it off to restore a server from its own backup (default: `false`) |
+| `keep_host_settings` | boolean | `true` keeps this server's `dns_port`, `web_port`, `bind_address`, `web_bind_address`, `[server.web_tls]` `enabled`, and `[auth.webauthn]` `rp_id` and `rp_origin`, instead of the backup's. Use it to copy a setup to a [second server](operations/redundancy.md); leave it off to restore a server from its own backup (default: `false`). `tls_cert_path` and `tls_key_path` are never restored: they stay as this server's config file sets them |
 
 - Groups are created by name; one that already exists is kept. A pool's routes
   and a blocklist source follow each group by name, so a backup from another
@@ -703,7 +703,7 @@ GET /ferrous/api/v1/auth/sessions
 
 **Auth:** session or API key · **Returns:** `200` `[SessionResponse]`
 
-Returns all active sessions.
+Returns all active sessions. A session's `id` is its handle, the SHA-256 of the token its cookie carries, so it cannot be sent back as a cookie. `ip_address` is the address the login came from: the TCP peer, or the client a reverse proxy in [`trusted_proxies`](configuration/server.md#doh-client-identity) names in `X-Forwarded-For` or `X-Real-IP`.
 
 ### Revoke Session
 
@@ -713,7 +713,7 @@ DELETE /ferrous/api/v1/auth/sessions/{id}
 
 **Auth:** session or API key · **Returns:** `204`, also for an unknown id
 
-Revokes a specific session by ID. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
+Revokes a specific session by the `id` the list shows; the session's own token is accepted too. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
 
 ### Two-Factor Authentication (TOTP)
 
@@ -805,9 +805,9 @@ POST /ferrous/api/v1/auth/webauthn/discoverable/start
 POST /ferrous/api/v1/auth/webauthn/discoverable/finish
 ```
 
-**Auth:** public · **Returns:** `start` `200` `DiscoverableStartResponse`; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured; `finish` `400` assertion rejected, `401` expired challenge or unknown passkey
+**Auth:** public · **Returns:** `start` `200` `DiscoverableStartResponse`; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured, `429` too many passwordless logins pending; `finish` `400` assertion rejected, `401` expired challenge or unknown passkey
 
-Passwordless login with a resident passkey: no username or password. `start` takes no body and returns `challenge` and a `challenge_token`; `finish` takes `challenge_token`, the browser's `response` and an optional `remember_me`, and answers like a login.
+Passwordless login with a resident passkey: no username or password. `start` takes no body and returns `challenge` and a `challenge_token`; `finish` takes `challenge_token`, the browser's `response` and an optional `remember_me`, and answers like a login. Anyone can call `start`, so about 1024 of these logins can be pending at once; each lasts `mfa_challenge_ttl_secs`.
 
 ```http
 DELETE /ferrous/api/v1/auth/webauthn/{id}
@@ -831,7 +831,7 @@ GET /ferrous/api/v1/api-tokens
 
 **Auth:** session or API key · **Returns:** `200` `[ApiTokenResponse]`
 
-Returns all tokens. Only the token prefix is shown in the listing.
+Returns all tokens. Only the token prefix is shown in the listing: 8 characters of a generated key, and at most a quarter of a custom one.
 
 ### Create Token
 
@@ -873,6 +873,8 @@ Send the `name`, which is required, and `token` to import a custom key:
   "token": "custom-imported-key"
 }
 ```
+
+The response never carries the key, not even one you just sent.
 
 !!! tip "Pi-hole migration"
     Use the `token` field to import existing API keys from Pi-hole or other tools.

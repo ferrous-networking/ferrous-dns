@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tracing::debug;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use ferrous_dns_application::use_cases::LoginOutcome;
-use ferrous_dns_domain::{AuthSession, DomainError, MfaMethod};
+use ferrous_dns_application::use_cases::{IssuedSession, LoginOutcome};
+use ferrous_dns_domain::{forwarded_client_ip, AuthSession, DomainError, MfaMethod};
 
 use crate::dto::auth::{
     AuthStatusResponse, ChangePasswordRequest, ConfirmTotpRequest, DisableMfaRequest,
@@ -51,17 +51,18 @@ pub fn public_mfa_routes() -> OpenApiRouter<AppState> {
 
 /// Builds the `Set-Cookie` header value for a session; an empty id with
 /// `max_age` 0 clears it.
-fn session_cookie(session_id: &str, max_age: i64, tls_enabled: bool) -> String {
+fn session_cookie(token: &str, max_age: i64, tls_enabled: bool) -> String {
     let secure_flag = if tls_enabled { "; Secure" } else { "" };
     format!(
-        "{SESSION_COOKIE_NAME}={session_id}; HttpOnly; SameSite=Strict{secure_flag}; Path=/; Max-Age={max_age}"
+        "{SESSION_COOKIE_NAME}={token}; HttpOnly; SameSite=Strict{secure_flag}; Path=/; Max-Age={max_age}"
     )
 }
 
 /// 200 response that sets the session cookie for a completed login.
-fn session_established(state: &AppState, session: AuthSession) -> Response {
+fn session_established(state: &AppState, issued: IssuedSession) -> Response {
+    let IssuedSession { session, token } = issued;
     let max_age = state.auth.login.session_max_age(session.remember_me);
-    let cookie = session_cookie(&session.id, max_age, state.tls_enabled);
+    let cookie = session_cookie(&token, max_age, state.tls_enabled);
     (
         [(header::SET_COOKIE, cookie)],
         Json(LoginResponse {
@@ -77,8 +78,8 @@ fn session_established(state: &AppState, session: AuthSession) -> Response {
 
 /// Session named by the request's session cookie, or 401.
 async fn current_session(state: &AppState, headers: &HeaderMap) -> Result<AuthSession, ApiError> {
-    let session_id = extract_session_cookie(headers).ok_or(ApiError(DomainError::AuthRequired))?;
-    Ok(state.auth.validate_session.execute(session_id).await?)
+    let token = extract_session_cookie(headers).ok_or(ApiError(DomainError::AuthRequired))?;
+    Ok(state.auth.validate_session.execute(token).await?)
 }
 
 /// Username of the session named by the request's session cookie, or 401.
@@ -164,7 +165,7 @@ pub async fn login_public(
     request: Request,
 ) -> Result<Response, ApiError> {
     let peer_ip = extract_peer_ip(&request);
-    let ip_address = extract_client_ip(&request);
+    let ip_address = session_client_ip(&state, peer_ip, request.headers()).await;
     let user_agent = extract_user_agent(&request);
 
     let req: LoginRequest = read_json(request).await?;
@@ -183,9 +184,9 @@ pub async fn login_public(
         .await?;
 
     match outcome {
-        LoginOutcome::Authenticated(session) => {
-            debug!(username = %session.username, "Login successful");
-            Ok(session_established(&state, session))
+        LoginOutcome::Authenticated(issued) => {
+            debug!(username = %issued.session.username, "Login successful");
+            Ok(session_established(&state, issued))
         }
         LoginOutcome::MfaRequired {
             challenge_token,
@@ -220,11 +221,11 @@ pub async fn verify_mfa_public(
     request: Request,
 ) -> Result<Response, ApiError> {
     let peer_ip = extract_peer_ip(&request);
-    let ip_address = extract_client_ip(&request);
+    let ip_address = session_client_ip(&state, peer_ip, request.headers()).await;
     let user_agent = extract_user_agent(&request);
     let req: VerifyMfaRequest = read_json(request).await?;
 
-    let session = state
+    let issued = state
         .auth
         .verify_mfa
         .execute(
@@ -236,8 +237,8 @@ pub async fn verify_mfa_public(
         )
         .await?;
 
-    debug!(username = %session.username, "Second factor verified");
-    Ok(session_established(&state, session))
+    debug!(username = %issued.session.username, "Second factor verified");
+    Ok(session_established(&state, issued))
 }
 
 /// Public: begin a passkey login for a pending MFA challenge.
@@ -282,18 +283,18 @@ pub async fn webauthn_authenticate_finish_public(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ApiError> {
-    let ip_address = extract_client_ip(&request);
+    let ip_address = session_client_ip(&state, extract_peer_ip(&request), request.headers()).await;
     let user_agent = extract_user_agent(&request);
     let req: WebauthnAuthFinishRequest = read_json(request).await?;
 
-    let session = state
+    let issued = state
         .auth
         .authenticate_passkey
         .finish(&req.challenge_token, req.response, &ip_address, &user_agent)
         .await?;
 
-    debug!(username = %session.username, "Passkey login verified");
-    Ok(session_established(&state, session))
+    debug!(username = %issued.session.username, "Passkey login verified");
+    Ok(session_established(&state, issued))
 }
 
 /// Public: begin a usernameless (passwordless) passkey login.
@@ -304,6 +305,7 @@ pub async fn webauthn_authenticate_finish_public(
     responses(
         (status = 200, description = "Discoverable assertion challenge + ceremony token", body = DiscoverableStartResponse),
         (status = 400, description = "WebAuthn not configured"),
+        (status = 429, description = "Too many passwordless logins pending"),
     ),
     security(),
 )]
@@ -333,11 +335,11 @@ pub async fn webauthn_discoverable_finish_public(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ApiError> {
-    let ip_address = extract_client_ip(&request);
+    let ip_address = session_client_ip(&state, extract_peer_ip(&request), request.headers()).await;
     let user_agent = extract_user_agent(&request);
     let req: DiscoverableFinishRequest = read_json(request).await?;
 
-    let session = state
+    let issued = state
         .auth
         .discoverable_passkey_login
         .finish(
@@ -349,8 +351,8 @@ pub async fn webauthn_discoverable_finish_public(
         )
         .await?;
 
-    debug!(username = %session.username, "Passwordless passkey login verified");
-    Ok(session_established(&state, session))
+    debug!(username = %issued.session.username, "Passwordless passkey login verified");
+    Ok(session_established(&state, issued))
 }
 
 /// Public: logout and clear session cookie (no auth required).
@@ -364,8 +366,8 @@ pub async fn webauthn_discoverable_finish_public(
     security(),
 )]
 pub async fn logout_public(State(state): State<AppState>, request: Request) -> impl IntoResponse {
-    if let Some(session_id) = extract_session_cookie(request.headers()) {
-        let _ = state.auth.logout.execute(session_id).await;
+    if let Some(token) = extract_session_cookie(request.headers()) {
+        let _ = state.auth.logout.execute(token).await;
     }
 
     (
@@ -445,7 +447,7 @@ async fn get_active_sessions(
     delete,
     path = "/auth/sessions/{id}",
     tag = "auth",
-    params(("id" = String, Path, description = "Session ID")),
+    params(("id" = String, Path, description = "Session id from `GET /auth/sessions`")),
     responses(
         (status = 204, description = "Session deleted"),
         (status = 401, description = "Authentication required"),
@@ -457,8 +459,8 @@ async fn delete_session(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    state.auth.logout.execute(&id).await?;
-    debug!(session_id = %id, "Session deleted");
+    state.auth.revoke_session.execute(&id).await?;
+    debug!("Session deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -657,7 +659,7 @@ async fn delete_passkey(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Session id from the `Cookie` headers; HTTP/2 clients may send one header
+/// Session token from the `Cookie` headers; HTTP/2 clients may send one header
 /// per cookie, so every header is searched.
 pub(crate) fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
     headers
@@ -673,21 +675,22 @@ pub(crate) fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
         })
 }
 
-fn extract_client_ip(request: &Request) -> String {
-    request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            request
-                .headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(String::from)
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+/// The address a new session records: the TCP peer, unless the peer is one of
+/// `[server] trusted_proxies` and names the client in a forwarding header.
+async fn session_client_ip(state: &AppState, peer: IpAddr, headers: &HeaderMap) -> String {
+    let config = state.config.read().await;
+    forwarded_client_ip(
+        peer,
+        headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .map(|value| value.to_str().unwrap_or_default()),
+        headers
+            .get("x-real-ip")
+            .and_then(|value| value.to_str().ok()),
+        &config.server.trusted_proxies,
+    )
+    .to_string()
 }
 
 /// TCP peer of the connection — the one client address a caller cannot forge,

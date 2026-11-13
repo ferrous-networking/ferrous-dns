@@ -4,9 +4,9 @@ use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
 use super::login_rate_limiter::LoginRateLimiter;
-use super::session_factory::{build_session, is_expired};
+use super::session_factory::{build_session, is_expired, IssuedSession};
 use crate::ports::{MfaRepository, PasswordHasher, SessionRepository, TotpService, UserProvider};
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError};
+use ferrous_dns_domain::{AuthConfig, DomainError};
 
 /// Completes a second-factor login: consumes a pending challenge plus a TOTP
 /// code (or a recovery code) and mints the real session.
@@ -48,7 +48,7 @@ impl VerifyMfaUseCase {
         self
     }
 
-    /// Returns the created `AuthSession`. The challenge is consumed only on a
+    /// Returns the created session. The challenge is consumed only on a
     /// correct code; a wrong code leaves it valid for retry until it expires.
     /// Wrong codes count toward the `peer_ip` lockout, which bounds those retries.
     #[instrument(skip(self, code))]
@@ -59,7 +59,7 @@ impl VerifyMfaUseCase {
         peer_ip: IpAddr,
         ip_address: &str,
         user_agent: &str,
-    ) -> Result<AuthSession, DomainError> {
+    ) -> Result<IssuedSession, DomainError> {
         self.rate_limiter.check(peer_ip)?;
 
         let challenge = self
@@ -102,7 +102,7 @@ impl VerifyMfaUseCase {
 
         self.mfa_repo.delete_challenge(challenge_token).await?;
 
-        let session = build_session(
+        let issued = build_session(
             user.username.clone(),
             user.role,
             challenge.remember_me,
@@ -110,14 +110,14 @@ impl VerifyMfaUseCase {
             user_agent,
             &self.auth_config,
         )?;
-        self.session_repo.create(&session).await?;
+        self.session_repo.create(&issued.session).await?;
         self.rate_limiter.reset(peer_ip);
 
         info!(
             username = username,
             "Second factor verified, user logged in"
         );
-        Ok(session)
+        Ok(issued)
     }
 
     /// A code is spent with its time step: RFC 6238 §5.2 forbids accepting the same OTP twice.

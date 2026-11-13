@@ -9,7 +9,7 @@ use axum::{
     Extension, Json,
 };
 
-use ferrous_dns_application::use_cases::LoginOutcome;
+use ferrous_dns_application::use_cases::{session_handle, IssuedSession, LoginOutcome};
 use ferrous_dns_domain::{AuthSession, DomainError};
 use tracing::warn;
 
@@ -55,14 +55,9 @@ pub async fn get_session(
     };
 
     match presented_session(&state, &headers, &uri).await {
-        Ok(session) => session_response(
+        Ok((sid, session)) => session_response(
             StatusCode::OK,
-            valid_session(
-                &session,
-                totp,
-                seconds_left(&session.expires_at),
-                SESSION_VALID,
-            ),
+            valid_session(&sid, totp, seconds_left(&session.expires_at), SESSION_VALID),
         ),
         Err(message) => session_response(
             StatusCode::UNAUTHORIZED,
@@ -120,15 +115,10 @@ pub async fn login(
     };
 
     if password.is_empty() {
-        if let Ok(session) = presented_session(&state, &headers, &uri).await {
+        if let Ok((sid, session)) = presented_session(&state, &headers, &uri).await {
             return session_response(
                 StatusCode::OK,
-                valid_session(
-                    &session,
-                    totp,
-                    seconds_left(&session.expires_at),
-                    SESSION_VALID,
-                ),
+                valid_session(&sid, totp, seconds_left(&session.expires_at), SESSION_VALID),
             );
         }
     }
@@ -149,7 +139,7 @@ pub async fn login(
         .execute(&admin, &password, peer_ip, &ip_address, user_agent)
         .await;
     match app_login {
-        Ok(session) => return logged_in(&state, &session, totp, "app-password correct"),
+        Ok(issued) => return logged_in(&state, &issued, totp, "app-password correct"),
         Err(DomainError::InvalidCredentials) => {}
         Err(err) => return PiholeApiError(err).into_response(),
     }
@@ -161,8 +151,8 @@ pub async fn login(
         .await;
 
     match outcome {
-        Ok(LoginOutcome::Authenticated(session)) => {
-            logged_in(&state, &session, totp, "password correct")
+        Ok(LoginOutcome::Authenticated(issued)) => {
+            logged_in(&state, &issued, totp, "password correct")
         }
         Ok(LoginOutcome::MfaRequired {
             challenge_token, ..
@@ -187,7 +177,7 @@ pub async fn login(
                 )
                 .await;
             match verified {
-                Ok(session) => logged_in(&state, &session, totp, "password correct"),
+                Ok(issued) => logged_in(&state, &issued, totp, "password correct"),
                 Err(DomainError::InvalidMfaCode) => pihole_error_response(
                     StatusCode::UNAUTHORIZED,
                     "unauthorized",
@@ -216,11 +206,16 @@ pub async fn login(
     }
 }
 
-fn logged_in(state: &PiholeAppState, session: &AuthSession, totp: bool, message: &str) -> Response {
+fn logged_in(
+    state: &PiholeAppState,
+    issued: &IssuedSession,
+    totp: bool,
+    message: &str,
+) -> Response {
     session_response(
         StatusCode::OK,
         valid_session(
-            session,
+            &issued.token,
             totp,
             state.auth.login.session_max_age(false),
             message,
@@ -247,8 +242,8 @@ pub async fn logout(State(state): State<PiholeAppState>, headers: HeaderMap, uri
         return session_response(StatusCode::UNAUTHORIZED, no_password_session());
     };
 
-    let session = match presented_session(&state, &headers, &uri).await {
-        Ok(session) => session,
+    let sid = match presented_session(&state, &headers, &uri).await {
+        Ok((sid, _)) => sid,
         Err(message) => {
             return match admin_has_totp(&state, &admin).await {
                 Ok(totp) => session_response(
@@ -260,7 +255,7 @@ pub async fn logout(State(state): State<PiholeAppState>, headers: HeaderMap, uri
         }
     };
 
-    match state.auth.logout.execute(&session.id).await {
+    match state.auth.logout.execute(&sid).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => PiholeApiError(err).into_response(),
     }
@@ -269,7 +264,7 @@ pub async fn logout(State(state): State<PiholeAppState>, headers: HeaderMap, uri
 /// Pi-hole v6 GET /api/auth/sessions — the live sessions, oldest first.
 ///
 /// FTL numbers sessions by slot. Ferrous's ids are secret tokens, so each
-/// session is listed under a number derived from a hash of its id (see
+/// session is listed under a number derived from its stored handle (see
 /// [`session_number`]). Whether a login came through an app password or a
 /// proxy is not recorded, so `app` is false and `x_forwarded_for` null.
 #[utoipa::path(
@@ -286,7 +281,7 @@ pub async fn list_sessions(
     headers: HeaderMap,
     uri: Uri,
 ) -> Result<Json<SessionsResponse>, PiholeApiError> {
-    let current = extract_sid(&headers, &uri);
+    let current = extract_sid(&headers, &uri).map(|sid| session_handle(&sid));
     let tls = state.system.https_port != 0;
     let mut sessions = state.auth.get_active_sessions.execute().await?;
     sessions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
@@ -349,14 +344,13 @@ pub async fn delete_session(
     let Some(session) = sessions.iter().find(|s| session_number(&s.id) == number) else {
         return bad_request("Session ID not in use");
     };
-    match state.auth.logout.execute(&session.id).await {
+    match state.auth.revoke_session.execute(&session.id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => PiholeApiError(err).into_response(),
     }
 }
 
-/// The number a session is listed under: 31 bits of a hash of its id, so
-/// nothing of the token itself is shown.
+/// The number a session is listed under: 31 bits of a hash of its handle.
 fn session_number(id: &str) -> i64 {
     let mut hasher = DefaultHasher::new();
     id.hash(&mut hasher);
@@ -376,31 +370,35 @@ async fn admin_has_totp(state: &PiholeAppState, admin: &str) -> Result<bool, Dom
     Ok(state.auth.get_mfa_status.execute(admin).await?.totp_enabled)
 }
 
-/// The live session the request presents, or FTL's `message` for why there
-/// is none. An expired session is deleted on lookup, so it reads as unknown.
+/// The sid the request presents and its live session, or FTL's `message` for
+/// why there is none. An expired session is deleted on lookup, so it reads as
+/// unknown.
 async fn presented_session(
     state: &PiholeAppState,
     headers: &HeaderMap,
     uri: &Uri,
-) -> Result<AuthSession, &'static str> {
+) -> Result<(String, AuthSession), &'static str> {
     let sid = extract_sid(headers, uri).ok_or("no SID provided")?;
-    state
+    let session = state
         .auth
         .validate_session
         .execute(&sid)
         .await
-        .map_err(|_| "session unknown")
+        .map_err(|_| "session unknown")?;
+    Ok((sid, session))
 }
 
 fn session_response(status: StatusCode, session: SessionInfo) -> Response {
     (status, Json(AuthResponse { session })).into_response()
 }
 
-fn valid_session(session: &AuthSession, totp: bool, validity: i64, message: &str) -> SessionInfo {
+/// `sid` is the token the client holds: the one it presented, or the one a
+/// login just issued. Never a stored session's `id`, which is its handle.
+fn valid_session(sid: &str, totp: bool, validity: i64, message: &str) -> SessionInfo {
     SessionInfo {
         valid: true,
         totp,
-        sid: Some(session.id.to_string()),
+        sid: Some(sid.to_string()),
         csrf: Some(None),
         validity,
         message: message.to_string(),

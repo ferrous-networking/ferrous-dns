@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::SessionRepository;
-use ferrous_dns_application::use_cases::ValidateSessionUseCase;
+use ferrous_dns_application::use_cases::{session_handle, ValidateSessionUseCase};
 use ferrous_dns_domain::{AuthSession, DomainError, UserRole};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 const TIMESTAMP_FMT: &str = "%Y-%m-%d %H:%M:%S";
+/// The token a cookie carries; the repo stores the session under its handle.
+const TOKEN: &str = "session-1";
 
 fn timestamp(offset: chrono::TimeDelta) -> String {
     (chrono::Utc::now() + offset)
@@ -24,7 +26,7 @@ impl CountingSessionRepo {
     fn with_last_seen(last_seen_at: String) -> Arc<Self> {
         Arc::new(Self {
             session: RwLock::new(AuthSession {
-                id: Arc::from("session-1"),
+                id: Arc::from(session_handle(TOKEN).as_str()),
                 username: Arc::from("admin"),
                 role: UserRole::Admin,
                 ip_address: Arc::from("127.0.0.1"),
@@ -76,9 +78,9 @@ async fn test_validate_session_refreshes_last_seen_once_per_minute_not_per_reque
     let repo = CountingSessionRepo::with_last_seen(timestamp(chrono::TimeDelta::minutes(-5)));
     let validate = ValidateSessionUseCase::new(repo.clone());
 
-    validate.execute("session-1").await.unwrap();
-    validate.execute("session-1").await.unwrap();
-    validate.execute("session-1").await.unwrap();
+    validate.execute(TOKEN).await.unwrap();
+    validate.execute(TOKEN).await.unwrap();
+    validate.execute(TOKEN).await.unwrap();
 
     assert_eq!(
         repo.writes(),
@@ -92,7 +94,20 @@ async fn test_validate_session_refreshes_an_unparseable_last_seen() {
     let repo = CountingSessionRepo::with_last_seen("not a timestamp".to_string());
     let validate = ValidateSessionUseCase::new(repo.clone());
 
-    validate.execute("session-1").await.unwrap();
+    validate.execute(TOKEN).await.unwrap();
 
     assert_eq!(repo.writes(), 1);
+}
+
+#[tokio::test]
+async fn test_validate_session_refuses_the_stored_handle_as_a_token() {
+    let repo = CountingSessionRepo::with_last_seen(timestamp(chrono::TimeDelta::zero()));
+    let validate = ValidateSessionUseCase::new(repo);
+
+    let handle = session_handle(TOKEN);
+    assert!(matches!(
+        validate.execute(&handle).await,
+        Err(DomainError::SessionNotFound)
+    ));
+    assert_eq!(validate.execute(TOKEN).await.unwrap().id.as_ref(), handle);
 }

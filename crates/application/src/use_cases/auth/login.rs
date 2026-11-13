@@ -4,15 +4,15 @@ use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
 use super::login_rate_limiter::LoginRateLimiter;
-use super::session_factory::{build_session, expires_in, random_hex_256};
+use super::session_factory::{build_session, expires_in, random_hex_256, IssuedSession};
 use crate::ports::{MfaRepository, PasswordHasher, SessionRepository, UserProvider};
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, MfaChallenge, MfaMethod};
+use ferrous_dns_domain::{AuthConfig, DomainError, MfaChallenge, MfaMethod};
 
 /// Result of a password check: either a full session, or a second factor is
 /// required and a short-lived challenge has been issued.
 pub enum LoginOutcome {
     /// Password was sufficient (no second factor enrolled) — session created.
-    Authenticated(AuthSession),
+    Authenticated(IssuedSession),
     /// Password was correct but a second factor is required.
     MfaRequired {
         /// Opaque challenge token the client echoes back to `/auth/2fa/verify`.
@@ -61,7 +61,7 @@ impl LoginUseCase {
 
     /// Verify username + password, then branch on second-factor enrollment.
     ///
-    /// Returns the created `AuthSession` (no factor enrolled) or an
+    /// Returns the created session (no factor enrolled) or an
     /// `MfaRequired` outcome carrying a challenge token. The caller is
     /// responsible for setting the `Set-Cookie` header on `Authenticated`.
     ///
@@ -139,7 +139,7 @@ impl LoginUseCase {
             });
         }
 
-        let session = build_session(
+        let issued = build_session(
             user.username.clone(),
             user.role,
             remember_me,
@@ -148,7 +148,7 @@ impl LoginUseCase {
             &self.auth_config,
         )?;
 
-        self.session_repo.create(&session).await?;
+        self.session_repo.create(&issued.session).await?;
         self.rate_limiter.reset(peer_ip);
 
         info!(
@@ -156,7 +156,7 @@ impl LoginUseCase {
             remember_me = remember_me,
             "User logged in"
         );
-        Ok(LoginOutcome::Authenticated(session))
+        Ok(LoginOutcome::Authenticated(issued))
     }
 
     /// Returns the `max_age` in seconds for the session cookie.

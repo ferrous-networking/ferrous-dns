@@ -49,7 +49,8 @@ pub struct SnapshotServerConfig {
     #[serde(default, deserialize_with = "present")]
     pub web_bind_address: Option<Option<String>>,
     pub pihole_compat: bool,
-    /// TLS cert/key paths are exported (paths ok, content not).
+    /// Exported, never restored: only this server's config file sets where
+    /// `/tls/upload` writes. Older releases still need the keys to import a backup.
     pub tls_cert_path: String,
     pub tls_key_path: String,
     pub tls_enabled: bool,

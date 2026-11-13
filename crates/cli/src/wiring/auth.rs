@@ -6,8 +6,8 @@ use ferrous_dns_application::use_cases::{
     DeleteUserUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase,
     GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase, GetMfaStatusUseCase,
     GetUsersUseCase, LoginRateLimiter, LoginUseCase, LogoutUseCase, RegisterPasskeyUseCase,
-    SetupPasswordUseCase, SetupTotpUseCase, UpdateApiTokenUseCase, ValidateApiTokenUseCase,
-    ValidateSessionUseCase, VerifyMfaUseCase,
+    RevokeSessionUseCase, SetupPasswordUseCase, SetupTotpUseCase, UpdateApiTokenUseCase,
+    ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::auth::{
@@ -80,6 +80,7 @@ pub async fn build_auth_services(
             .with_rate_limiter(rate_limiter.clone()),
         ),
         logout: Arc::new(LogoutUseCase::new(repos.session.clone())),
+        revoke_session: Arc::new(RevokeSessionUseCase::new(repos.session.clone())),
         validate_session: Arc::new(ValidateSessionUseCase::new(repos.session.clone())),
         setup_password: Arc::new(SetupPasswordUseCase::new(
             user_provider.clone(),
@@ -147,6 +148,7 @@ pub async fn build_auth_services(
         discoverable_passkey_login: Arc::new(DiscoverablePasskeyLoginUseCase::new(
             webauthn_service,
             repos.mfa.clone(),
+            repos.pending_challenges.clone(),
             user_provider,
             repos.session.clone(),
             auth_config.clone(),

@@ -12,6 +12,7 @@ mod login;
 mod login_rate_limiter;
 mod logout;
 mod register_passkey;
+mod revoke_session;
 pub(crate) mod session_factory;
 mod setup_password;
 mod setup_totp;
@@ -24,7 +25,9 @@ pub use change_password::ChangePasswordUseCase;
 pub use confirm_totp::ConfirmTotpUseCase;
 pub use delete_passkey::DeletePasskeyUseCase;
 pub use disable_totp::DisableMfaUseCase;
-pub use discoverable_passkey::{DiscoverablePasskeyLoginUseCase, DiscoverableStart};
+pub use discoverable_passkey::{
+    DiscoverablePasskeyLoginUseCase, DiscoverableStart, MAX_PENDING_ANONYMOUS_CHALLENGES,
+};
 pub use get_active_sessions::GetActiveSessionsUseCase;
 pub use get_auth_status::{AuthStatus, GetAuthStatusUseCase};
 pub use get_mfa_status::{GetMfaStatusUseCase, MfaStatus, PasskeySummary};
@@ -32,6 +35,8 @@ pub use login::{LoginOutcome, LoginUseCase};
 pub use login_rate_limiter::LoginRateLimiter;
 pub use logout::LogoutUseCase;
 pub use register_passkey::{RegisterPasskeyUseCase, RegistrationStart};
+pub use revoke_session::RevokeSessionUseCase;
+pub use session_factory::{session_handle, IssuedSession};
 pub use setup_password::SetupPasswordUseCase;
 pub use setup_totp::{SetupTotpUseCase, TotpSetup};
 pub use validate_session::ValidateSessionUseCase;

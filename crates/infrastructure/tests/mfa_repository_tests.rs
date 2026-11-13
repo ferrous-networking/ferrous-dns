@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ferrous_dns_application::ports::MfaRepository;
+use ferrous_dns_application::ports::{MfaRepository, PendingChallengeCounter};
 use ferrous_dns_domain::{DomainError, MfaChallenge, MfaMethod, WebauthnCredential};
 use ferrous_dns_infrastructure::auth::SqliteMfaRepository;
 
@@ -119,6 +119,30 @@ async fn challenge_lifecycle_and_expiry_cleanup() {
 
     repo.delete_challenge("tok1").await.unwrap();
     assert!(repo.get_challenge("tok1").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn pending_anonymous_challenges_count_only_unexpired_passwordless_ones() {
+    let repo = repo(db::migrated_pool().await);
+    for (token, username, expires_in) in [
+        ("anonymous-live-1", "", 300),
+        ("anonymous-live-2", "", 300),
+        ("anonymous-expired", "", -10),
+        ("second-factor", "admin", 300),
+    ] {
+        repo.create_challenge(&MfaChallenge {
+            token: Arc::from(token),
+            username: Arc::from(username),
+            remember_me: false,
+            kind: MfaMethod::Webauthn,
+            state: Some("{}".into()),
+            expires_at: future_ts(expires_in),
+        })
+        .await
+        .unwrap();
+    }
+
+    assert_eq!(repo.count_pending_anonymous().await.unwrap(), 2);
 }
 
 #[tokio::test]

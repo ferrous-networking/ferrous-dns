@@ -1508,3 +1508,50 @@ async fn test_update_config_hot_applies_doh_allow_unregistered_ids_without_resta
         "{saved}"
     );
 }
+
+/// The certificate and key paths are where `/tls/upload` and `/tls/generate`
+/// write, so only the config file may set them.
+#[tokio::test]
+async fn test_update_config_refuses_to_move_the_tls_files() {
+    for (field, path) in [
+        ("tls_cert_path", "/home/ferrous/.ssh/authorized_keys"),
+        ("tls_key_path", "/etc/cron.d/ferrous"),
+    ] {
+        let pool = create_test_db().await;
+        let (TestApp { router, config, .. }, _) = test_app(pool).await;
+        let before = config.read().await.server.web_tls.clone();
+
+        let (status, json) = post_config(
+            router,
+            serde_json::json!({ "server": { "web_tls": { field: path } } }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{field}: {json}");
+        assert_eq!(json["success"], false);
+        let after = config.read().await.server.web_tls.clone();
+        assert_eq!(after.tls_cert_path, before.tls_cert_path);
+        assert_eq!(after.tls_key_path, before.tls_key_path);
+    }
+}
+
+/// The dashboard sends the paths back unchanged with every TLS save.
+#[tokio::test]
+async fn test_update_config_accepts_the_tls_paths_it_already_has() {
+    let pool = create_test_db().await;
+    let (TestApp { router, config, .. }, _) = test_app(pool).await;
+    let current = config.read().await.server.web_tls.clone();
+
+    let (status, json) = post_config(
+        router,
+        serde_json::json!({ "server": { "web_tls": {
+            "enabled": true,
+            "tls_cert_path": current.tls_cert_path,
+            "tls_key_path": current.tls_key_path,
+        } } }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert!(config.read().await.server.web_tls.enabled);
+}

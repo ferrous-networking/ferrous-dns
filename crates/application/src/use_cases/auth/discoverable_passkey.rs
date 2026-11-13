@@ -1,10 +1,20 @@
 use std::sync::Arc;
 
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
-use super::session_factory::{build_session, expires_in, is_expired, random_hex_256};
-use crate::ports::{MfaRepository, SessionRepository, UserProvider, WebauthnService};
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, MfaChallenge, MfaMethod};
+use super::session_factory::{
+    build_session, expires_in, is_expired, random_hex_256, IssuedSession,
+};
+use crate::ports::{
+    MfaRepository, PendingChallengeCounter, SessionRepository, UserProvider, WebauthnService,
+};
+use ferrous_dns_domain::{AuthConfig, DomainError, MfaChallenge, MfaMethod};
+
+/// Passwordless ceremonies that may be pending at once. Each lives for the
+/// challenge TTL, so a real login never comes near it; a flood of starts is
+/// refused instead of filling the database. The count and the insert are
+/// separate statements, so concurrent starts can pass it by the few in flight.
+pub const MAX_PENDING_ANONYMOUS_CHALLENGES: u64 = 1024;
 
 /// Usernameless ("discoverable") passkey login: authenticates with a resident
 /// credential alone — no username, no password. The passkey (which requires
@@ -15,6 +25,7 @@ use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, MfaChallenge, Mfa
 pub struct DiscoverablePasskeyLoginUseCase {
     webauthn: Arc<dyn WebauthnService>,
     mfa_repo: Arc<dyn MfaRepository>,
+    pending: Arc<dyn PendingChallengeCounter>,
     user_provider: Arc<dyn UserProvider>,
     session_repo: Arc<dyn SessionRepository>,
     auth_config: Arc<AuthConfig>,
@@ -32,6 +43,7 @@ impl DiscoverablePasskeyLoginUseCase {
     pub fn new(
         webauthn: Arc<dyn WebauthnService>,
         mfa_repo: Arc<dyn MfaRepository>,
+        pending: Arc<dyn PendingChallengeCounter>,
         user_provider: Arc<dyn UserProvider>,
         session_repo: Arc<dyn SessionRepository>,
         auth_config: Arc<AuthConfig>,
@@ -40,6 +52,7 @@ impl DiscoverablePasskeyLoginUseCase {
         Self {
             webauthn,
             mfa_repo,
+            pending,
             user_provider,
             session_repo,
             auth_config,
@@ -48,10 +61,15 @@ impl DiscoverablePasskeyLoginUseCase {
     }
 
     /// Begin: returns the request challenge for `navigator.credentials.get`
-    /// (empty `allowCredentials`) and a ceremony token.
+    /// (empty `allowCredentials`) and a ceremony token. Refused with
+    /// `RateLimited` while [`MAX_PENDING_ANONYMOUS_CHALLENGES`] are pending.
     #[instrument(skip(self))]
     pub async fn start(&self) -> Result<DiscoverableStart, DomainError> {
         let (challenge, state_json) = self.webauthn.start_discoverable()?;
+        if self.pending.count_pending_anonymous().await? >= MAX_PENDING_ANONYMOUS_CHALLENGES {
+            warn!("Too many passwordless passkey logins pending; refusing a new one");
+            return Err(DomainError::RateLimited);
+        }
 
         let challenge_token = random_hex_256()?;
         self.mfa_repo
@@ -81,7 +99,7 @@ impl DiscoverablePasskeyLoginUseCase {
         remember_me: bool,
         ip_address: &str,
         user_agent: &str,
-    ) -> Result<AuthSession, DomainError> {
+    ) -> Result<IssuedSession, DomainError> {
         let challenge = self
             .mfa_repo
             .get_challenge(challenge_token)
@@ -132,7 +150,7 @@ impl DiscoverablePasskeyLoginUseCase {
 
         self.mfa_repo.delete_challenge(challenge_token).await?;
 
-        let session = build_session(
+        let issued = build_session(
             user.username.clone(),
             user.role,
             remember_me,
@@ -140,9 +158,9 @@ impl DiscoverablePasskeyLoginUseCase {
             user_agent,
             &self.auth_config,
         )?;
-        self.session_repo.create(&session).await?;
+        self.session_repo.create(&issued.session).await?;
 
         info!(username = %user.username, "Passwordless passkey login");
-        Ok(session)
+        Ok(issued)
     }
 }

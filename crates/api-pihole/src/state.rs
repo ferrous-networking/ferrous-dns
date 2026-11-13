@@ -2,8 +2,8 @@ use ferrous_dns_application::ports::{BlockFilterEnginePort, DnsCachePort};
 use ferrous_dns_application::use_cases::{
     AppPasswordLoginUseCase, GetActiveSessionsUseCase, GetClientActivityUseCase,
     GetMfaStatusUseCase, GetQueryLogStorageUseCase, GetTopAllowedDomainsUseCase,
-    GetTopBlockedClientsUseCase, LoginUseCase, LogoutUseCase, ValidateSessionUseCase,
-    VerifyMfaUseCase,
+    GetTopBlockedClientsUseCase, LoginUseCase, LogoutUseCase, RevokeSessionUseCase,
+    ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
@@ -48,6 +48,8 @@ pub struct PiholeAuthState {
     pub verify_mfa: Arc<VerifyMfaUseCase>,
     pub app_password_login: Arc<AppPasswordLoginUseCase>,
     pub logout: Arc<LogoutUseCase>,
+    /// Ends a session `/auth/sessions` listed, by its stored handle.
+    pub revoke_session: Arc<RevokeSessionUseCase>,
     pub validate_session: Arc<ValidateSessionUseCase>,
     /// Whether the admin has TOTP enrolled, reported as `totp` in every
     /// session object.

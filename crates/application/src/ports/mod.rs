@@ -29,6 +29,7 @@ mod mfa_repository;
 mod nxdomain_hijack_probe_target;
 mod nxdomain_hijack_store;
 mod password_hasher;
+mod pending_challenge_counter;
 mod ptr_record_registry;
 mod query_log_repository;
 mod query_log_rollup_repository;
@@ -88,6 +89,7 @@ pub use mfa_repository::MfaRepository;
 pub use nxdomain_hijack_probe_target::NxdomainHijackProbeTarget;
 pub use nxdomain_hijack_store::NxdomainHijackIpStore;
 pub use password_hasher::PasswordHasher;
+pub use pending_challenge_counter::PendingChallengeCounter;
 pub use ptr_record_registry::PtrRecordRegistry;
 pub use query_log_repository::{
     CacheStats, PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,

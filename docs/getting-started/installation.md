@@ -363,6 +363,15 @@ A start opens its ports, DNS and web, only once the blocklists are compiled, so 
 
 The image no longer sets `RUST_LOG`, which the server never read: the entrypoint now prints its command line when `FERROUS_LOG_LEVEL` is `debug` or `trace`. It also stops copying the SQL migrations into `/data/migrations`. They are built into the binary, so an existing `/data/migrations` directory in the volume is unused and can be deleted. The bundled `docker-compose.yml` now caps the container log at three 10 MB files.
 
+### API tokens, sessions and TLS paths
+
+- An API token's key is shown once, when the token is created. `PUT /api-tokens/{id}` no longer returns it, and the server no longer keeps it: existing tokens keep working, because only their hash is checked. The listed prefix of a custom key is now at most a quarter of it, so a short key's prefix gets shorter; a generated key keeps its 8 characters.
+- `GET /auth/sessions` lists each session under a handle instead of the value of its cookie. `DELETE /auth/sessions/{id}` takes that handle. Signed-in browsers and Pi-hole integrations stay signed in across the upgrade.
+- The first start after the upgrade rewrites the database file once, before it serves, so the keys and session ids it replaced leave the file too. It takes about as long as `--compact-database` and needs free disk space about the size of the database. If the rewrite fails, the server logs a warning and starts anyway; stop it and run `ferrous-dns --compact-database` once.
+- The address a session shows is the TCP peer of the login. A reverse proxy names the client only when it is in `[server] trusted_proxies`, as for DoH; behind a proxy that is not listed, every session shows the proxy's address.
+- `tls_cert_path` and `tls_key_path` are set in `ferrous-dns.toml` only. `POST /config` refuses to change them, and a backup import keeps this server's paths. Edit the file to move the certificate.
+- About 1024 passwordless passkey logins can be pending at once; a `start` beyond that answers `429`.
+
 ---
 
 ## Platform support

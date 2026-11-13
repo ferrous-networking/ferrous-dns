@@ -1783,29 +1783,15 @@
                     </thead>
                     <tbody>
                         <template x-for="token in apiTokens" :key="token.id">
-                            <tr style="border-bottom:1px solid var(--border-color)" x-data="{showToken:false}">
+                            <tr style="border-bottom:1px solid var(--border-color)">
                                 <!-- Normal view -->
                                 <template x-if="editingToken !== token.id">
                                     <td style="padding:10px 12px;font-weight:500" x-text="token.name"></td>
                                 </template>
                                 <template x-if="editingToken !== token.id">
                                     <td style="padding:10px 12px;font-family:monospace;color:var(--text-secondary)">
-                                        <div style="display:flex;align-items:center;gap:6px">
-                                            <span x-text="showToken && token.token ? token.token : token.key_prefix + '…'"
-                                                  style="word-break:break-all;max-width:260px;overflow:hidden;text-overflow:ellipsis"></span>
-                                            <template x-if="token.token">
-                                                <button @click="showToken=!showToken" class="btn-icon" style="padding:2px;flex-shrink:0"
-                                                        :title="showToken?'Hide token':'Show full token'">
-                                                    <i :data-lucide="showToken?'eye-off':'eye'" style="width:14px;height:14px"></i>
-                                                </button>
-                                            </template>
-                                            <template x-if="token.token">
-                                                <button @click="navigator.clipboard.writeText(token.token)" class="btn-icon" style="padding:2px;flex-shrink:0"
-                                                        title="Copy token">
-                                                    <i data-lucide="copy" style="width:14px;height:14px"></i>
-                                                </button>
-                                            </template>
-                                        </div>
+                                        <span x-text="token.key_prefix + '…'"
+                                              style="word-break:break-all;max-width:260px;overflow:hidden;text-overflow:ellipsis"></span>
                                     </td>
                                 </template>
                                 <template x-if="editingToken !== token.id">

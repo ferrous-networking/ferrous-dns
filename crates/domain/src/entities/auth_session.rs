@@ -3,6 +3,9 @@ use std::sync::Arc;
 
 /// An authenticated browser session, stored in SQLite.
 ///
+/// `id` is the session's handle: the SHA-256 of the token its cookie carries.
+/// The token itself is never stored.
+///
 /// Sessions use `HttpOnly; SameSite=Strict` cookies. TTL depends on whether
 /// the user checked "Remember Me" at login:
 /// - Without: `session_ttl_hours` (default 24h)

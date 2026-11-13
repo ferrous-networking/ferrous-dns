@@ -26,12 +26,13 @@ pub use api_tokens::{
     UpdateApiTokenUseCase, ValidateApiTokenUseCase,
 };
 pub use auth::{
-    AppPasswordLoginUseCase, AuthStatus, AuthenticatePasskeyUseCase, ChangePasswordUseCase,
-    ConfirmTotpUseCase, DeletePasskeyUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase,
-    DiscoverableStart, GetActiveSessionsUseCase, GetAuthStatusUseCase, GetMfaStatusUseCase,
-    LoginOutcome, LoginRateLimiter, LoginUseCase, LogoutUseCase, MfaStatus, PasskeySummary,
-    RegisterPasskeyUseCase, RegistrationStart, SetupPasswordUseCase, SetupTotpUseCase, TotpSetup,
-    ValidateSessionUseCase, VerifyMfaUseCase,
+    session_handle, AppPasswordLoginUseCase, AuthStatus, AuthenticatePasskeyUseCase,
+    ChangePasswordUseCase, ConfirmTotpUseCase, DeletePasskeyUseCase, DisableMfaUseCase,
+    DiscoverablePasskeyLoginUseCase, DiscoverableStart, GetActiveSessionsUseCase,
+    GetAuthStatusUseCase, GetMfaStatusUseCase, IssuedSession, LoginOutcome, LoginRateLimiter,
+    LoginUseCase, LogoutUseCase, MfaStatus, PasskeySummary, RegisterPasskeyUseCase,
+    RegistrationStart, RevokeSessionUseCase, SetupPasswordUseCase, SetupTotpUseCase, TotpSetup,
+    ValidateSessionUseCase, VerifyMfaUseCase, MAX_PENDING_ANONYMOUS_CHALLENGES,
 };
 pub use backup::{
     BackupSnapshot, ConfigDestination, ExportConfigUseCase, ImportConfigUseCase, ImportOptions,

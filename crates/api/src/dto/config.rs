@@ -366,7 +366,10 @@ pub struct EncryptedDnsConfigUpdate {
 #[derive(Deserialize, Debug, Clone, ToSchema)]
 pub struct WebTlsConfigUpdate {
     pub enabled: Option<bool>,
+    /// Accepted only when it equals the current path: the paths are set in
+    /// `ferrous-dns.toml`, since `/tls/upload` writes the files there.
     pub tls_cert_path: Option<String>,
+    /// See `tls_cert_path`.
     pub tls_key_path: Option<String>,
 }
 

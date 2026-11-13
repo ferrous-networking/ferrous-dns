@@ -1,10 +1,11 @@
 use ferrous_dns_application::ports::{
-    AuthenticatedCredential, MfaRepository, PasswordHasher, RegisteredCredential,
-    SessionRepository, UserProvider, WebauthnService,
+    AuthenticatedCredential, MfaRepository, PasswordHasher, PendingChallengeCounter,
+    RegisteredCredential, SessionRepository, UserProvider, WebauthnService,
 };
 use ferrous_dns_application::use_cases::{
-    DiscoverablePasskeyLoginUseCase, GetAuthStatusUseCase, LoginOutcome, LoginUseCase,
-    RegisterPasskeyUseCase, ValidateSessionUseCase,
+    session_handle, DiscoverablePasskeyLoginUseCase, GetAuthStatusUseCase, IssuedSession,
+    LoginOutcome, LoginUseCase, RegisterPasskeyUseCase, ValidateSessionUseCase,
+    MAX_PENDING_ANONYMOUS_CHALLENGES,
 };
 use ferrous_dns_domain::config::auth::AdminConfig;
 use ferrous_dns_domain::{
@@ -87,7 +88,7 @@ fn no_mfa() -> Arc<dyn MfaRepository> {
 }
 
 /// Unwraps a login outcome that must be a completed session.
-fn expect_session(outcome: LoginOutcome) -> AuthSession {
+fn expect_session(outcome: LoginOutcome) -> IssuedSession {
     match outcome {
         LoginOutcome::Authenticated(s) => s,
         LoginOutcome::MfaRequired { .. } => panic!("expected authenticated, got MfaRequired"),
@@ -339,14 +340,16 @@ async fn login_with_correct_password_creates_session() {
         .await;
 
     assert!(result.is_ok());
-    let session = expect_session(result.unwrap());
-    assert_eq!(session.username.as_ref(), "admin");
-    assert!(!session.remember_me);
+    let issued = expect_session(result.unwrap());
+    assert_eq!(issued.session.username.as_ref(), "admin");
+    assert!(!issued.session.remember_me);
 
-    // Session should be stored
+    // Session should be stored, under the hash of its token
     let stored = session_repo.get_all_active().await.unwrap();
     assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].id, session.id);
+    assert_eq!(stored[0].id, issued.session.id);
+    assert_eq!(stored[0].id.as_ref(), session_handle(&issued.token));
+    assert_ne!(stored[0].id.as_ref(), issued.token);
 }
 
 /// A session TTL chrono cannot add to now refuses the login; it used to panic
@@ -456,7 +459,7 @@ async fn validate_session_succeeds_for_valid_session() {
         config,
     );
 
-    let session = expect_session(
+    let issued = expect_session(
         login_uc
             .execute(
                 "admin",
@@ -471,11 +474,13 @@ async fn validate_session_succeeds_for_valid_session() {
     );
 
     let validate_uc = ValidateSessionUseCase::new(session_repo as Arc<dyn SessionRepository>);
-    let result = validate_uc.execute(&session.id).await;
+    let result = validate_uc.execute(&issued.token).await;
 
     assert!(result.is_ok());
     let validated = result.unwrap();
     assert_eq!(validated.username.as_ref(), "admin");
+    // The stored handle is not a token: presenting it signs nobody in.
+    assert!(validate_uc.execute(&issued.session.id).await.is_err());
 }
 
 /// ValidateSessionUseCase rejects unknown session IDs.
@@ -679,12 +684,12 @@ async fn totp_enrolled_login_accepts_totp_and_single_use_recovery_codes() {
         .is_err());
 
     // Phase 2: correct code → session honoring remember_me.
-    let session = verify_uc
+    let issued = verify_uc
         .execute(&challenge_token, "123456", PEER, "127.0.0.1", "agent")
         .await
         .unwrap();
-    assert_eq!(session.username.as_ref(), "admin");
-    assert!(session.remember_me);
+    assert_eq!(issued.session.username.as_ref(), "admin");
+    assert!(issued.session.remember_me);
     assert_eq!(session_repo.get_all_active().await.unwrap().len(), 1);
 
     let hashes = hasher
@@ -722,7 +727,7 @@ async fn totp_enrolled_login_accepts_totp_and_single_use_recovery_codes() {
             .execute(&challenge_token, code, PEER, "127.0.0.1", "agent")
             .await;
         if accepted {
-            assert_eq!(result.unwrap().username.as_ref(), "admin");
+            assert_eq!(result.unwrap().session.username.as_ref(), "admin");
         } else {
             assert!(matches!(result, Err(DomainError::InvalidMfaCode)));
         }
@@ -1073,24 +1078,25 @@ async fn discoverable_passkey_login_mints_session_and_persists_counter() {
     let uc = DiscoverablePasskeyLoginUseCase::new(
         Arc::new(DiscoverableOkWebauthnService),
         mfa_repo,
+        pending(0),
         user_provider,
         session_repo.clone(),
         Arc::new(AuthConfig::default()),
         300,
     );
 
-    let session = uc
+    let issued = uc
         .finish("tok", serde_json::json!({}), true, "1.2.3.4", "agent")
         .await
         .expect("passwordless login mints a session");
 
-    assert_eq!(session.username.as_ref(), "admin");
-    assert_eq!(session.role, UserRole::Admin);
+    assert_eq!(issued.session.username.as_ref(), "admin");
+    assert_eq!(issued.session.role, UserRole::Admin);
     // finish_discoverable reported sign_count 99 — it must be persisted.
     assert_eq!(persisted.load(std::sync::atomic::Ordering::SeqCst), 99);
     // The session was actually stored.
     assert!(session_repo
-        .get_by_id(session.id.as_ref())
+        .get_by_id(issued.session.id.as_ref())
         .await
         .unwrap()
         .is_some());
@@ -1112,6 +1118,7 @@ async fn discoverable_passkey_login_rejects_disabled_user() {
     let uc = DiscoverablePasskeyLoginUseCase::new(
         Arc::new(DiscoverableOkWebauthnService),
         mfa_repo,
+        pending(0),
         user_provider,
         session_repo,
         Arc::new(AuthConfig::default()),
@@ -1140,6 +1147,7 @@ async fn discoverable_passkey_login_rejected_when_webauthn_not_configured() {
     let uc = DiscoverablePasskeyLoginUseCase::new(
         webauthn,
         no_mfa(),
+        pending(0),
         user_provider,
         session_repo,
         Arc::new(AuthConfig::default()),
@@ -1151,4 +1159,49 @@ async fn discoverable_passkey_login_rejected_when_webauthn_not_configured() {
         Err(other) => panic!("expected WebauthnNotConfigured, got {other:?}"),
         Ok(_) => panic!("discoverable login must not start when WebAuthn is unconfigured"),
     }
+}
+
+/// Reports a fixed number of pending passwordless ceremonies.
+struct FixedPendingChallenges(u64);
+
+#[async_trait::async_trait]
+impl PendingChallengeCounter for FixedPendingChallenges {
+    async fn count_pending_anonymous(&self) -> Result<u64, DomainError> {
+        Ok(self.0)
+    }
+}
+
+fn pending(count: u64) -> Arc<dyn PendingChallengeCounter> {
+    Arc::new(FixedPendingChallenges(count))
+}
+
+fn discoverable_login_with_pending(count: u64) -> DiscoverablePasskeyLoginUseCase {
+    DiscoverablePasskeyLoginUseCase::new(
+        Arc::new(DiscoverableOkWebauthnService),
+        Arc::new(DiscoverableMfaRepo {
+            owner: "admin",
+            persisted_count: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        }),
+        pending(count),
+        Arc::new(TestUserProvider {
+            admin: make_admin_user("$hashed$"),
+        }),
+        Arc::new(InMemorySessionRepository::new()),
+        Arc::new(AuthConfig::default()),
+        300,
+    )
+}
+
+/// `discoverable/start` is public, so the pending ceremonies are capped
+/// instead of growing a database row per anonymous call.
+#[tokio::test]
+async fn discoverable_passkey_start_is_refused_once_the_pending_cap_is_reached() {
+    let below = discoverable_login_with_pending(MAX_PENDING_ANONYMOUS_CHALLENGES - 1);
+    assert!(below.start().await.is_ok());
+
+    let at_cap = discoverable_login_with_pending(MAX_PENDING_ANONYMOUS_CHALLENGES);
+    assert!(matches!(
+        at_cap.start().await,
+        Err(DomainError::RateLimited)
+    ));
 }

@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use ring::rand::SecureRandom;
+use sha2::{Digest, Sha256};
 
 use ferrous_dns_domain::config::auth::expiry_from_now;
 use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, UserRole};
@@ -24,6 +25,34 @@ pub(crate) fn hex_encode(bytes: &[u8]) -> String {
         let _ = write!(hex, "{byte:02x}");
     }
     hex
+}
+
+/// SHA-256 of `text`, hex-encoded: how API keys and session tokens are stored.
+pub(crate) fn sha256_hex(text: &str) -> String {
+    hex_encode(&Sha256::digest(text.as_bytes()))
+}
+
+/// The handle a session is stored and listed under: the SHA-256 of its token.
+/// A copy of the database or of the session list therefore holds no cookie
+/// that signs anyone in.
+pub fn session_handle(token: &str) -> String {
+    sha256_hex(token)
+}
+
+/// A session just created. `session.id` is its handle, as stored; `token` is
+/// what the session cookie (or Pi-hole sid) carries, and exists only here.
+pub struct IssuedSession {
+    pub session: AuthSession,
+    pub token: String,
+}
+
+/// Leaves the token out, so a debug log line cannot carry a live cookie.
+impl std::fmt::Debug for IssuedSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IssuedSession")
+            .field("session", &self.session)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Timestamp `ttl_secs` from now, in [`TIMESTAMP_FMT`]. Config validation
@@ -51,7 +80,7 @@ pub(crate) fn is_older_than(at: &str, secs: i64) -> bool {
         .unwrap_or(true)
 }
 
-/// Builds a fresh `AuthSession` for an authenticated user.
+/// Builds a fresh session for an authenticated user.
 ///
 /// Shared by the password-only login path and the second-factor verify path so
 /// session shape (id, TTL, timestamps) stays identical.
@@ -62,20 +91,23 @@ pub(crate) fn build_session(
     ip_address: &str,
     user_agent: &str,
     config: &AuthConfig,
-) -> Result<AuthSession, DomainError> {
-    let session_id = random_hex_256()?;
+) -> Result<IssuedSession, DomainError> {
+    let token = random_hex_256()?;
     let created_at = chrono::Utc::now().format(TIMESTAMP_FMT).to_string();
     let expires_at = expires_in(config.session_ttl_secs(remember_me))?;
 
-    Ok(AuthSession {
-        id: Arc::from(session_id.as_str()),
-        username,
-        role,
-        ip_address: Arc::from(ip_address),
-        user_agent: Arc::from(user_agent),
-        remember_me,
-        last_seen_at: created_at.clone(),
-        created_at,
-        expires_at,
+    Ok(IssuedSession {
+        session: AuthSession {
+            id: Arc::from(session_handle(&token).as_str()),
+            username,
+            role,
+            ip_address: Arc::from(ip_address),
+            user_agent: Arc::from(user_agent),
+            remember_me,
+            last_seen_at: created_at.clone(),
+            created_at,
+            expires_at,
+        },
+        token,
     })
 }

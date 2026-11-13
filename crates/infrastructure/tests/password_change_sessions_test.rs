@@ -9,9 +9,9 @@ use ferrous_dns_application::ports::{
     MfaRepository, PasswordHasher, SessionRepository, UserProvider, UserRepository,
 };
 use ferrous_dns_application::use_cases::{
-    ChangePasswordUseCase, LoginOutcome, LoginUseCase, ValidateSessionUseCase,
+    ChangePasswordUseCase, IssuedSession, LoginOutcome, LoginUseCase, ValidateSessionUseCase,
 };
-use ferrous_dns_domain::{AuthConfig, AuthSession, Config, DomainError, UserRole};
+use ferrous_dns_domain::{AuthConfig, Config, DomainError, UserRole};
 use ferrous_dns_infrastructure::auth::{
     Argon2PasswordHasher, CompositeUserProvider, SqliteMfaRepository, TomlAdminProvider,
 };
@@ -68,14 +68,14 @@ async fn fixture() -> Fixture {
     }
 }
 
-async fn login(f: &Fixture, username: &str) -> AuthSession {
+async fn login(f: &Fixture, username: &str) -> IssuedSession {
     match f
         .login
         .execute(username, OLD_PASSWORD, false, PEER, "127.0.0.1", "agent")
         .await
         .unwrap()
     {
-        LoginOutcome::Authenticated(session) => session,
+        LoginOutcome::Authenticated(issued) => issued,
         LoginOutcome::MfaRequired { .. } => panic!("no second factor is enrolled"),
     }
 }
@@ -88,16 +88,16 @@ async fn a_password_change_signs_out_the_users_other_sessions_only() {
     let someone_else = login(&f, "bob").await;
 
     f.change_password
-        .execute("alice", &current.id, OLD_PASSWORD, "new-password-2")
+        .execute("alice", &current.session.id, OLD_PASSWORD, "new-password-2")
         .await
         .unwrap();
 
-    assert!(f.validate.execute(&current.id).await.is_ok());
+    assert!(f.validate.execute(&current.token).await.is_ok());
     assert!(matches!(
-        f.validate.execute(&other_device.id).await,
+        f.validate.execute(&other_device.token).await,
         Err(DomainError::SessionNotFound)
     ));
-    assert!(f.validate.execute(&someone_else.id).await.is_ok());
+    assert!(f.validate.execute(&someone_else.token).await.is_ok());
 }
 
 #[tokio::test]
@@ -108,9 +108,14 @@ async fn a_rejected_password_change_keeps_every_session() {
 
     let result = f
         .change_password
-        .execute("alice", &current.id, "wrong-password", "new-password-2")
+        .execute(
+            "alice",
+            &current.session.id,
+            "wrong-password",
+            "new-password-2",
+        )
         .await;
 
     assert!(matches!(result, Err(DomainError::InvalidCredentials)));
-    assert!(f.validate.execute(&other_device.id).await.is_ok());
+    assert!(f.validate.execute(&other_device.token).await.is_ok());
 }

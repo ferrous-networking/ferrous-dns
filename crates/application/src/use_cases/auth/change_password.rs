@@ -25,7 +25,8 @@ impl ChangePasswordUseCase {
         }
     }
 
-    /// `current_session_id` is the caller's own session, which stays signed in.
+    /// `current_session_id` is the handle (`session.id`) of the caller's own
+    /// session, which stays signed in.
     #[instrument(skip(self, current_session_id, current_password, new_password))]
     pub async fn execute(
         &self,

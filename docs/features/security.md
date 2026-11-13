@@ -68,6 +68,8 @@ GET /ferrous/api/v1/auth/sessions
 DELETE /ferrous/api/v1/auth/sessions/{id}
 ```
 
+Sessions are stored and listed under their handle, the SHA-256 of the token the cookie carries, so neither the list nor a copy of the database holds a cookie that signs anyone in. The address shown for a session is the TCP peer of its login, or the client a reverse proxy in [`trusted_proxies`](../configuration/server.md#doh-client-identity) names.
+
 Like every other protected endpoint, these are not restricted by role or owner: any signed-in user or API token can list every session and revoke any of them, the admin's included.
 
 ### Password Change
@@ -259,6 +261,8 @@ tls_key_path  = "/data/key.pem"     # Path to PEM private key
 | `enabled` | `bool` | `false` | Enable HTTPS for the web server |
 | `tls_cert_path` | `str` | `/data/cert.pem` | Path to the PEM-encoded TLS certificate |
 | `tls_key_path` | `str` | `/data/key.pem` | Path to the PEM-encoded TLS private key |
+
+The two paths are set in `ferrous-dns.toml` only. The dashboard and the API show them but cannot change them, and a backup import never restores them, because an upload or a generated certificate is written there.
 
 !!! note "Graceful fallback"
     If `enabled = true` but the certificate files are missing at startup, the server logs a warning and falls back to plain HTTP.

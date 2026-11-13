@@ -95,7 +95,7 @@ trusted_proxies          = ["127.0.0.0/8", "::1/128"]
 | `proxy_protocol_enabled` | `bool` | `false` | Enable PROXY Protocol v2 on TCP DNS and DoT listeners |
 | `metrics_enabled` | `bool` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port |
 | `cors_allowed_origins` | `list` | _(dashboard origin)_ | Browser origins allowed to call the REST API via CORS |
-| `trusted_proxies` | `list` | `["127.0.0.0/8", "::1/128"]` | Reverse proxies (CIDRs or addresses) whose `X-Forwarded-For` / `X-Real-IP` name the DoH client; any other DoH request is attributed to its socket peer. Setting it replaces the default. See [DoH client identity](server.md#doh-client-identity) |
+| `trusted_proxies` | `list` | `["127.0.0.0/8", "::1/128"]` | Reverse proxies (CIDRs or addresses) whose `X-Forwarded-For` / `X-Real-IP` name the DoH client and the address a dashboard login records; any other request is attributed to its socket peer. Setting it replaces the default. See [DoH client identity](server.md#doh-client-identity) |
 
 !!! warning "PROXY Protocol"
     Only enable `proxy_protocol_enabled` when a trusted load balancer always sits in front of Ferrous DNS. Without a load balancer, all TCP DNS connections will be rejected because the server expects a PROXY Protocol header on every connection.

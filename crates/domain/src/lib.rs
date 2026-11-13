@@ -45,5 +45,6 @@ pub use errors::domain_error::DomainError;
 pub use value_objects::dns_protocol::{DnsProtocol, UpstreamAddr};
 pub use value_objects::dns_query::DnsQuery;
 pub use value_objects::dns_request::{DnsRequest, EdnsCookie};
+pub use value_objects::forwarded_client::forwarded_client_ip;
 pub use value_objects::nat64::Nat64Prefix;
 pub use value_objects::query_filters::{FqdnFilter, PrivateIpFilter};

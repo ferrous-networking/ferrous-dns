@@ -14,7 +14,7 @@ async fn create_returns_token_with_all_fields() {
     let repo = make_repo(pool);
 
     let token = repo
-        .create("test-token", "abc12345", "sha256hash", "rawvalue")
+        .create("test-token", "abc12345", "sha256hash")
         .await
         .unwrap();
 
@@ -22,7 +22,6 @@ async fn create_returns_token_with_all_fields() {
     assert_eq!(token.name.as_ref(), "test-token");
     assert_eq!(token.key_prefix.as_ref(), "abc12345");
     assert_eq!(token.key_hash.as_ref(), "sha256hash");
-    assert_eq!(token.key_raw.as_deref(), Some("rawvalue"));
     assert!(token.created_at.is_some());
     assert!(token.last_used_at.is_none());
 }
@@ -32,11 +31,8 @@ async fn create_duplicate_name_returns_error() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    repo.create("dup", "pre", "hash1", "raw1").await.unwrap();
-    let err = repo
-        .create("dup", "pre", "hash2", "raw2")
-        .await
-        .unwrap_err();
+    repo.create("dup", "pre", "hash1").await.unwrap();
+    let err = repo.create("dup", "pre", "hash2").await.unwrap_err();
 
     assert!(
         matches!(err, ferrous_dns_domain::DomainError::DuplicateApiTokenName(ref n) if n == "dup")
@@ -57,10 +53,8 @@ async fn get_all_returns_multiple() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    repo.create("first", "pre1", "hash1", "raw1").await.unwrap();
-    repo.create("second", "pre2", "hash2", "raw2")
-        .await
-        .unwrap();
+    repo.create("first", "pre1", "hash1").await.unwrap();
+    repo.create("second", "pre2", "hash2").await.unwrap();
 
     let tokens = repo.get_all().await.unwrap();
     assert_eq!(tokens.len(), 2);
@@ -71,7 +65,7 @@ async fn get_by_id_found() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo.create("find-me", "pre", "hash", "raw").await.unwrap();
+    let created = repo.create("find-me", "pre", "hash").await.unwrap();
     let id = created.id.unwrap();
 
     let found = repo.get_by_id(id).await.unwrap();
@@ -92,7 +86,7 @@ async fn get_by_name_found() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    repo.create("named", "pre", "hash", "raw").await.unwrap();
+    repo.create("named", "pre", "hash").await.unwrap();
 
     let found = repo.get_by_name("named").await.unwrap();
     assert!(found.is_some());
@@ -111,7 +105,7 @@ async fn update_name_only() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo.create("old-name", "pre", "hash", "raw").await.unwrap();
+    let created = repo.create("old-name", "pre", "hash").await.unwrap();
     let id = created.id.unwrap();
 
     let updated = repo.update(id, "new-name", None).await.unwrap();
@@ -124,7 +118,7 @@ async fn update_name_and_key() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo.create("token", "pre", "hash", "raw").await.unwrap();
+    let created = repo.create("token", "pre", "hash").await.unwrap();
     let id = created.id.unwrap();
 
     let updated = repo
@@ -134,7 +128,6 @@ async fn update_name_and_key() {
             Some(ApiKeyMaterial {
                 prefix: "newpre",
                 hash: "newhash",
-                raw: "newraw",
             }),
         )
         .await
@@ -142,7 +135,6 @@ async fn update_name_and_key() {
 
     assert_eq!(updated.key_prefix.as_ref(), "newpre");
     assert_eq!(updated.key_hash.as_ref(), "newhash");
-    assert_eq!(updated.key_raw.as_deref(), Some("newraw"));
 }
 
 #[tokio::test]
@@ -162,8 +154,8 @@ async fn update_duplicate_name_returns_error() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    repo.create("taken", "pre1", "hash1", "raw1").await.unwrap();
-    let second = repo.create("other", "pre2", "hash2", "raw2").await.unwrap();
+    repo.create("taken", "pre1", "hash1").await.unwrap();
+    let second = repo.create("other", "pre2", "hash2").await.unwrap();
     let id2 = second.id.unwrap();
 
     let err = repo.update(id2, "taken", None).await.unwrap_err();
@@ -178,7 +170,7 @@ async fn delete_existing() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo.create("del", "pre", "hash", "raw").await.unwrap();
+    let created = repo.create("del", "pre", "hash").await.unwrap();
     let id = created.id.unwrap();
 
     repo.delete(id).await.unwrap();
@@ -202,7 +194,7 @@ async fn update_last_used_sets_timestamp() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo.create("used", "pre", "hash", "raw").await.unwrap();
+    let created = repo.create("used", "pre", "hash").await.unwrap();
     let id = created.id.unwrap();
     assert!(created.last_used_at.is_none());
 
@@ -217,10 +209,7 @@ async fn get_id_by_hash_found() {
     let pool = db::migrated_pool().await;
     let repo = make_repo(pool);
 
-    let created = repo
-        .create("token", "pre", "unique_hash", "raw")
-        .await
-        .unwrap();
+    let created = repo.create("token", "pre", "unique_hash").await.unwrap();
     let expected_id = created.id.unwrap();
 
     let found_id = repo.get_id_by_hash("unique_hash").await.unwrap();

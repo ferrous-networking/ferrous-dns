@@ -7,9 +7,9 @@ use ferrous_dns_domain::{ApiToken, DomainError};
 
 /// Response returned when a new API token is created.
 pub struct CreatedApiToken {
-    /// The persisted token metadata (includes raw token for admin display).
+    /// The persisted token metadata.
     pub token: ApiToken,
-    /// The raw token value.
+    /// The raw token value; this is the only time it is available.
     pub raw_token: String,
 }
 
@@ -40,10 +40,7 @@ impl CreateApiTokenUseCase {
         };
         let (key_prefix, key_hash) = super::key_material(&raw_token);
 
-        let token = self
-            .repo
-            .create(name, key_prefix, &key_hash, &raw_token)
-            .await?;
+        let token = self.repo.create(name, key_prefix, &key_hash).await?;
 
         info!(
             name = name,

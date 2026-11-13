@@ -4,10 +4,10 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 
 use super::login_rate_limiter::LoginRateLimiter;
-use super::session_factory::build_session;
+use super::session_factory::{build_session, IssuedSession};
 use crate::ports::{SessionRepository, UserProvider};
 use crate::use_cases::api_tokens::ValidateApiTokenUseCase;
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError};
+use ferrous_dns_domain::{AuthConfig, DomainError};
 
 /// Logs a user in with an API token in place of the password — Pi-hole v6's
 /// "app password". Like Pi-hole's, it skips the second factor: the token is a
@@ -50,7 +50,7 @@ impl AppPasswordLoginUseCase {
         peer_ip: IpAddr,
         ip_address: &str,
         user_agent: &str,
-    ) -> Result<AuthSession, DomainError> {
+    ) -> Result<IssuedSession, DomainError> {
         self.rate_limiter.check(peer_ip)?;
         self.validate_api_token.execute(token).await?;
 
@@ -61,7 +61,7 @@ impl AppPasswordLoginUseCase {
             .filter(|user| user.enabled)
             .ok_or(DomainError::InvalidCredentials)?;
 
-        let session = build_session(
+        let issued = build_session(
             user.username.clone(),
             user.role,
             false,
@@ -69,10 +69,10 @@ impl AppPasswordLoginUseCase {
             user_agent,
             &self.auth_config,
         )?;
-        self.session_repo.create(&session).await?;
+        self.session_repo.create(&issued.session).await?;
         self.rate_limiter.reset(peer_ip);
 
         info!(username = username, "User logged in with an app password");
-        Ok(session)
+        Ok(issued)
     }
 }

@@ -55,3 +55,43 @@ async fn remember_me_round_trips_and_expiry_splits_active_from_expired() {
     assert_eq!(repo.delete_expired().await.unwrap(), 1);
     assert!(repo.get_by_id("stale").await.unwrap().is_none());
 }
+
+/// Clones every log line, spans included, into a shared buffer.
+#[derive(Clone, Default)]
+struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A revoke can hand the repository a raw session token, so no session
+/// method may record its id in a span.
+#[tokio::test]
+async fn test_deleting_a_session_keeps_its_id_out_of_the_logs() {
+    let captured = Captured::default();
+    let sink = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW)
+        .with_ansi(false)
+        .with_writer(move || sink.clone())
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let pool = db::migrated_pool().await;
+    let repo = SqliteSessionRepository::new(pool.clone(), pool);
+    repo.delete("raw-session-token-0123456789").await.unwrap();
+
+    let logs = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+    assert!(logs.contains("delete"), "the span was not logged: {logs}");
+    assert!(
+        !logs.contains("raw-session-token-0123456789"),
+        "the token reached the logs: {logs}"
+    );
+}

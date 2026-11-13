@@ -25,32 +25,29 @@ struct TokenRow {
     name: String,
     key_prefix: String,
     key_hash: String,
-    key_raw: Option<String>,
     created_at: String,
     last_used_at: Option<String>,
 }
 
 #[async_trait]
 impl ApiTokenRepository for SqliteApiTokenRepository {
-    #[instrument(skip(self, key_hash, key_raw))]
+    #[instrument(skip(self, key_hash))]
     async fn create(
         &self,
         name: &str,
         key_prefix: &str,
         key_hash: &str,
-        key_raw: &str,
     ) -> Result<ApiToken, DomainError> {
         let now = sql_now();
 
         let row: TokenRow = sqlx::query_as(
-            "INSERT INTO api_tokens (name, key_prefix, key_hash, key_raw, created_at)
-             VALUES (?, ?, ?, ?, ?)
-             RETURNING id, name, key_prefix, key_hash, key_raw, created_at, last_used_at",
+            "INSERT INTO api_tokens (name, key_prefix, key_hash, created_at)
+             VALUES (?, ?, ?, ?)
+             RETURNING id, name, key_prefix, key_hash, created_at, last_used_at",
         )
         .bind(name)
         .bind(key_prefix)
         .bind(key_hash)
-        .bind(key_raw)
         .bind(&now)
         .fetch_one(&self.pool)
         .await
@@ -69,7 +66,7 @@ impl ApiTokenRepository for SqliteApiTokenRepository {
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<ApiToken>, DomainError> {
         let rows: Vec<TokenRow> = sqlx::query_as(
-            "SELECT id, name, key_prefix, key_hash, key_raw, created_at, last_used_at
+            "SELECT id, name, key_prefix, key_hash, created_at, last_used_at
              FROM api_tokens ORDER BY id",
         )
         .fetch_all(&self.pool)
@@ -82,7 +79,7 @@ impl ApiTokenRepository for SqliteApiTokenRepository {
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<ApiToken>, DomainError> {
         let row: Option<TokenRow> = sqlx::query_as(
-            "SELECT id, name, key_prefix, key_hash, key_raw, created_at, last_used_at
+            "SELECT id, name, key_prefix, key_hash, created_at, last_used_at
              FROM api_tokens WHERE id = ?",
         )
         .bind(id)
@@ -96,7 +93,7 @@ impl ApiTokenRepository for SqliteApiTokenRepository {
     #[instrument(skip(self))]
     async fn get_by_name(&self, name: &str) -> Result<Option<ApiToken>, DomainError> {
         let row: Option<TokenRow> = sqlx::query_as(
-            "SELECT id, name, key_prefix, key_hash, key_raw, created_at, last_used_at
+            "SELECT id, name, key_prefix, key_hash, created_at, last_used_at
              FROM api_tokens WHERE name = ?",
         )
         .bind(name)
@@ -117,14 +114,13 @@ impl ApiTokenRepository for SqliteApiTokenRepository {
         let row: Option<TokenRow> = match new_key {
             Some(key) => {
                 sqlx::query_as(
-                    "UPDATE api_tokens SET name = ?, key_prefix = ?, key_hash = ?, key_raw = ?
+                    "UPDATE api_tokens SET name = ?, key_prefix = ?, key_hash = ?
                  WHERE id = ?
-                 RETURNING id, name, key_prefix, key_hash, key_raw, created_at, last_used_at",
+                 RETURNING id, name, key_prefix, key_hash, created_at, last_used_at",
                 )
                 .bind(name)
                 .bind(key.prefix)
                 .bind(key.hash)
-                .bind(key.raw)
                 .bind(id)
                 .fetch_optional(&self.pool)
                 .await
@@ -133,7 +129,7 @@ impl ApiTokenRepository for SqliteApiTokenRepository {
                 sqlx::query_as(
                     "UPDATE api_tokens SET name = ?
                  WHERE id = ?
-                 RETURNING id, name, key_prefix, key_hash, key_raw, created_at, last_used_at",
+                 RETURNING id, name, key_prefix, key_hash, created_at, last_used_at",
                 )
                 .bind(name)
                 .bind(id)
@@ -198,7 +194,6 @@ fn row_to_token(row: TokenRow) -> ApiToken {
         name: Arc::from(row.name.as_str()),
         key_prefix: Arc::from(row.key_prefix.as_str()),
         key_hash: Arc::from(row.key_hash.as_str()),
-        key_raw: row.key_raw.map(|s| Arc::from(s.as_str())),
         created_at: Some(row.created_at),
         last_used_at: row.last_used_at,
     }

@@ -30,13 +30,15 @@ fn translate_group_ids(ids: &[i64], here: &HashMap<i64, i64>) -> Result<Vec<i64>
 /// What an import leaves as it is on this server.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ImportOptions {
-    /// Keeps this server's ports, bind addresses, web TLS files and passkey
+    /// Keeps this server's ports, bind addresses, web TLS switch and passkey
     /// origin: what a backup copied to a second server must not overwrite.
     pub keep_host_settings: bool,
 }
 
 /// The settings that belong to the server a backup came from: where it
-/// listens, its web certificate files and the name its passkeys are bound to.
+/// listens, whether its web listener serves TLS and the name its passkeys are
+/// bound to. The certificate and key paths are never restored: `/tls/upload`
+/// writes there, so only this server's config file may set them.
 fn restore_host_settings(config: &mut Config, sc: &SnapshotConfig) -> Result<(), String> {
     let not_restored = |e: String| format!("Config section not restored: {e}");
     let parse = |host: &str| {
@@ -49,8 +51,6 @@ fn restore_host_settings(config: &mut Config, sc: &SnapshotConfig) -> Result<(),
         config.server.web_bind_address = web_bind_address.as_deref().map(parse).transpose()?;
     }
     config.server.web_tls.enabled = sc.server.tls_enabled;
-    config.server.web_tls.tls_cert_path = sc.server.tls_cert_path.clone();
-    config.server.web_tls.tls_key_path = sc.server.tls_key_path.clone();
     config.auth.webauthn.rp_id = sc.auth.webauthn_rp_id.clone();
     config.auth.webauthn.rp_origin = sc.auth.webauthn_rp_origin.clone();
     Ok(())

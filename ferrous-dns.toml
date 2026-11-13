@@ -28,10 +28,11 @@ pihole_compat = true
 # unauthenticated (the standard scrape convention). Opt-in; disabled by default.
 # metrics_enabled = true
 
-# Reverse proxies allowed to name the DoH client through X-Forwarded-For /
-# X-Real-IP. Every other DoH request is attributed to its connecting address,
-# so a client cannot pick another device's group. Setting the list replaces the
-# default; add your proxy's address when it does not run on this host.
+# Reverse proxies allowed to name the client through X-Forwarded-For /
+# X-Real-IP, for DoH and for the address a dashboard login records. Every other
+# request is attributed to its connecting address, so a client cannot pick
+# another device's group. Setting the list replaces the default; add your
+# proxy's address when it does not run on this host.
 # trusted_proxies = ["127.0.0.0/8", "::1/128"]
 
 
@@ -40,6 +41,8 @@ pihole_compat = true
 # same web_port (8080). If cert/key files are missing, falls back to HTTP.
 # No certificate ships with the image: generate one from the dashboard under
 # Settings > Security > HTTPS / TLS, then set enabled = true and restart.
+# The two paths are set here only: the dashboard and the API cannot change
+# them, because an uploaded or generated certificate is written there.
 
 [server.web_tls]
 enabled       = false

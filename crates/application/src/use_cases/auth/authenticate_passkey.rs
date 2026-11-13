@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tracing::{info, instrument};
 
-use super::session_factory::{build_session, is_expired};
+use super::session_factory::{build_session, is_expired, IssuedSession};
 use crate::ports::{MfaRepository, SessionRepository, UserProvider, WebauthnService};
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, MfaChallenge, MfaMethod};
+use ferrous_dns_domain::{AuthConfig, DomainError, MfaChallenge, MfaMethod};
 
 /// Authenticates a login challenge with a passkey (two-step: `start`/`finish`).
 ///
@@ -88,7 +88,7 @@ impl AuthenticatePasskeyUseCase {
         response: serde_json::Value,
         ip_address: &str,
         user_agent: &str,
-    ) -> Result<AuthSession, DomainError> {
+    ) -> Result<IssuedSession, DomainError> {
         let challenge = self
             .mfa_repo
             .get_challenge(challenge_token)
@@ -126,7 +126,7 @@ impl AuthenticatePasskeyUseCase {
 
         self.mfa_repo.delete_challenge(challenge_token).await?;
 
-        let session = build_session(
+        let issued = build_session(
             user.username.clone(),
             user.role,
             challenge.remember_me,
@@ -134,10 +134,10 @@ impl AuthenticatePasskeyUseCase {
             user_agent,
             &self.auth_config,
         )?;
-        self.session_repo.create(&session).await?;
+        self.session_repo.create(&issued.session).await?;
 
         info!(username = %user.username, "Passkey verified, user logged in");
-        Ok(session)
+        Ok(issued)
     }
 
     async fn stored_passkeys(&self, username: &str) -> Result<Vec<String>, DomainError> {

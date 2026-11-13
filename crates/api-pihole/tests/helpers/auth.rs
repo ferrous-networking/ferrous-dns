@@ -10,8 +10,8 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::{
     AppPasswordLoginUseCase, CreateApiTokenUseCase, GetActiveSessionsUseCase, GetMfaStatusUseCase,
-    LoginRateLimiter, LoginUseCase, LogoutUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
-    VerifyMfaUseCase,
+    LoginRateLimiter, LoginUseCase, LogoutUseCase, RevokeSessionUseCase, ValidateApiTokenUseCase,
+    ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::{
     ApiToken, AuthConfig, AuthSession, DomainError, MfaChallenge, RecoveryCode, User, UserMfa,
@@ -70,6 +70,7 @@ pub async fn build_auth_state(totp_enrolled: bool) -> PiholeAuthState {
             rate_limiter,
         )),
         logout: Arc::new(LogoutUseCase::new(sessions.clone())),
+        revoke_session: Arc::new(RevokeSessionUseCase::new(sessions.clone())),
         validate_session: Arc::new(ValidateSessionUseCase::new(sessions.clone())),
         get_active_sessions: Arc::new(GetActiveSessionsUseCase::new(sessions)),
         get_mfa_status: Arc::new(GetMfaStatusUseCase::new(mfa)),
@@ -283,7 +284,6 @@ impl ApiTokenRepository for InMemoryApiTokenRepository {
         name: &str,
         key_prefix: &str,
         key_hash: &str,
-        _: &str,
     ) -> Result<ApiToken, DomainError> {
         let mut hashes = self.hashes.lock().unwrap();
         hashes.push(key_hash.to_string());
@@ -292,7 +292,6 @@ impl ApiTokenRepository for InMemoryApiTokenRepository {
             name: Arc::from(name),
             key_prefix: Arc::from(key_prefix),
             key_hash: Arc::from(key_hash),
-            key_raw: None,
             created_at: None,
             last_used_at: None,
         })

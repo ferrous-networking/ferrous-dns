@@ -22,7 +22,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 | `bind_address` | `auto` | Default address every listener binds to. `auto` serves IPv4 and IPv6 on every interface (see [Dual-stack](#dual-stack)), or IPv4 only on a [kernel without IPv6](#kernel-without-ipv6); `0.0.0.0` serves IPv4 only, and a specific IP restricts access to it. Must be `auto` or an IP literal; a hostname is rejected at startup |
 | `web_bind_address` | _(unset)_ | Address the dashboard and REST API bind to instead of `bind_address`. See [Dashboard on its own address](#web-bind-address) |
 | `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
-| `trusted_proxies` | `["127.0.0.0/8", "::1/128"]` | CIDRs (or single addresses) of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are believed on DoH requests. See [DoH client identity](#doh-client-identity) |
+| `trusted_proxies` | `["127.0.0.0/8", "::1/128"]` | CIDRs (or single addresses) of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are believed on DoH requests and for the address a dashboard login records. See [DoH client identity](#doh-client-identity) |
 
 ### Dual-stack (IPv4 + IPv6) {#dual-stack}
 
@@ -103,6 +103,8 @@ trusted_proxies = ["127.0.0.0/8", "::1/128", "172.18.0.0/16"]
 ```
 
 Setting the list replaces the default, so keep the loopback entries if the proxy can also connect locally. Trust only addresses you control: any peer inside the list can claim to be any client.
+
+The same walk names the address a dashboard login records in the session list. The login lockout ignores it and always counts the TCP peer; see [Login lockout](../features/security.md#login-lockout).
 
 To identify roaming or NATed DoH devices independently of their IP address, clients can also query `/dns-query/<ClientID>` using an identifier registered on the **DoH IDs** page (`/doh-ids.html`). Group resolution evaluates the DoH Client ID first, then falls back to `client_ip` → subnet → `Protected`. By default (`doh_allow_unregistered_ids = false`), unknown Client IDs are rejected with `400 Bad Request`; setting `doh_allow_unregistered_ids = true` in `[server.encrypted_dns]` (or toggling **Allow Unregistered Client IDs** on the **DoH IDs** page) accepts valid unregistered IDs for Query Log attribution while applying the client IP's group rules. Because a registered `/dns-query/<ClientID>` URL acts as a bearer credential that selects its group's policy regardless of source IP, anyone who knows the URL gets that group's rules — prefer the generated random UUID v4 for groups with lighter filtering. See [DoH IDs](../features/client-management.md#doh-ids).
 

@@ -2,6 +2,9 @@ use async_trait::async_trait;
 use ferrous_dns_domain::{AuthSession, DomainError};
 
 /// Port for managing browser authentication sessions in persistent storage.
+///
+/// Every `id` here is a session handle (`AuthSession::id`), never the token a
+/// cookie carries: callers hash the token with `session_handle` first.
 #[async_trait]
 pub trait SessionRepository: Send + Sync {
     async fn create(&self, session: &AuthSession) -> Result<(), DomainError>;

@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;
-use tracing::{error, instrument};
+use tracing::{error, info, instrument};
 
 use ferrous_dns_application::ports::SessionRepository;
+use ferrous_dns_application::use_cases::session_handle;
 use ferrous_dns_domain::{AuthSession, DomainError, UserRole};
 
 use crate::repositories::{db_err, sql_now};
@@ -84,7 +85,8 @@ impl SessionRepository for SqliteSessionRepository {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    /// `id` may be a raw token: a revoke cannot tell a handle from one.
+    #[instrument(skip(self, id))]
     async fn delete(&self, id: &str) -> Result<(), DomainError> {
         sqlx::query("DELETE FROM auth_sessions WHERE id = ?")
             .bind(id)
@@ -165,4 +167,29 @@ fn row_to_session(
         last_seen_at,
         expires_at,
     }
+}
+
+/// Rewrites the sessions stored before session ids were hashed: each keeps
+/// working, because a lookup hashes the cookie it is given. The
+/// `id_hashed` marker keeps a second start from hashing a handle again.
+pub async fn hash_legacy_session_ids(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let legacy: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM auth_sessions WHERE id_hashed = 0")
+            .fetch_all(&mut *tx)
+            .await?;
+    for token in &legacy {
+        sqlx::query(
+            "UPDATE auth_sessions SET id = ?, id_hashed = 1 WHERE id = ? AND id_hashed = 0",
+        )
+        .bind(session_handle(token))
+        .bind(token)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    if !legacy.is_empty() {
+        info!(sessions = legacy.len(), "Stored session ids as hashes");
+    }
+    Ok(legacy.len() as u64)
 }

@@ -20,14 +20,8 @@ pub async fn require_auth(
         return Ok(next.run(request).await);
     }
 
-    if let Some(session_id) = extract_session_cookie(request.headers()) {
-        if state
-            .auth
-            .validate_session
-            .execute(session_id)
-            .await
-            .is_ok()
-        {
+    if let Some(token) = extract_session_cookie(request.headers()) {
+        if state.auth.validate_session.execute(token).await.is_ok() {
             return Ok(next.run(request).await);
         }
     }

@@ -29,7 +29,7 @@ pub fn spawn_jobs(
     BlocklistSyncJob::new(repos.block_filter_engine.clone()).spawn();
     WalCheckpointJob::new(wal_pool, config.database.wal_checkpoint_interval_secs).spawn();
     ScheduleEvaluatorJob::new(repos.schedule_profile.clone(), repos.schedule_state.clone()).spawn();
-    SessionCleanupJob::new(repos.session.clone()).spawn();
+    SessionCleanupJob::new(repos.session.clone(), repos.mfa.clone()).spawn();
 
     info!("All background jobs started");
 }

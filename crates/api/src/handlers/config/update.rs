@@ -186,14 +186,22 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
             cfg.server.pihole_compat = v;
         }
         if let Some(web_tls) = server.web_tls {
+            // `/tls/upload` and `/tls/generate` write the certificate and key
+            // to these paths, so only the config file may move them.
+            let moves_a_file = [
+                (&web_tls.tls_cert_path, &cfg.server.web_tls.tls_cert_path),
+                (&web_tls.tls_key_path, &cfg.server.web_tls.tls_key_path),
+            ]
+            .into_iter()
+            .any(|(requested, current)| requested.as_ref().is_some_and(|path| path != current));
+            if moves_a_file {
+                return Err(
+                    "The TLS certificate and key paths can only be changed in ferrous-dns.toml"
+                        .to_string(),
+                );
+            }
             if let Some(v) = web_tls.enabled {
                 cfg.server.web_tls.enabled = v;
-            }
-            if let Some(v) = web_tls.tls_cert_path {
-                cfg.server.web_tls.tls_cert_path = v;
-            }
-            if let Some(v) = web_tls.tls_key_path {
-                cfg.server.web_tls.tls_key_path = v;
             }
         }
         if let Some(encrypted_dns) = server.encrypted_dns {

@@ -235,6 +235,54 @@ async fn warn_about_unreclaimable_space(pool: &SqlitePool) -> Result<(), sqlx::E
     Ok(())
 }
 
+/// Tokens whose key earlier releases kept in plaintext; zero once the column is gone.
+async fn count_plaintext_api_keys(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    let has_column: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pragma_table_info('api_tokens') WHERE name = 'key_raw'",
+    )
+    .fetch_one(pool)
+    .await?;
+    if has_column == 0 {
+        return Ok(0);
+    }
+    sqlx::query_scalar("SELECT count(*) FROM api_tokens WHERE key_raw IS NOT NULL")
+        .fetch_one(pool)
+        .await
+}
+
+/// Rewrites the file once after the upgrade replaced plaintext API keys and
+/// session ids: SQLite leaves a dropped column's and an updated key's old
+/// bytes in free pages, where a copy of the file would still carry keys and
+/// cookies that sign in. A failure leaves the server running and says how to
+/// finish the job, since the next start has nothing left to detect.
+async fn wipe_replaced_credentials(pool: &SqlitePool) {
+    let started = Instant::now();
+    info!(
+        "Rewriting the database once, so the plaintext API keys and session ids earlier \
+         releases stored leave the file; this can take a while on a large query log"
+    );
+    let wiped = async {
+        let mut conn = pool.acquire().await?;
+        sqlx::query("VACUUM").execute(&mut *conn).await?;
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&mut *conn)
+            .await
+    }
+    .await;
+    match wiped {
+        Ok(_) => info!(
+            duration_ms = started.elapsed().as_millis() as u64,
+            "Database rewritten"
+        ),
+        Err(e) => warn!(
+            error = %e,
+            "Could not rewrite the database: the file may still hold the plaintext API keys \
+             and session ids of earlier releases; stop the server and run \
+             `ferrous-dns --compact-database` once"
+        ),
+    }
+}
+
 pub async fn create_write_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
@@ -252,8 +300,14 @@ pub async fn create_write_pool(
     )
     .await?;
 
+    let plaintext_keys = count_plaintext_api_keys(&pool).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
     crate::repositories::client_subnet_repository::canonicalize_stored_subnets(&pool).await?;
+    let hashed_sessions =
+        crate::repositories::session_repository::hash_legacy_session_ids(&pool).await?;
+    if plaintext_keys > 0 || hashed_sessions > 0 {
+        wipe_replaced_credentials(&pool).await;
+    }
 
     let mut conn = pool.acquire().await?;
     seed_missing_query_log_stats(&mut conn).await?;

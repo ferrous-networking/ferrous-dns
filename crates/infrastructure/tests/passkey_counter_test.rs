@@ -200,7 +200,8 @@ async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
 #[tokio::test]
 async fn a_discoverable_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
     let pool = db::migrated_pool().await;
-    let mfa: Arc<dyn MfaRepository> = Arc::new(SqliteMfaRepository::new(pool.clone()));
+    let store = Arc::new(SqliteMfaRepository::new(pool.clone()));
+    let mfa: Arc<dyn MfaRepository> = store.clone();
     let webauthn: Arc<dyn WebauthnService> = Arc::new(WebauthnRsService::new(RP_ID, ORIGIN));
     let authenticator = SoftAuthenticator::new();
     register_admin_passkey(&webauthn, &mfa, &authenticator).await;
@@ -209,13 +210,14 @@ async fn a_discoverable_passkey_login_moves_the_stored_passkey_to_the_new_counte
     let login = DiscoverablePasskeyLoginUseCase::new(
         webauthn.clone(),
         mfa.clone(),
+        store,
         admin_user_provider(pool.clone()),
         Arc::new(SqliteSessionRepository::new(pool.clone(), pool)),
         Arc::new(AuthConfig::default()),
         300,
     );
     let start = login.start().await.unwrap();
-    let session = login
+    let issued = login
         .finish(
             &start.challenge_token,
             authenticator.assert(&start.challenge, 5, Some(user_handle.as_bytes())),
@@ -225,7 +227,7 @@ async fn a_discoverable_passkey_login_moves_the_stored_passkey_to_the_new_counte
         )
         .await
         .unwrap();
-    assert_eq!(session.username.as_ref(), ADMIN);
+    assert_eq!(issued.session.username.as_ref(), ADMIN);
 
     let stored = mfa
         .find_credential_by_id(&b64(&CREDENTIAL_ID))

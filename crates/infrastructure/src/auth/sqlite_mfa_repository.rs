@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tracing::{instrument, warn};
 
-use ferrous_dns_application::ports::MfaRepository;
+use ferrous_dns_application::ports::{MfaRepository, PendingChallengeCounter};
 use ferrous_dns_domain::{
     DomainError, MfaChallenge, MfaMethod, RecoveryCode, UserMfa, WebauthnCredential,
 };
@@ -408,5 +408,21 @@ impl MfaRepository for SqliteMfaRepository {
                 .await
                 .map_err(db_err("has_credentials"))?;
         Ok(row.is_some())
+    }
+}
+
+#[async_trait]
+impl PendingChallengeCounter for SqliteMfaRepository {
+    /// A passwordless ceremony is stored with no username until `finish`.
+    #[instrument(skip(self))]
+    async fn count_pending_anonymous(&self) -> Result<u64, DomainError> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM mfa_challenges WHERE username = '' AND expires_at >= ?",
+        )
+        .bind(sql_now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(db_err("count pending challenges"))?;
+        Ok(count as u64)
     }
 }
