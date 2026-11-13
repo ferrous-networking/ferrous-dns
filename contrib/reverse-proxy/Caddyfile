@@ -9,9 +9,6 @@
 dns.example.com {
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "same-origin"
 	}
 
 	reverse_proxy https://127.0.0.1:8080 {

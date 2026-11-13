@@ -2,13 +2,15 @@
 
 Blocking is only half of what a resolver at the edge of a network does. The other half is making sure the answers it hands back are the ones the upstream side actually sent, and that one misbehaving client cannot degrade resolution for everyone else.
 
-This page documents the hardening *underneath* the features: what protects the upstream path, what protects the listener, what is on by default — and, just as importantly, what is **not** covered yet.
+This page documents the hardening *underneath* the features: what protects the upstream path, what protects the listener and the dashboard, what is on by default — and, just as importantly, what is **not** covered yet.
 
-For the dashboard/API side (authentication, tokens, HTTPS, 2FA) see [Security Features](security.md).
+How each dashboard mechanism is configured (authentication, tokens, HTTPS, 2FA) is in [Security Features](security.md).
 
 ---
 
 ## Threat model at a glance
+
+### DNS side {#dns-side}
 
 | Threat | Mechanism | Default |
 |:-------|:----------|:--------|
@@ -22,6 +24,30 @@ For the dashboard/API side (authentication, tokens, HTTPS, 2FA) see [Security Fe
 | DNS rebinding | Public name → RFC 1918 answer filtering | On |
 | Passive observation of your queries | DoT / DoH / DoQ upstreams | Off (plain UDP by default) |
 | Disclosure of client subnets to upstreams | Upstream queries carry no option a client sent, EDNS Client Subnet included | Always |
+
+### Dashboard and API side {#dashboard-and-api-side}
+
+These rows cover the web listener (`web_port`, 8080 by default): the dashboard, the Ferrous API at `/ferrous/api/v1`, the [Pi-hole compatible API](pihole-compat.md) at `/api` when `pihole_compat` is on, and DoH and `/metrics` when they share the port. Every user and API token is a full admin, since [roles are not enforced](security.md#users-and-roles), so these mechanisms keep out people who are not signed in; they do not limit what a signed-in user can do.
+
+| Threat | Mechanism | Default | Not covered |
+|:-------|:----------|:--------|:------------|
+| Password guessing | Argon2id password hashes (19 MiB, 2 passes). A [lockout](security.md#login-lockout) after `login_rate_limit_attempts` wrong passwords or second-factor codes per client address (IPv6 per /64), shared by the dashboard and Pi-hole logins | On, 5 attempts per 15 min | Behind a reverse proxy every login shares the proxy's count. Checks that need a session (password change, turning 2FA off) are not counted |
+| Finding which usernames exist | An unknown or disabled username costs the same password check as a wrong password and gets the same `401` | Always | — |
+| First-run takeover | `POST /auth/setup` works only while the admin has no password, and one setup at a time | Until the first password is set | On a fresh install the first client to reach the port sets the password, and `bind_address = "auto"` listens on every interface: set it before the port is reachable |
+| Stolen or forged session cookies | 256-bit random tokens in an `HttpOnly; SameSite=Strict` cookie, `Secure` when the server serves HTTPS itself. Stored and listed only as their SHA-256. Fixed expiry (`session_ttl_hours`, `remember_me_days`), revocable under **Settings > Security**, and a password change signs out the user's other sessions | On | A session is not bound to an address or a browser. Behind a proxy that ends TLS the cookie has no `Secure` unless the server serves HTTPS too ([TLS & Reverse Proxy](../operations/tls-reverse-proxy.md)) |
+| Stolen or guessed API tokens | Generated keys are 256-bit and custom keys need 32 characters. Keys are stored only as SHA-256, shown once and listed by a short prefix; tokens are revocable | On | A token has no scope or expiry and acts as a full admin. `X-Api-Key` guesses are not throttled. Used as a Pi-hole app password, a token skips the second factor |
+| A leaked password | A second factor per account: TOTP (6 digits, ±30 s, each code accepted once, 10 single-use recovery codes) or passkeys with user verification | Off, enrolled per account under **Settings > Security** | TOTP secrets are not encrypted in the database. Turning 2FA off needs a session and the password, not a code |
+| Cross-site requests (CSRF) | The session cookie is `SameSite=Strict`, so a request another site triggers carries no session. API tokens travel in a header browsers never add | On | No CSRF token or `Origin` check. The login accepts any content type, so another site can sign a browser into an account whose password it knows |
+| Framing (clickjacking) | `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` on every response ([Security headers](../configuration/server.md#security-headers)) | On | — |
+| Script injection (XSS) | The dashboard renders server data as text; its few HTML bindings show only built-in markup (service icons, the TOTP QR code) or escaped values. `X-Content-Type-Options: nosniff` on every response | On | No script Content-Security-Policy: Alpine's standard build evaluates its expressions |
+| Reading the API from another site | CORS without credentials: a browser on another site never sends the session cookie, so it can read only responses that need no login | `cors_allowed_origins = ["*"]` | The unauthenticated endpoints (`/auth/status`, `/health`, `/openapi.json`) are readable from any site unless `cors_allowed_origins` names the dashboard's own origin |
+| DNS rebinding of the dashboard | A session cookie belongs to the dashboard's host name, so a page that points its own name at the server reaches it without a session | — | No `Host` check: through a rebound name, the unauthenticated endpoints, and every endpoint with `[auth] enabled = false`, can be called |
+| Uploads | TLS certificate and key: PEM of at most 64 KB each, validated, written only to the paths in `ferrous-dns.toml` (the key with mode `0600`). Backup import: at most 2 MB, keeps this server's TLS paths, and turns login on but never off. Blocklists are fetched by URL, never uploaded | On | — |
+| Requests the server makes for an admin (SSRF) | Blocklist, allowlist and IP feed URLs must be `http://` or `https://`; a failed fetch shows only as a status | — | A signed-in user can make the server fetch any address it reaches, loopback, LAN and cloud metadata included, following up to 10 redirects and the `HTTP(S)_PROXY` environment; whether a fetch failed tells a reachable address from an unreachable one |
+| Floods against the web listener | The login lockout; request bodies capped at 2 MB (16 KiB on the login) | — | No request rate limit, timeout or connection cap on the web listener: keep it behind a reverse proxy or on a trusted network |
+| Endpoints without a login | On the Ferrous API only `/auth/status`, setup, login, logout, the second-factor and passkey login steps and `/health`; on the Pi-hole API only `/api/auth`, `/api/info/login` and `/api/info/client`. Also the dashboard's static files, `/ferrous-config.js` (the API base and the version) and each API's `/openapi.json` and `/docs` | Everything else needs a session or a token | `/metrics`, when `metrics_enabled = true`, has no authentication ([Metrics](metrics.md)). DoH (`/dns-query`) never asks for one |
+| The Pi-hole compatible API | Off by default. When on, every other route needs a session `sid`, and it shares sessions, tokens and the lockout with the dashboard ([GHSA-c5j2-2rpg-2827](https://github.com/ferrous-networking/ferrous-dns/security/advisories/GHSA-c5j2-2rpg-2827), fixed in 0.9.19) | `pihole_compat = false` | Pi-hole clients may send the `sid` in the query string, where proxies and browsers log URLs |
+| A spoofed client address | The address a session records, and the DoH client, are the TCP peer; only a peer in [`trusted_proxies`](../configuration/server.md#doh-client-identity) may name the client | Loopback trusted | Any process on the server itself can name any client |
 
 ---
 
@@ -160,20 +186,18 @@ TCP, DoT and DoQ each have a per-IP connection ceiling (30 / 15 / 15 by default)
 
 ## What is *not* hardened yet
 
-Published so you can plan around it rather than discover it.
+Published so you can plan around it rather than discover it. The dashboard and API side lists what it does not cover in the last column of [its table](#dashboard-and-api-side).
 
 | Gap | What it means | Status |
 |:----|:--------------|:-------|
-| No API rate limiting | The REST API has no request throttling middleware of any kind. Put the dashboard behind a reverse proxy or a trusted network. | Not implemented |
-| Login lockout behind a reverse proxy | The lockout counts failures per TCP peer and ignores `X-Forwarded-For`, so behind a proxy all logins share the proxy's count. See [Login lockout](security.md#login-lockout). | By design |
 | `Indeterminate` under `permissive` | When DS/DNSKEY lookups cannot be fetched, `permissive` still serves the answer without AD. Use `strict` to refuse it. | By design |
 | RFC 5011 trust-anchor rollover | Root key updates need a new release or a manual anchor file. | Planned |
-| `/metrics` is unauthenticated | When `metrics_enabled = true` the endpoint is served without auth. See [Metrics & Monitoring](metrics.md). | By design — bind it carefully |
 
 ---
 
 ## Deployment checklist
 
+- [ ] Set the admin password before the web port is reachable from other hosts: until then anyone who reaches it can set it.
 - [ ] Set `[dns.dns_cookies] server_secret` to a fixed 64-hex-character value (and confirm the section is nested under `[dns]`).
 - [ ] Confirm `[dns.rate_limit] enabled = true` in the config you actually deploy.
 - [ ] Use DoT/DoH/DoQ upstreams if the path to your resolver provider is untrusted.
@@ -182,5 +206,6 @@ Published so you can plan around it rather than discover it.
 - [ ] Keep `metrics_enabled = false` unless the port is reachable only from your monitoring host.
 - [ ] Serving DoH through a reverse proxy on another host or container? List only that proxy in `[server] trusted_proxies`; every peer in the list can name any client (and so choose its group's filtering). See [DoH client identity](../configuration/server.md#doh-client-identity).
 - [ ] Put the dashboard behind HTTPS ([TLS & Reverse Proxy](../operations/tls-reverse-proxy.md)) and enable TOTP or a passkey — the login lockout slows password guessing but does not replace a second factor.
+- [ ] Keep the web port on a trusted network or behind a reverse proxy: it has no request rate limit, and every account and API token is a full admin.
 
 The operational side of going live (backups, monitoring, sizing, a second resolver) is in [Running in Production](../operations/index.md).

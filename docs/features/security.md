@@ -2,7 +2,7 @@
 
 Ferrous DNS includes several security mechanisms to protect your network from DNS-based attacks and data exposure.
 
-This page covers the dashboard and API surface plus the per-feature reference. For the resolver-side hardening — upstream response validation, 0x20, source-port rotation, DNSSEC downgrade detection — and an explicit list of what is *not* covered yet, see [Security Hardening](security-hardening.md).
+This page covers the dashboard and API surface plus the per-feature reference. The threat model for both the resolver and the dashboard, the resolver-side hardening (upstream response validation, 0x20, source-port rotation, DNSSEC downgrade detection) and an explicit list of what is *not* covered yet are in [Security Hardening](security-hardening.md).
 
 ---
 
@@ -12,7 +12,7 @@ Ferrous DNS provides session-based authentication to protect the dashboard and R
 
 ### First-Run Setup
 
-On first launch (when no password is configured), Ferrous DNS shows a setup wizard. Set the admin password via the web UI or CLI before the server accepts API requests.
+On first launch (when no password is configured), Ferrous DNS shows a setup wizard. Set the admin password there, or with `POST /ferrous/api/v1/auth/setup`. Until a password is set, anyone who reaches the web port can set it, so do it before the port is reachable from other hosts. Two setups at once cannot both succeed: the second gets `409`.
 
 ### Session-Based Login
 
@@ -52,6 +52,8 @@ All API endpoints are protected by the auth guard middleware, except:
 - `POST /ferrous/api/v1/auth/2fa/verify`, `POST /ferrous/api/v1/auth/webauthn/authenticate/start` and `POST /ferrous/api/v1/auth/webauthn/authenticate/finish` — the second step of a login; each needs the challenge token `POST /auth/login` issued
 - `POST /ferrous/api/v1/auth/webauthn/discoverable/start` and `POST /ferrous/api/v1/auth/webauthn/discoverable/finish` — passwordless passkey login; `start` issues the token `finish` takes
 - `GET /ferrous/api/v1/health` — health check; it tells only whether the server is up, and its version
+
+Outside the API, these need no login either: the dashboard's static files, `/ferrous-config.js` (the API base and the version), each API's `/openapi.json` and `/docs`, `/metrics` when `metrics_enabled = true`, and DoH (`/dns-query`) when it is on.
 
 ### Users and Roles
 
@@ -122,7 +124,7 @@ DELETE /ferrous/api/v1/api-tokens/{id}     # Delete a token
 
 ### Import Custom Keys
 
-You can import existing API keys (e.g., from a Pi-hole migration) via `PUT /ferrous/api/v1/api-tokens/{id}` with a custom key value.
+You can bring an existing key, from a Pi-hole migration for example, as the `token` of `POST /ferrous/api/v1/api-tokens`, or put it in place of a token's key with `PUT /ferrous/api/v1/api-tokens/{id}`. A custom key needs at least 32 characters, since nothing throttles guesses at `X-Api-Key`; Pi-hole's app passwords (44) and v5 API tokens (64) are long enough. Keys created before this minimum keep working.
 
 ---
 
@@ -138,7 +140,7 @@ login_rate_limit_window_secs = 900      # Lockout window (15 min)
 
 [auth.admin]
 username = "admin"                      # Admin username
-password_hash = ""                      # Argon2id hash (set via setup wizard or CLI)
+password_hash = ""                      # Argon2id hash (written by the setup wizard)
 ```
 
 | Field | Type | Default | Description |
@@ -149,7 +151,7 @@ password_hash = ""                      # Argon2id hash (set via setup wizard or
 | `login_rate_limit_attempts` | `int` | `5` | Max failed login attempts per client before lockout (`0` disables the lockout) |
 | `login_rate_limit_window_secs` | `int` | `900` | Duration of lockout window in seconds |
 | `username` | `str` | `admin` | Admin username |
-| `password_hash` | `str` | `""` | Argon2id password hash (set via setup wizard or CLI) |
+| `password_hash` | `str` | `""` | Argon2id password hash (written by the setup wizard) |
 
 !!! tip "Setting the password hash"
     Use the setup wizard on first run to set the password interactively. The Argon2id hash is written to the config file automatically.
@@ -526,9 +528,22 @@ The following are planned for future releases:
 | Feature | Description |
 |:--------|:------------|
 | **Read-Only Mode** | Disable config changes via a flag |
-| **API request throttling** | A general request rate limit for the REST API — see [Security Hardening](security-hardening.md#what-is-not-hardened-yet) |
+| **API request throttling** | A general request rate limit for the REST API — see [Security Hardening](security-hardening.md#dashboard-and-api-side) |
 | **Enforcing DS-denial checks** | Turn the current downgrade *detection* into an opt-in strict mode |
 | **RFC 5011 trust anchor rollover** | Track root key rolls without a new release |
+
+---
+
+## Security Advisories {#advisories}
+
+Vulnerabilities are reported privately ([`SECURITY.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/.github/SECURITY.md)) and published as GitHub security advisories once a release fixes them:
+
+| Advisory | Fixed in | Summary |
+|:---------|:---------|:--------|
+| [GHSA-6wcf-j8x2-4r5h](https://github.com/ferrous-networking/ferrous-dns/security/advisories/GHSA-6wcf-j8x2-4r5h) | 0.10.1 | API token keys and session cookies could be read from the database or the API, anonymous passkey challenges grew without bound, the TLS file paths were writable through the API, and the session address came from `X-Forwarded-For` |
+| [GHSA-c5j2-2rpg-2827](https://github.com/ferrous-networking/ferrous-dns/security/advisories/GHSA-c5j2-2rpg-2827) | 0.9.19 | The Pi-hole compatible API served every endpoint without authentication, and the login lockout was not enforced |
+
+Both came from internal reviews. An external review of the DNS message parsing, the authentication and both HTTP APIs is planned before 1.0 ([#319](https://github.com/ferrous-networking/ferrous-dns/issues/319)); this page will say when it happened and how far it went.
 
 ---
 
@@ -557,4 +572,7 @@ The following are planned for future releases:
 | TOTP / 2FA (authenticator app) | :white_check_mark: Active |
 | Passkeys / WebAuthn (second factor + passwordless) | :white_check_mark: Active |
 | API request rate limiting | :x: Not implemented |
+| Security response headers (framing, sniffing, referrer) | :white_check_mark: Active on every web response |
+| Script Content-Security-Policy | :x: Not implemented — Alpine's standard build evaluates its expressions |
+| Role enforcement | :x: Not implemented — every user and API token is a full admin |
 | Login attempt throttling / lockout | :white_check_mark: Active — per client address, shared by the dashboard and Pi-hole logins |

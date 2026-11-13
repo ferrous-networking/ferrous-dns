@@ -372,6 +372,12 @@ The image no longer sets `RUST_LOG`, which the server never read: the entrypoint
 - `tls_cert_path` and `tls_key_path` are set in `ferrous-dns.toml` only. `POST /config` refuses to change them, and a backup import keeps this server's paths. Edit the file to move the certificate.
 - About 1024 passwordless passkey logins can be pending at once; a `start` beyond that answers `429`.
 
+### Dashboard hardening
+
+- Every web response now carries a frame policy, so a page on another origin, another subdomain or port included, can no longer show the dashboard in a frame. A dashboard app that embedded it from its own host name shows an empty frame; see [Security headers](../configuration/server.md#security-headers). A reverse proxy that adds `X-Frame-Options` should stop: the shipped examples in `contrib/reverse-proxy` no longer do.
+- A backup import no longer turns authentication off. A backup with it off leaves it on and says so under the import summary, and the response carries the note in a new `warnings` list. Turn it off under **Settings > Security** if you mean to.
+- A new custom API token key, or a replacement one, needs at least 32 characters. Keys created before keep working.
+
 ---
 
 ## Platform support
