@@ -322,13 +322,18 @@ impl ImportConfigUseCase {
 
         new_config.logging.level = sc.logging.level.clone();
 
-        // A backup can turn login on but never off: a file handed to the
-        // dashboard must not open it to everyone.
+        // A backup can turn login and its lockout on but never off: a file
+        // handed to the dashboard must not open it to everyone, nor to
+        // unlimited password guesses (0 attempts switches the lockout off).
         let kept_auth_on = new_config.auth.enabled && !sc.auth.enabled;
         new_config.auth.enabled |= sc.auth.enabled;
         new_config.auth.session_ttl_hours = sc.auth.session_ttl_hours;
         new_config.auth.remember_me_days = sc.auth.remember_me_days;
-        new_config.auth.login_rate_limit_attempts = sc.auth.login_rate_limit_attempts;
+        let kept_lockout_on =
+            new_config.auth.login_rate_limit_attempts > 0 && sc.auth.login_rate_limit_attempts == 0;
+        if !kept_lockout_on {
+            new_config.auth.login_rate_limit_attempts = sc.auth.login_rate_limit_attempts;
+        }
         new_config.auth.login_rate_limit_window_secs = sc.auth.login_rate_limit_window_secs;
 
         new_config
@@ -349,6 +354,12 @@ impl ImportConfigUseCase {
                 if kept_auth_on {
                     warnings.push(
                         "The backup has authentication off; it stays on here. Turn off Enable Authentication under Settings > Security if you mean to."
+                            .to_string(),
+                    );
+                }
+                if kept_lockout_on {
+                    warnings.push(
+                        "The backup has the login lockout off; it stays on here. Set login_rate_limit_attempts = 0 in ferrous-dns.toml if you mean to."
                             .to_string(),
                     );
                 }
