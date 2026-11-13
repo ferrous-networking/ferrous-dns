@@ -536,14 +536,9 @@ The following are planned for future releases:
 
 ## Security Advisories {#advisories}
 
-Vulnerabilities are reported privately ([`SECURITY.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/.github/SECURITY.md)) and published as GitHub security advisories once a release fixes them:
+Vulnerabilities are reported privately ([`SECURITY.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/.github/SECURITY.md)) and published as [GitHub security advisories](https://github.com/ferrous-networking/ferrous-dns/security/advisories) once a release fixes them.
 
-| Advisory | Fixed in | Summary |
-|:---------|:---------|:--------|
-| [GHSA-6wcf-j8x2-4r5h](https://github.com/ferrous-networking/ferrous-dns/security/advisories/GHSA-6wcf-j8x2-4r5h) | 0.10.1 | API token keys and session cookies could be read from the database or the API, anonymous passkey challenges grew without bound, the TLS file paths were writable through the API, and the session address came from `X-Forwarded-For` |
-| [GHSA-c5j2-2rpg-2827](https://github.com/ferrous-networking/ferrous-dns/security/advisories/GHSA-c5j2-2rpg-2827) | 0.9.19 | The Pi-hole compatible API served every endpoint without authentication, and the login lockout was not enforced |
-
-Both came from internal reviews. An external review of the DNS message parsing, the authentication and both HTTP APIs is planned before 1.0 ([#319](https://github.com/ferrous-networking/ferrous-dns/issues/319)); this page will say when it happened and how far it went.
+An external review of the DNS message parsing, the authentication and both HTTP APIs is planned ([#319](https://github.com/ferrous-networking/ferrous-dns/issues/319)); this page will say when it happened and how far it went.
 
 ---
 
