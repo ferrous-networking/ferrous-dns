@@ -87,15 +87,17 @@ impl LoginUseCase {
     ) -> Result<LoginOutcome, DomainError> {
         self.rate_limiter.check(peer_ip)?;
 
+        // Made before the lookup, so the first login after a start pays for it
+        // whether or not the username exists.
+        let stand_in = self
+            .stand_in_hash
+            .get_or_try_init(|| self.password_hasher.hash("no account has this password"))
+            .await?;
         let user = self.user_provider.get_by_username(username).await?;
         let Some(user) = user.filter(|user| user.enabled) else {
             self.rate_limiter.record_failure(peer_ip);
             // The same password check a real account costs, so the response
             // time does not tell which usernames exist.
-            let stand_in = self
-                .stand_in_hash
-                .get_or_try_init(|| self.password_hasher.hash("no account has this password"))
-                .await?;
             self.password_hasher.verify(password, stand_in).await?;
             return Err(DomainError::InvalidCredentials);
         };
