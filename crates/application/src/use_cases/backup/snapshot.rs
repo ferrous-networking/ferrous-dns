@@ -222,4 +222,6 @@ pub struct ImportSummary {
     pub local_records_imported: usize,
     pub local_records_skipped: usize,
     pub errors: Vec<String>,
+    /// What was restored differently from the backup, and why.
+    pub warnings: Vec<String>,
 }

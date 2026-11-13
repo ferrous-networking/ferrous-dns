@@ -2517,6 +2517,19 @@
                     </template>
                 </ul>
             </div>
+
+            <div x-show="backupImportWarnings && backupImportWarnings.length > 0" x-cloak
+                 style="border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:14px;background:rgba(245,158,11,0.05);margin-top:12px">
+                <p style="font-size:13px;font-weight:600;color:var(--color-warning);margin:0 0 8px;display:flex;align-items:center;gap:6px">
+                    <i data-lucide="shield-alert" style="width:14px;height:14px"></i>
+                    Not restored as in the backup
+                </p>
+                <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px">
+                    <template x-for="warning in backupImportWarnings" :key="warning">
+                        <li style="font-size:12px;color:var(--text-primary)" x-text="warning"></li>
+                    </template>
+                </ul>
+            </div>
         </div>
 
     </div>

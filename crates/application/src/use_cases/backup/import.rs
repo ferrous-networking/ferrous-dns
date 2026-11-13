@@ -110,13 +110,14 @@ impl ImportConfigUseCase {
         }
 
         let mut errors: Vec<String> = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
 
         // Groups first: pools and blocklist sources name them by id.
         let (groups_imported, groups_skipped) = self.import_groups(&snapshot, &mut errors).await;
         let group_ids = self.map_group_ids(&snapshot).await?;
 
         let (config_updated, restart_required) = match self
-            .apply_config(&snapshot, group_ids.as_ref(), options)
+            .apply_config(&snapshot, group_ids.as_ref(), options, &mut warnings)
             .await
         {
             Ok(changed) => (true, changed),
@@ -151,6 +152,7 @@ impl ImportConfigUseCase {
             local_records_imported,
             local_records_skipped,
             errors = errors.len(),
+            warnings = warnings.len(),
             "Backup import completed"
         );
 
@@ -164,6 +166,7 @@ impl ImportConfigUseCase {
             local_records_imported,
             local_records_skipped,
             errors,
+            warnings,
         })
     }
 
@@ -204,12 +207,14 @@ impl ImportConfigUseCase {
     }
 
     /// Restores the config section and returns whether it differs from the
-    /// config that was running; `Err` says why it was not restored.
+    /// config that was running; `Err` says why it was not restored. What it
+    /// restored differently from the backup goes to `warnings`.
     async fn apply_config(
         &self,
         snapshot: &BackupSnapshot,
         group_ids: Option<&HashMap<i64, i64>>,
         options: ImportOptions,
+        warnings: &mut Vec<String>,
     ) -> Result<bool, String> {
         let Some(path) = &self.destination.path else {
             let msg = "No config file path available — config section not restored.";
@@ -317,7 +322,10 @@ impl ImportConfigUseCase {
 
         new_config.logging.level = sc.logging.level.clone();
 
-        new_config.auth.enabled = sc.auth.enabled;
+        // A backup can turn login on but never off: a file handed to the
+        // dashboard must not open it to everyone.
+        let kept_auth_on = new_config.auth.enabled && !sc.auth.enabled;
+        new_config.auth.enabled |= sc.auth.enabled;
         new_config.auth.session_ttl_hours = sc.auth.session_ttl_hours;
         new_config.auth.remember_me_days = sc.auth.remember_me_days;
         new_config.auth.login_rate_limit_attempts = sc.auth.login_rate_limit_attempts;
@@ -338,6 +346,12 @@ impl ImportConfigUseCase {
                 let changed =
                     serde_json::to_value(&*config).ok() != serde_json::to_value(&new_config).ok();
                 *config = new_config;
+                if kept_auth_on {
+                    warnings.push(
+                        "The backup has authentication off; it stays on here. Turn off Enable Authentication under Settings > Security if you mean to."
+                            .to_string(),
+                    );
+                }
                 Ok(changed)
             }
             Err(e) => {

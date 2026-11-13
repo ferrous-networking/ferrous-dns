@@ -17,6 +17,9 @@ pub struct ImportSummaryResponse {
     pub restart_required: bool,
     pub summary: ImportSummaryDto,
     pub errors: Vec<String>,
+    /// What was restored differently from the backup, and why. These do not
+    /// make `success` false.
+    pub warnings: Vec<String>,
 }
 
 /// Serializable summary of what was created or skipped during import.

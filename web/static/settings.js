@@ -201,6 +201,7 @@
             // Backup state
             backupImportResult: null,
             backupImportErrors: [],
+            backupImportWarnings: [],
             backupImporting: false,
             backupKeepHostSettings: false,
             async init() {
@@ -1273,6 +1274,7 @@
                 this.backupImporting = true;
                 this.backupImportResult = null;
                 this.backupImportErrors = [];
+                this.backupImportWarnings = [];
                 const fd = new FormData();
                 fd.append('file', input.files[0]);
                 const query = this.backupKeepHostSettings ? '?keep_host_settings=true' : '';
@@ -1285,9 +1287,12 @@
                     if (res.ok) {
                         this.backupImportResult = data.summary;
                         this.backupImportErrors = data.errors || [];
+                        this.backupImportWarnings = data.warnings || [];
                         if (data.success === false) {
                             const count = this.backupImportErrors.length;
                             this.showAlert('error', `Imported with ${count} error${count === 1 ? '' : 's'}; see the summary below`);
+                        } else if (this.backupImportWarnings.length > 0) {
+                            this.showAlert('success', 'Import completed; see the notes below');
                         } else {
                             this.showAlert('success', 'Import completed successfully');
                         }
