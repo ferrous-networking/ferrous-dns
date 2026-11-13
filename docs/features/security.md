@@ -124,7 +124,7 @@ DELETE /ferrous/api/v1/api-tokens/{id}     # Delete a token
 
 ### Import Custom Keys
 
-You can bring an existing key, from a Pi-hole migration for example, as the `token` of `POST /ferrous/api/v1/api-tokens`, or put it in place of a token's key with `PUT /ferrous/api/v1/api-tokens/{id}`. A custom key needs at least 32 characters, since nothing throttles guesses at `X-Api-Key`; Pi-hole's app passwords (44) and v5 API tokens (64) are long enough. Keys created before this minimum keep working.
+You can bring an existing key, from a Pi-hole migration for example, as the `token` of `POST /ferrous/api/v1/api-tokens`, or put it in place of a token's key with `PUT /ferrous/api/v1/api-tokens/{id}`. A custom key needs at least 32 characters and no space or tab at either end, since nothing throttles guesses at `X-Api-Key`; Pi-hole's app passwords (44) and v5 API tokens (64) are long enough. Keys created before this minimum keep working.
 
 ---
 
@@ -572,7 +572,7 @@ Both came from internal reviews. An external review of the DNS message parsing, 
 | TOTP / 2FA (authenticator app) | :white_check_mark: Active |
 | Passkeys / WebAuthn (second factor + passwordless) | :white_check_mark: Active |
 | API request rate limiting | :x: Not implemented |
-| Security response headers (framing, sniffing, referrer) | :white_check_mark: Active on every web response |
+| Security response headers (framing, sniffing, referrer) | :white_check_mark: Active on the dashboard, both APIs, `/metrics` and DoH on `web_port` |
 | Script Content-Security-Policy | :x: Not implemented — Alpine's standard build evaluates its expressions |
 | Role enforcement | :x: Not implemented — every user and API token is a full admin |
 | Login attempt throttling / lockout | :white_check_mark: Active — per client address, shared by the dashboard and Pi-hole logins |

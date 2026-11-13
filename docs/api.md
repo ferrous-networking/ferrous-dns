@@ -582,8 +582,8 @@ multipart field (`file`). Returns an import summary describing what was applied.
 - Restored settings take effect after a restart. When they differ from the
   running ones, `restart_required` is `true` and the dashboard shows the restart
   banner.
-- An import can turn authentication on but never off. A backup with it off
-  leaves it on here, and `warnings` says so.
+- An import can turn authentication and the login lockout on but never off. A
+  backup with either off leaves it on here, and `warnings` says so.
 
 ```json
 {
@@ -605,7 +605,7 @@ multipart field (`file`). Returns an import summary describing what was applied.
 
 A **partial import** still answers `200`: the import is not transactional, so what was restored stays applied. `success` is then `false`, and `errors` names each item that was not restored, such as a local record with an invalid address or a blocklist source routed for a group the backup does not have.
 
-`warnings` names each setting restored differently from the backup, and why. Warnings do not make `success` false.
+`warnings` names each setting this server kept on where the backup had it off: authentication, or the login lockout (`login_rate_limit_attempts = 0`). Warnings do not make `success` false.
 
 ---
 
@@ -844,7 +844,7 @@ Returns all tokens. Only the token prefix is shown in the listing: 8 characters 
 POST /ferrous/api/v1/api-tokens
 ```
 
-**Auth:** session or API key · **Returns:** `201` `CreatedApiTokenResponse` · **Errors:** `400` empty or too long name, or a `token` shorter than 32 characters, `409` name taken
+**Auth:** session or API key · **Returns:** `201` `CreatedApiTokenResponse` · **Errors:** `400` empty or too long name, or a `token` shorter than 32 characters or with whitespace at either end, `409` name taken
 
 Send a `token` to bring an existing key instead of generating one; it needs at least 32 characters.
 
@@ -870,7 +870,7 @@ Response includes the full token value — save it immediately:
 PUT /ferrous/api/v1/api-tokens/{id}
 ```
 
-**Auth:** session or API key · **Returns:** `200` `ApiTokenResponse` · **Errors:** `400` invalid name or a `token` shorter than 32 characters, `404` unknown token, `409` name taken
+**Auth:** session or API key · **Returns:** `200` `ApiTokenResponse` · **Errors:** `400` invalid name, or a `token` shorter than 32 characters or with whitespace at either end, `404` unknown token, `409` name taken
 
 Send the `name`, which is required, and `token` to import a custom key of at least 32 characters:
 

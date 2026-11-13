@@ -169,11 +169,11 @@ The default, `["*"]`, lets any origin call the API, but without credentials: a b
 cors_allowed_origins = ["https://dashboard.example.com"]
 ```
 
-The dashboard itself is same-origin and needs no entry.
+The dashboard itself is same-origin and needs no entry. A list allows no credentials either, and a listed origin may send only the `Content-Type` and `Authorization` headers, so a script there cannot send `X-Api-Key` and reaches only the endpoints that need no login. An integration calls the API from a server, where CORS does not apply.
 
 ### Security headers {#security-headers}
 
-Every response of the web listener carries:
+Every response of the dashboard's router carries these: the UI, both APIs, `/docs`, `/metrics` and DoH on `web_port`.
 
 | Header | Value | Effect |
 |:-------|:------|:-------|
@@ -181,6 +181,8 @@ Every response of the web listener carries:
 | `X-Frame-Options` | `SAMEORIGIN` | The same, for browsers that predate `frame-ancestors` |
 | `X-Content-Type-Options` | `nosniff` | The browser uses each response's declared type instead of guessing one |
 | `Referrer-Policy` | `same-origin` | The dashboard's URLs are not sent to other sites |
+
+Two responses carry none, since neither serves a page: the redirect from plain HTTP to HTTPS when [web TLS](#web-tls) is on, and DoH on its own `doh_port`.
 
 A page on another origin, another subdomain or port included, can no longer frame the dashboard. A dashboard app that embedded it from its own host name shows an empty frame instead; open it in its own tab, or serve both under one origin through a reverse proxy. A proxy should not add `X-Frame-Options` of its own: two different values make browsers ignore the header.
 

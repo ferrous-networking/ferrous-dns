@@ -17,8 +17,9 @@ pub struct ImportSummaryResponse {
     pub restart_required: bool,
     pub summary: ImportSummaryDto,
     pub errors: Vec<String>,
-    /// What was restored differently from the backup, and why. These do not
-    /// make `success` false.
+    /// Settings this server kept on where the backup had them off
+    /// (authentication, the login lockout), and why. These do not make
+    /// `success` false.
     pub warnings: Vec<String>,
 }
 
