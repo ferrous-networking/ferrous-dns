@@ -2,6 +2,10 @@ use crate::DomainError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Fewest characters a custom key may have. Pi-hole's keys are longer (44 for
+/// a v6 app password, 64 for a v5 API token), and nothing throttles guesses.
+pub const MIN_CUSTOM_KEY_CHARS: usize = 32;
+
 /// A named API token for machine-to-machine authentication.
 ///
 /// Only the SHA-256 hash of the key is stored, and validation looks it up; the
@@ -18,6 +22,24 @@ pub struct ApiToken {
 }
 
 impl ApiToken {
+    /// A custom key replaces the generated 256-bit one, so it must be long
+    /// enough that guessing it is out of reach. Surrounding whitespace is
+    /// refused rather than trimmed: HTTP drops it from an `X-Api-Key` value,
+    /// so a key that has it could never sign in there.
+    pub fn validate_custom_key(key: &str) -> Result<(), DomainError> {
+        if key.trim() != key {
+            return Err(DomainError::InvalidInput(
+                "A custom token cannot start or end with whitespace".to_string(),
+            ));
+        }
+        if key.chars().count() < MIN_CUSTOM_KEY_CHARS {
+            return Err(DomainError::InvalidInput(format!(
+                "A custom token needs at least {MIN_CUSTOM_KEY_CHARS} characters"
+            )));
+        }
+        Ok(())
+    }
+
     pub fn validate_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::InvalidInput(

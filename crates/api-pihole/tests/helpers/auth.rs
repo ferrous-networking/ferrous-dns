@@ -20,7 +20,7 @@ use ferrous_dns_domain::{
 use std::sync::{Arc, Mutex};
 
 pub const ADMIN_PASSWORD: &str = "correct-password";
-pub const APP_PASSWORD: &str = "app-password-0123456789abcdef";
+pub const APP_PASSWORD: &str = "app-password-0123456789abcdef-0123";
 pub const TOTP_CODE: &str = "123456";
 
 /// The auth use cases wired the way `cli/src/wiring/auth.rs` wires them: one

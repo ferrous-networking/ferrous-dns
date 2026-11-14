@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::info;
 use utoipa::openapi::server::Server;
 use utoipa::openapi::OpenApi;
@@ -92,6 +93,35 @@ async fn canonical_peer(mut request: Request) -> Request {
         peer.set_ip(peer.ip().to_canonical());
     }
     request
+}
+
+/// Headers on every web response: no framing by another site (both the CSP
+/// form and the older one), no content-type guessing, and no dashboard URL in
+/// the `Referer` sent to other sites. Not a full CSP: Alpine's standard build
+/// evaluates expressions, which a script policy would have to allow.
+fn with_security_headers(app: Router) -> Router {
+    [
+        (
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("frame-ancestors 'self'"),
+        ),
+        (
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("SAMEORIGIN"),
+        ),
+        (
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ),
+        (
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("same-origin"),
+        ),
+    ]
+    .into_iter()
+    .fold(app, |app, (name, value)| {
+        app.layer(SetResponseHeaderLayer::if_not_present(name, value))
+    })
 }
 
 pub async fn start_web_server(
@@ -340,7 +370,7 @@ fn create_app(
     }
 
     // Last, so it covers every route merged above.
-    app.layer(middleware::map_request(canonical_peer))
+    with_security_headers(app).layer(middleware::map_request(canonical_peer))
 }
 
 /// Both APIs, plus the `/ferrous-config.js` that tells the UI where the

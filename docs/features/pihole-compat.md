@@ -352,7 +352,7 @@ If you have tools pointing to Pi-hole's API:
 
 - **Same server IP**: no changes needed — `/api/*` continues to work
 - **Different server**: update the IP/hostname in your integration
-- **Tools logged in with a Pi-hole app password**: create an API token with the same value (Settings > API > API Tokens > **Custom Token**) and they keep working unchanged
+- **Tools logged in with a Pi-hole app password**: create an API token with the same value (Settings > API > API Tokens > **Custom Token**) and they keep working unchanged. A custom token needs at least 32 characters; Pi-hole's app passwords have 44
 
 ---
 

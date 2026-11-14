@@ -53,6 +53,7 @@ async fn get_all_api_tokens(
     request_body = CreateApiTokenRequest,
     responses(
         (status = 201, description = "Token created (raw token returned only here)", body = CreatedApiTokenResponse),
+        (status = 400, description = "Invalid name, or a custom token shorter than 32 characters or with whitespace at either end"),
         (status = 409, description = "Duplicate token name"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
@@ -88,6 +89,7 @@ async fn create_api_token(
     request_body = UpdateApiTokenRequest,
     responses(
         (status = 200, description = "Token updated", body = ApiTokenResponse),
+        (status = 400, description = "Invalid name, or a replacement token shorter than 32 characters or with whitespace at either end"),
         (status = 404, description = "Token not found"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),

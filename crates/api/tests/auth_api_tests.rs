@@ -1205,3 +1205,111 @@ async fn discoverable_passkey_start_is_refused_once_the_pending_cap_is_reached()
         Err(DomainError::RateLimited)
     ));
 }
+
+/// Counts `hash` and `verify` calls, so a test can tell how much hashing time
+/// a login spent.
+#[derive(Default)]
+struct CountingHasher {
+    hashes: std::sync::atomic::AtomicUsize,
+    verifies: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl PasswordHasher for CountingHasher {
+    async fn hash(&self, _password: &str) -> Result<String, DomainError> {
+        self.hashes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok("$hashed$".to_string())
+    }
+    async fn verify(&self, password: &str, _hash: &str) -> Result<bool, DomainError> {
+        self.verifies
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(password == "correct-password")
+    }
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError> {
+        Ok(passwords.iter().map(|_| "$hashed$".to_string()).collect())
+    }
+    async fn verify_any(&self, _: &str, _: Vec<Arc<str>>) -> Result<Option<usize>, DomainError> {
+        Ok(None)
+    }
+}
+
+/// Verify calls and the outcome of one login as `username`, against an admin
+/// that is `enabled` or not.
+async fn login_cost(
+    username: &str,
+    password: &str,
+    enabled: bool,
+) -> (usize, Result<LoginOutcome, DomainError>) {
+    let mut admin = make_admin_user("$hashed$");
+    admin.enabled = enabled;
+    let hasher = Arc::new(CountingHasher::default());
+    let login_uc = LoginUseCase::new(
+        Arc::new(TestUserProvider { admin }),
+        Arc::new(InMemorySessionRepository::new()),
+        hasher.clone(),
+        no_mfa(),
+        Arc::new(AuthConfig::default()),
+    );
+    let outcome = login_uc
+        .execute(username, password, false, PEER, "127.0.0.1", "test-agent")
+        .await;
+    (
+        hasher.verifies.load(std::sync::atomic::Ordering::SeqCst),
+        outcome,
+    )
+}
+
+/// Hash and verify calls of the first login a fresh use case serves.
+async fn first_login_hashing(username: &str) -> usize {
+    let hasher = Arc::new(CountingHasher::default());
+    let login_uc = LoginUseCase::new(
+        Arc::new(TestUserProvider {
+            admin: make_admin_user("$hashed$"),
+        }),
+        Arc::new(InMemorySessionRepository::new()),
+        hasher.clone(),
+        no_mfa(),
+        Arc::new(AuthConfig::default()),
+    );
+    let _ = login_uc
+        .execute(
+            username,
+            "wrong-password",
+            false,
+            PEER,
+            "127.0.0.1",
+            "test-agent",
+        )
+        .await;
+    hasher.hashes.load(std::sync::atomic::Ordering::SeqCst)
+        + hasher.verifies.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The stand-in hash is made on the first login after a start; that login
+/// must cost the same whether or not the username exists.
+#[tokio::test]
+async fn test_the_first_login_costs_the_same_for_a_known_and_an_unknown_user() {
+    assert_eq!(
+        first_login_hashing("admin").await,
+        first_login_hashing("nobody").await
+    );
+}
+
+/// An unknown or disabled account costs the same password check as a wrong
+/// password, so the response time does not tell which usernames exist.
+#[tokio::test]
+async fn test_login_checks_a_password_for_unknown_and_disabled_users() {
+    for (case, username, password, enabled) in [
+        ("wrong password", "admin", "wrong-password", true),
+        ("unknown user", "nobody", "correct-password", true),
+        ("disabled user", "admin", "correct-password", false),
+    ] {
+        let (verifies, outcome) = login_cost(username, password, enabled).await;
+        assert_eq!(verifies, 1, "{case}");
+        assert!(
+            matches!(outcome, Err(DomainError::InvalidCredentials)),
+            "{case}: expected InvalidCredentials"
+        );
+    }
+}

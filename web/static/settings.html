@@ -1734,13 +1734,17 @@
                            placeholder="Paste an existing API key (e.g. from Pi-hole) or leave empty to auto-generate"
                            style="font-size:13px;font-family:monospace">
                     <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0">
-                        Import an existing key so your integrations keep working without reconfiguration.
+                        Import an existing key so your integrations keep working without reconfiguration. At least 32 characters.
+                    </p>
+                    <p x-show="customKeyTooShort(newTokenCustomKey)" x-cloak
+                       style="font-size:11px;color:var(--color-error);margin:4px 0 0">
+                        A custom token needs at least 32 characters.
                     </p>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:12px">
                     <button @click="createApiToken()" class="btn btn-primary" style="font-size:13px;padding:6px 14px"
-                            :disabled="!newTokenName.trim()"
-                            :style="!newTokenName.trim() ? {opacity: 0.5, cursor: 'not-allowed'} : {}">
+                            :disabled="!newTokenName.trim() || customKeyTooShort(newTokenCustomKey)"
+                            :style="!newTokenName.trim() || customKeyTooShort(newTokenCustomKey) ? {opacity: 0.5, cursor: 'not-allowed'} : {}">
                         <i data-lucide="check" style="width:14px;height:14px"></i>
                         <span x-text="newTokenCustomKey.trim() ? 'Import Token' : 'Generate Token'">Generate Token</span>
                     </button>
@@ -1830,12 +1834,16 @@
                                                     <input type="text" x-model="editTokenCustomKey"
                                                            placeholder="Paste a new API key or leave empty to keep current"
                                                            style="font-size:13px;font-family:monospace;width:100%">
+                                                    <p x-show="customKeyTooShort(editTokenCustomKey)" x-cloak
+                                                       style="font-size:11px;color:var(--color-error);margin:4px 0 0">
+                                                        A replacement token needs at least 32 characters.
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div style="display:flex;gap:8px;margin-top:12px">
                                                 <button @click="saveApiTokenEdit(token.id)" class="btn btn-primary" style="font-size:12px;padding:5px 12px"
-                                                        :disabled="!editTokenName.trim()"
-                                                        :style="!editTokenName.trim() ? {opacity: 0.5, cursor: 'not-allowed'} : {}">
+                                                        :disabled="!editTokenName.trim() || customKeyTooShort(editTokenCustomKey)"
+                                                        :style="!editTokenName.trim() || customKeyTooShort(editTokenCustomKey) ? {opacity: 0.5, cursor: 'not-allowed'} : {}">
                                                     <i data-lucide="check" style="width:13px;height:13px"></i> Save
                                                 </button>
                                                 <button @click="cancelEditToken()" class="btn btn-secondary" style="font-size:12px;padding:5px 12px">
@@ -2506,6 +2514,19 @@
                 <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px">
                     <template x-for="err in backupImportErrors" :key="err">
                         <li style="font-size:12px;color:var(--color-error);font-family:monospace" x-text="err"></li>
+                    </template>
+                </ul>
+            </div>
+
+            <div x-show="backupImportWarnings && backupImportWarnings.length > 0" x-cloak
+                 style="border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:14px;background:rgba(245,158,11,0.05);margin-top:12px">
+                <p style="font-size:13px;font-weight:600;color:var(--color-warning);margin:0 0 8px;display:flex;align-items:center;gap:6px">
+                    <i data-lucide="shield-alert" style="width:14px;height:14px"></i>
+                    Not restored as in the backup
+                </p>
+                <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px">
+                    <template x-for="warning in backupImportWarnings" :key="warning">
+                        <li style="font-size:12px;color:var(--text-primary)" x-text="warning"></li>
                     </template>
                 </ul>
             </div>

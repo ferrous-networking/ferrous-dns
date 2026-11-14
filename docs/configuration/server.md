@@ -155,19 +155,38 @@ API tokens provide programmatic access via the `X-Api-Key` header. Tokens are ma
 
 All API endpoints are protected except public auth routes (`/ferrous/api/v1/auth/status`, `/ferrous/api/v1/auth/setup`, `/ferrous/api/v1/auth/login`, `/ferrous/api/v1/auth/logout`, and the [second-factor and passkey login steps](../api.md#two-factor-authentication-totp)) and the [health check](../api.md#health-check) (`/ferrous/api/v1/health`).
 
+Outside the API, the dashboard's static files, `/ferrous-config.js`, each API's `/openapi.json` and `/docs`, `/metrics` when it is on, and DoH need no login either. See [Auth Guard](../features/security.md#auth-guard).
+
 !!! info "Background cleanup"
     A background task runs periodically to prune expired sessions from the database.
 
 ### CORS
 
-Allow cross-origin requests from specific origins:
+The default, `["*"]`, lets any origin call the API, but without credentials: a browser on another site never sends the session cookie, so it can read only the responses that need no login (`/auth/status`, `/health`, `/openapi.json`). To allow only some origins, list them:
 
 ```toml
 [server]
 cors_allowed_origins = ["https://dashboard.example.com"]
 ```
 
-Use `["*"]` to allow all origins (not recommended for production).
+The dashboard itself is same-origin and needs no entry. A list allows no credentials either, and a listed origin may send only the `Content-Type` and `Authorization` headers, so a script there cannot send `X-Api-Key` and reaches only the endpoints that need no login. An integration calls the API from a server, where CORS does not apply.
+
+### Security headers {#security-headers}
+
+Every response of the dashboard's router carries these: the UI, both APIs, `/docs`, `/metrics` and DoH on `web_port`.
+
+| Header | Value | Effect |
+|:-------|:------|:-------|
+| `Content-Security-Policy` | `frame-ancestors 'self'` | Only a page of the same origin may show the dashboard in a frame |
+| `X-Frame-Options` | `SAMEORIGIN` | The same, for browsers that predate `frame-ancestors` |
+| `X-Content-Type-Options` | `nosniff` | The browser uses each response's declared type instead of guessing one |
+| `Referrer-Policy` | `same-origin` | The dashboard's URLs are not sent to other sites |
+
+Two responses carry none, since neither serves a page: the redirect from plain HTTP to HTTPS when [web TLS](#web-tls) is on, and DoH on its own `doh_port`.
+
+A page on another origin, another subdomain or port included, can no longer frame the dashboard. A dashboard app that embedded it from its own host name shows an empty frame instead; open it in its own tab, or serve both under one origin through a reverse proxy. A proxy should not add `X-Frame-Options` of its own: two different values make browsers ignore the header.
+
+There is no script Content-Security-Policy: Alpine's standard build evaluates its expressions, which such a policy would have to allow.
 
 ---
 

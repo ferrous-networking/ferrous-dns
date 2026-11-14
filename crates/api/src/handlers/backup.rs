@@ -138,5 +138,6 @@ fn into_response(summary: ImportSummary) -> ImportSummaryResponse {
             local_records_skipped: summary.local_records_skipped,
         },
         errors: summary.errors,
+        warnings: summary.warnings,
     }
 }

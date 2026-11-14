@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{info, instrument};
 
 use crate::ports::{PasswordHasher, UserProvider};
@@ -12,6 +13,9 @@ pub struct SetupPasswordUseCase {
     user_provider: Arc<dyn UserProvider>,
     password_hasher: Arc<dyn PasswordHasher>,
     admin_username: String,
+    /// Held from the "no password yet" check to the write, so of two setups
+    /// racing on a fresh install exactly one sets the password.
+    in_progress: Mutex<()>,
 }
 
 impl SetupPasswordUseCase {
@@ -24,11 +28,13 @@ impl SetupPasswordUseCase {
             user_provider,
             password_hasher,
             admin_username,
+            in_progress: Mutex::new(()),
         }
     }
 
     #[instrument(skip(self, password))]
     pub async fn execute(&self, password: &str) -> Result<(), DomainError> {
+        let _setup = self.in_progress.lock().await;
         let user = self
             .user_provider
             .get_by_username(&self.admin_username)

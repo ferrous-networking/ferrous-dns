@@ -1,3 +1,6 @@
+    // Mirrors ferrous_dns_domain::MIN_CUSTOM_KEY_CHARS; the server enforces it too.
+    const MIN_CUSTOM_KEY_CHARS = 32;
+
     function app() {
         return {
             theme: 'light',
@@ -198,6 +201,7 @@
             // Backup state
             backupImportResult: null,
             backupImportErrors: [],
+            backupImportWarnings: [],
             backupImporting: false,
             backupKeepHostSettings: false,
             async init() {
@@ -1059,6 +1063,10 @@
             },
             async createApiToken() {
                 if (!this.newTokenName.trim()) return;
+                if (this.customKeyTooShort(this.newTokenCustomKey)) {
+                    this.showAlert('error', `A custom token needs at least ${MIN_CUSTOM_KEY_CHARS} characters`);
+                    return;
+                }
                 try {
                     const payload = {name: this.newTokenName.trim()};
                     if (this.newTokenCustomKey.trim()) {
@@ -1083,6 +1091,11 @@
                     }
                 } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
             },
+            // Counted in characters, as the server counts them; empty means "generate" or "keep".
+            customKeyTooShort(key) {
+                const trimmed = key.trim();
+                return trimmed.length > 0 && [...trimmed].length < MIN_CUSTOM_KEY_CHARS;
+            },
             startEditToken(token) {
                 this.editingToken = token.id;
                 this.editTokenName = token.name;
@@ -1096,6 +1109,10 @@
             },
             async saveApiTokenEdit(id) {
                 if (!this.editTokenName.trim()) return;
+                if (this.customKeyTooShort(this.editTokenCustomKey)) {
+                    this.showAlert('error', `A replacement token needs at least ${MIN_CUSTOM_KEY_CHARS} characters`);
+                    return;
+                }
                 try {
                     const payload = {name: this.editTokenName.trim()};
                     if (this.editTokenCustomKey.trim()) {
@@ -1257,6 +1274,7 @@
                 this.backupImporting = true;
                 this.backupImportResult = null;
                 this.backupImportErrors = [];
+                this.backupImportWarnings = [];
                 const fd = new FormData();
                 fd.append('file', input.files[0]);
                 const query = this.backupKeepHostSettings ? '?keep_host_settings=true' : '';
@@ -1269,9 +1287,12 @@
                     if (res.ok) {
                         this.backupImportResult = data.summary;
                         this.backupImportErrors = data.errors || [];
+                        this.backupImportWarnings = data.warnings || [];
                         if (data.success === false) {
                             const count = this.backupImportErrors.length;
                             this.showAlert('error', `Imported with ${count} error${count === 1 ? '' : 's'}; see the summary below`);
+                        } else if (this.backupImportWarnings.length > 0) {
+                            this.showAlert('success', 'Import completed; see the notes below');
                         } else {
                             this.showAlert('success', 'Import completed successfully');
                         }

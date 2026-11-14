@@ -42,3 +42,30 @@ fn validate_name_returns_domain_error() {
         "expected InvalidInput, got: {err:?}"
     );
 }
+
+#[test]
+fn test_validate_custom_key_needs_32_characters() {
+    assert!(ApiToken::validate_custom_key(&"k".repeat(31)).is_err());
+    assert!(ApiToken::validate_custom_key(&"k".repeat(32)).is_ok());
+}
+
+/// Characters, not bytes: 16 two-byte characters are 32 bytes but 16 characters.
+#[test]
+fn test_validate_custom_key_counts_characters() {
+    assert!(ApiToken::validate_custom_key(&"é".repeat(16)).is_err());
+    assert!(ApiToken::validate_custom_key(&"é".repeat(32)).is_ok());
+}
+
+/// HTTP strips a header value's surrounding whitespace, so such a key could
+/// never be sent as `X-Api-Key`; the dashboard trims it before it counts.
+#[test]
+fn test_validate_custom_key_refuses_surrounding_whitespace() {
+    assert!(ApiToken::validate_custom_key(&" ".repeat(32)).is_err());
+    assert!(ApiToken::validate_custom_key(&format!(" {} ", "k".repeat(30))).is_err());
+    assert!(ApiToken::validate_custom_key(&format!("{}\t", "k".repeat(32))).is_err());
+}
+
+#[test]
+fn test_validate_custom_key_accepts_inner_spaces() {
+    assert!(ApiToken::validate_custom_key("correct horse battery staple 2026").is_ok());
+}

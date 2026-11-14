@@ -22,9 +22,6 @@ http:
     ferrous-dns-headers:
       headers:
         stsSeconds: 31536000
-        contentTypeNosniff: true
-        frameDeny: true
-        referrerPolicy: same-origin
 
   services:
     ferrous-dns:

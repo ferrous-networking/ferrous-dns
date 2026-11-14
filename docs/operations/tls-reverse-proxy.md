@@ -88,7 +88,7 @@ The proxy serves the whole site at the root of its own host name. The dashboard 
 
 The dashboard polls with plain requests, so no WebSocket settings are needed.
 
-The server sends no security headers of its own. The examples add HSTS, `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: same-origin`, all of which the dashboard works with. They add no Content-Security-Policy, which the dashboard has not been tested under.
+The server sends its own frame, `nosniff` and `Referrer-Policy` headers ([Security headers](../configuration/server.md#security-headers)). The examples add HSTS, which only the proxy can promise for its public name. Do not add `X-Frame-Options` on the proxy as well: a second, different value makes browsers ignore the header.
 
 ### 4. Keep the dashboard port off the network
 

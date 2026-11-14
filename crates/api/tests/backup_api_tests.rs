@@ -1764,3 +1764,91 @@ async fn test_import_of_an_unchanged_config_asks_for_no_restart() {
     assert_ne!(json["restart_required"], true);
     assert!(!state.is_restart_pending());
 }
+
+async fn import_json(app: Router, backup: &Value) -> Value {
+    let payload = serde_json::to_vec(backup).unwrap();
+    let response = app.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice(&body).unwrap()
+}
+
+/// A backup taken with login off must not switch it off on a server that
+/// has it on: the import keeps it on, says so, and still succeeds.
+#[tokio::test]
+async fn test_import_never_turns_authentication_off() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.enabled = true;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(false);
+
+    let json = import_json(router, &backup).await;
+
+    assert!(config.read().await.auth.enabled);
+    assert_eq!(json["success"], true, "{json}");
+    let warnings = json["warnings"].as_array().cloned().unwrap_or_default();
+    assert_eq!(warnings.len(), 1, "{json}");
+    assert!(
+        warnings[0].as_str().unwrap().contains("authentication"),
+        "{json}"
+    );
+}
+
+#[tokio::test]
+async fn test_import_can_turn_authentication_on() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.enabled = false;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(true);
+
+    let json = import_json(router, &backup).await;
+
+    assert!(config.read().await.auth.enabled);
+    assert_eq!(json["warnings"], json!([]), "{json}");
+}
+
+/// Auth off on both sides is not a change, so there is nothing to warn about.
+#[tokio::test]
+async fn test_import_with_authentication_off_on_both_sides_does_not_warn() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.enabled = false;
+
+    let json = import_json(router, &minimal_backup_json()).await;
+
+    assert!(!config.read().await.auth.enabled);
+    assert_eq!(json["warnings"], json!([]), "{json}");
+}
+
+/// `login_rate_limit_attempts = 0` switches the lockout off, so a backup
+/// cannot set it either: unlimited password guesses would follow.
+#[tokio::test]
+async fn test_import_never_turns_the_login_lockout_off() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.login_rate_limit_attempts = 5;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(true);
+    backup["config"]["auth"]["login_rate_limit_attempts"] = json!(0);
+
+    let json = import_json(router, &backup).await;
+
+    assert_eq!(config.read().await.auth.login_rate_limit_attempts, 5);
+    assert_eq!(json["success"], true, "{json}");
+    let warnings = json["warnings"].as_array().cloned().unwrap_or_default();
+    assert_eq!(warnings.len(), 1, "{json}");
+    assert!(warnings[0].as_str().unwrap().contains("lockout"), "{json}");
+}
+
+/// Any other limit in the backup is restored as it is.
+#[tokio::test]
+async fn test_import_restores_a_login_lockout_limit() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.auth.login_rate_limit_attempts = 0;
+    let mut backup = minimal_backup_json();
+    backup["config"]["auth"]["enabled"] = json!(true);
+    backup["config"]["auth"]["login_rate_limit_attempts"] = json!(10);
+
+    let json = import_json(router, &backup).await;
+
+    assert_eq!(config.read().await.auth.login_rate_limit_attempts, 10);
+    assert_eq!(json["warnings"], json!([]), "{json}");
+}

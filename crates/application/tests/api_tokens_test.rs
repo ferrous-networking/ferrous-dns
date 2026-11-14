@@ -157,12 +157,11 @@ async fn create_token_with_custom_key() {
     let repo = Arc::new(MockApiTokenRepo::new());
     let uc = CreateApiTokenUseCase::new(repo);
 
-    let custom = "my-custom-api-key-from-pihole";
+    let custom = "my-custom-api-key-from-pihole-v5x";
     let created = uc.execute("imported", Some(custom)).await.unwrap();
 
     assert_eq!(created.raw_token, custom);
-    // 29 characters: a quarter is 7.
-    assert_eq!(created.token.key_prefix.as_ref(), &custom[..7]);
+    assert_eq!(created.token.key_prefix.as_ref(), &custom[..8]);
 }
 
 #[tokio::test]
@@ -194,23 +193,30 @@ async fn create_token_rejects_duplicate_name() {
 }
 
 #[tokio::test]
-async fn test_create_token_shows_none_of_a_key_shorter_than_four() {
+async fn test_create_token_refuses_a_custom_key_shorter_than_32_characters() {
     let repo = Arc::new(MockApiTokenRepo::new());
-    let uc = CreateApiTokenUseCase::new(repo);
+    let uc = CreateApiTokenUseCase::new(repo.clone());
 
-    let created = uc.execute("short", Some("abc")).await.unwrap();
-    assert_eq!(created.token.key_prefix.as_ref(), "");
+    for key in ["abc", "abcdefgh", &"k".repeat(31), &"é".repeat(31)] {
+        let result = uc.execute("short", Some(key)).await;
+        assert!(
+            matches!(result, Err(DomainError::InvalidInput(_))),
+            "a {}-character key was accepted",
+            key.chars().count()
+        );
+    }
+    assert!(repo.get_all().await.unwrap().is_empty());
 }
 
 #[tokio::test]
-async fn test_create_token_shows_at_most_a_quarter_of_a_custom_key() {
+async fn test_create_token_accepts_a_32_character_custom_key() {
     let repo = Arc::new(MockApiTokenRepo::new());
     let uc = CreateApiTokenUseCase::new(repo);
 
-    for (key, prefix) in [("abcdefgh", "ab"), ("0123456789abcdef", "0123")] {
-        let created = uc.execute(key, Some(key)).await.unwrap();
-        assert_eq!(created.token.key_prefix.as_ref(), prefix, "key {key}");
-    }
+    let key = "0123456789abcdef0123456789abcdef";
+    let created = uc.execute("exact", Some(key)).await.unwrap();
+    assert_eq!(created.raw_token, key);
+    assert_eq!(created.token.key_prefix.as_ref(), "01234567");
 }
 
 #[tokio::test]
@@ -227,9 +233,10 @@ async fn create_token_prefix_stops_at_char_boundary() {
     let repo = Arc::new(MockApiTokenRepo::new());
     let uc = CreateApiTokenUseCase::new(repo);
 
-    // 11 bytes: a quarter is 2, which falls inside the first 'é'.
-    let created = uc.execute("utf8", Some("aééééé")).await.unwrap();
-    assert_eq!(created.token.key_prefix.as_ref(), "a");
+    // 8 bytes fall inside the fourth 'é'.
+    let key = format!("a{}", "é".repeat(31));
+    let created = uc.execute("utf8", Some(&key)).await.unwrap();
+    assert_eq!(created.token.key_prefix.as_ref(), "aééé");
 }
 
 #[tokio::test]
@@ -257,13 +264,46 @@ async fn update_token_with_new_key() {
 
     let update = UpdateApiTokenUseCase::new(repo);
     let updated = update
-        .execute(id, "token", Some("new-custom-key-value"))
+        .execute(id, "token", Some("new-custom-key-value-0123456789ab"))
         .await
         .unwrap();
 
     assert_ne!(updated.key_hash.as_ref(), old_hash.as_str());
-    // 20 characters: a quarter is 5.
-    assert_eq!(updated.key_prefix.as_ref(), "new-c");
+    assert_eq!(updated.key_prefix.as_ref(), "new-cust");
+}
+
+#[tokio::test]
+async fn test_update_token_refuses_a_short_replacement_key() {
+    let repo = Arc::new(MockApiTokenRepo::new());
+    let created = CreateApiTokenUseCase::new(repo.clone())
+        .execute("token", None)
+        .await
+        .unwrap();
+    let id = created.token.id.unwrap();
+
+    let result = UpdateApiTokenUseCase::new(repo.clone())
+        .execute(id, "token", Some(&"k".repeat(31)))
+        .await;
+
+    assert!(matches!(result, Err(DomainError::InvalidInput(_))));
+    let validate = ValidateApiTokenUseCase::new(repo);
+    assert_eq!(validate.execute(&created.raw_token).await.unwrap(), id);
+}
+
+/// A short key made before the minimum existed keeps signing in.
+#[tokio::test]
+async fn test_a_short_key_created_before_the_minimum_still_validates() {
+    use sha2::{Digest, Sha256};
+    let repo = Arc::new(MockApiTokenRepo::new());
+    let legacy = "legacy-key";
+    let hash: String = Sha256::digest(legacy.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let token = repo.create("legacy", "le", &hash).await.unwrap();
+
+    let validate = ValidateApiTokenUseCase::new(repo);
+    assert_eq!(validate.execute(legacy).await.unwrap(), token.id.unwrap());
 }
 
 #[tokio::test]
