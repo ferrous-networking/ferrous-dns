@@ -57,4 +57,4 @@ Show the full draft to the user and stop. Do not post until they say to.
 
 When they approve: Write the body to a temp file and `gh pr review $pr --approve --body-file <path>` (or `--comment` / `--request-changes` as instructed), then delete the temp file. Never pass a long markdown body inline — backticks, `$` and apostrophes in the same text make the quoting unreliable.
 
-Afterwards, return to the branch you started on and report anything left open: unfiled follow-up issues, checks still running.
+Afterwards, return to the branch you started on, run the cleanup in `.claudin/rules/build-cleanup.md`, and report anything left open: unfiled follow-up issues, checks still running.
