@@ -115,7 +115,7 @@ async fn test_bulk_create_saves_valid_entries_and_reports_invalid_ones() {
 }
 
 #[tokio::test]
-async fn test_bulk_create_trims_and_lowercases_like_the_single_add() {
+async fn test_bulk_create_trims_and_lowercases_each_domain() {
     let f = fixture();
 
     let results = f
@@ -127,6 +127,34 @@ async fn test_bulk_create_trims_and_lowercases_like_the_single_add() {
     let domains: Vec<&str> = results.iter().map(|r| r.domain.as_str()).collect();
     assert_eq!(domains, ["ads.example.com", "example.com."]);
     assert_eq!(statuses(&results), ["added", "added"]);
+}
+
+#[tokio::test]
+async fn test_bulk_create_reports_a_domain_over_200_chars_as_invalid() {
+    let f = fixture();
+    // A valid domain, but too long to be a rule name.
+    let domain = format!("{}.com", "a".repeat(206));
+
+    let results = f.use_case.execute(allow(&[&domain])).await.unwrap();
+
+    match &results[0].outcome {
+        Err(DomainError::InvalidManagedDomain(msg)) => {
+            assert_eq!(msg, "Managed domain name cannot exceed 200 characters")
+        }
+        other => panic!("expected an invalid name, got {other:?}"),
+    }
+    assert_eq!(f.repo.count().await, 0);
+}
+
+#[tokio::test]
+async fn test_bulk_create_still_answers_when_the_reload_fails() {
+    let f = fixture();
+    f.engine.set_should_fail_reload(true).await;
+
+    let results = f.use_case.execute(allow(&["a.com"])).await.unwrap();
+
+    assert_eq!(statuses(&results), ["added"]);
+    assert_eq!(f.repo.count().await, 1);
 }
 
 #[tokio::test]

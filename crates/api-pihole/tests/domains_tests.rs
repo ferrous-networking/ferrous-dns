@@ -321,7 +321,8 @@ async fn create_with_array_unknown_group_errors_each_item_as_before() {
 
 #[tokio::test]
 async fn create_regex_array_still_writes_each_item() {
-    let app = app().await;
+    let (app, reloads) =
+        helpers::create_pihole_test_app_counting_reloads(helpers::create_test_db().await).await;
 
     let reply = create(
         &app,
@@ -342,6 +343,51 @@ async fn create_regex_array_still_writes_each_item() {
     assert_eq!(
         names(&list(&app, "/domains/deny/regex").await),
         ["^a\\.", "^b\\."]
+    );
+    assert_eq!(
+        reloads.load(Ordering::SeqCst),
+        2,
+        "one rebuild per regex written"
+    );
+}
+
+#[tokio::test]
+async fn listing_every_domain_keeps_insertion_order() {
+    // Only a one-domain lookup reads in type order; FTL lists the table in
+    // insertion order.
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "first.example.com" })).await;
+    create(
+        &app,
+        "allow/exact",
+        json!({ "domain": "second.example.com" }),
+    )
+    .await;
+
+    assert_eq!(
+        names(&list(&app, "/domains").await),
+        ["first.example.com", "second.example.com"]
+    );
+}
+
+#[tokio::test]
+async fn a_domain_lookup_lists_exact_before_regex() {
+    let app = app().await;
+    create(&app, "allow/regex", json!({ "domain": "same.example.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "same.example.com" })).await;
+
+    let entries: Vec<(ftl::DomainType, ftl::DomainKind)> = list(&app, "/domains/same.example.com")
+        .await
+        .into_iter()
+        .map(|d| (d.domain_type, d.kind))
+        .collect();
+
+    assert_eq!(
+        entries,
+        [
+            (ftl::DomainType::Deny, ftl::DomainKind::Exact),
+            (ftl::DomainType::Allow, ftl::DomainKind::Regex),
+        ]
     );
 }
 

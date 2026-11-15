@@ -740,6 +740,10 @@ async fn test_bulk_create_rejects_bad_action_or_comment() {
 
     let (status, json) = post_bulk(&app, json!({ "domains": ["a.com"], "action": "block" })).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+    assert_eq!(
+        json["error"],
+        "Invalid input: invalid action 'block': expected 'allow' or 'deny'"
+    );
 
     let (status, json) = post_bulk(
         &app,
@@ -848,4 +852,19 @@ async fn test_bulk_create_names_the_rules_an_entry_clashed_with() {
             "error": "Other rules in this group are named 'clash.example.com' and 'clash.example.com (allow)'"
         })
     );
+}
+
+#[tokio::test]
+async fn test_bulk_create_keeps_enabled_false() {
+    let app = test_app().await.router;
+
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["off.example.com"], "action": "deny", "enabled": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let listed = get_json(app, "/managed-domains?search=off.example.com").await;
+    assert_eq!(listed["data"][0]["enabled"], false, "{listed}");
 }

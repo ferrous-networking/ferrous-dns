@@ -585,6 +585,28 @@ async fn test_create_many_adds_the_opposite_action() {
 }
 
 #[tokio::test]
+async fn test_create_many_checks_presence_per_group() {
+    let (repo, pool) = repo().await;
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Kids')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    repo.create(NewManagedDomain {
+        group_id: 2,
+        ..new_domain("Shop", "shop.com", DomainAction::Allow)
+    })
+    .await
+    .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![bulk_named_after("shop.com", DomainAction::Allow)])
+        .await
+        .unwrap();
+
+    assert_eq!(created(&outcomes[0]).group_id, 1);
+}
+
+#[tokio::test]
 async fn test_create_many_uses_the_fallback_name_when_the_name_is_taken() {
     let (repo, _pool) = repo().await;
     repo.create_many(vec![bulk_named_after("both.com", DomainAction::Deny)])
