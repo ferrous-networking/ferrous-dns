@@ -172,11 +172,11 @@
                         await this.loadRecords();
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        alert('Failed to delete record');
+                        showToast('Failed to delete record', 'error');
                     }
                 } catch (e) {
                     console.error(e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
         }

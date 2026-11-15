@@ -67,18 +67,18 @@
         </a>
     </div>
 </aside>
-<main style="padding:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+<main>
+    <div class="page-header">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary);margin:0">Block Services</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Block entire services and configure Safe Search per group.</p>
+            <h2 class="page-title">Block Services</h2>
+            <p class="page-subtitle">Block entire services and configure Safe Search per group.</p>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
             <template x-if="activeTab === 'catalog'">
-                <span class="badge-count" x-text="blockedCount + ' blocked'">0 blocked</span>
+                <span class="badge badge-danger" x-text="blockedCount + ' blocked'">0 blocked</span>
             </template>
-            <span style="font-size:14px;font-weight:500;color:var(--text-secondary)">Group:</span>
-            <select class="group-select" x-model="selectedGroupId" @change="selectGroup($event.target.value)">
+            <label for="bs-group" style="font-size:13px;font-weight:500;color:var(--text-secondary)">Group:</label>
+            <select id="bs-group" class="input" style="width:auto;padding:8px 12px" x-model="selectedGroupId" @change="selectGroup($event.target.value)">
                 <template x-for="g in groups" :key="g.id">
                     <option :value="g.id" x-text="g.name" :selected="g.id == selectedGroupId"></option>
                 </template>
@@ -95,12 +95,12 @@
 
     <!-- TAB: Service Catalog + Blocked Services -->
     <div x-show="activeTab === 'catalog'">
-        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
-            <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">
+        <div class="card" style="margin-bottom:var(--gap)">
+            <h3 class="card-title">
                 Blocked Services (<span x-text="blockedCount"></span>)
             </h3>
             <template x-if="blockedCount === 0">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No services are currently blocked for this group.</div>
+                <div class="empty-state"><p>No services are currently blocked for this group.</p></div>
             </template>
             <template x-if="blockedCount > 0">
                 <div style="overflow-x:auto">
@@ -114,12 +114,12 @@
                             <template x-for="entry in blockedServices" :key="entry.service_id">
                                 <tr>
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="serviceName(entry.service_id)"></td>
-                                    <td><span class="badge-category" x-text="serviceCategory(entry.service_id)"></span></td>
+                                    <td><span class="badge badge-indigo" x-text="serviceCategory(entry.service_id)"></span></td>
                                     <td style="color:var(--text-secondary)" x-text="groupName(entry.group_id)"></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'"></td>
+                                    <td style="color:var(--text-secondary);font-size:12px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'"></td>
                                     <td>
-                                        <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)">
-                                            <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
+                                        <button class="btn-icon btn-icon-danger" title="Unblock" @click="unblockService(entry.service_id)">
+                                            <i data-lucide="trash-2"></i>
                                         </button>
                                     </td>
                                 </tr>
@@ -130,7 +130,7 @@
             </template>
         </div>
 
-        <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">Service Catalog</h3>
+        <h3 class="section-title">Service Catalog</h3>
 
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
             <template x-for="cat in categories" :key="cat.id">
@@ -140,7 +140,7 @@
 
         <div style="position:relative;margin-bottom:24px">
             <i data-lucide="search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-secondary)"></i>
-            <input type="text" class="search-input" placeholder="Search services..." x-model="searchQuery">
+            <input type="text" class="input search-input" placeholder="Search services..." x-model="searchQuery">
         </div>
 
         <template x-if="loading">
@@ -150,20 +150,21 @@
         <template x-if="!loading">
             <div>
                 <template x-if="filteredServices.length === 0">
-                    <div style="text-align:center;padding:48px;color:var(--text-secondary)">No services match your filter.</div>
+                    <div class="empty-state"><p>No services match your filter.</p></div>
                 </template>
                 <div class="service-grid">
                     <template x-for="svc in filteredServices" :key="svc.id">
                         <div class="service-card" :class="{ blocked: isBlocked(svc.id) }" @click="toggleService(svc.id)">
                             <div class="service-icon" x-html="svc.icon_svg"></div>
-                            <div style="font-size:14px;font-weight:600;color:var(--text-primary);text-align:center" x-text="svc.name"></div>
+                            <div style="font-size:13px;font-weight:600;color:var(--text-primary);text-align:center" x-text="svc.name"></div>
                             <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">
-                                <span class="badge-category" x-text="svc.category_name"></span>
-                                <template x-if="svc.is_custom"><span class="badge-custom">Custom</span></template>
+                                <span class="badge badge-indigo" x-text="svc.category_name"></span>
+                                <template x-if="svc.is_custom"><span class="badge badge-success">Custom</span></template>
                             </div>
-                            <div class="toggle-switch" :class="{ on: isBlocked(svc.id) }"
-                                 :style="toggling[svc.id] ? 'opacity:0.5;pointer-events:none' : ''"
-                                 @click.stop="toggleService(svc.id)"></div>
+                            <button type="button" class="switch switch-danger" role="switch"
+                                    :class="{ on: isBlocked(svc.id) }" :aria-checked="String(isBlocked(svc.id))"
+                                    :aria-label="'Block ' + svc.name" :disabled="toggling[svc.id]"
+                                    @click.stop="toggleService(svc.id)"></button>
                         </div>
                     </template>
                 </div>
@@ -173,19 +174,19 @@
 
     <!-- TAB: Custom Services -->
     <div x-show="activeTab === 'custom'">
-        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
+        <div class="card" style="margin-bottom:var(--gap)">
+            <div class="card-header" style="align-items:center">
+                <h3 class="card-title">
                     Custom Services (<span x-text="customServices.length"></span>)
                 </h3>
-                <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                <button class="btn btn-primary btn-sm"
                         @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''">
                     + New
                 </button>
             </div>
 
             <template x-if="showCustomForm">
-                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius);padding:16px;margin-bottom:16px">
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
                             <label class="form-label">Name</label>
@@ -198,10 +199,10 @@
                     </div>
                     <div class="form-group" style="margin-bottom:12px">
                         <label class="form-label">Domains (one per line)</label>
-                        <textarea class="textarea" x-model="customForm.domains" placeholder="google.com&#10;*.google.com&#10;accounts.google.com"></textarea>
+                        <textarea class="input" x-model="customForm.domains" placeholder="google.com&#10;*.google.com&#10;accounts.google.com"></textarea>
                     </div>
                     <template x-if="customFormError">
-                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="customFormError"></div>
+                        <div class="notice notice-error" style="margin-bottom:12px" x-text="customFormError"></div>
                     </template>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-primary" @click="saveCustomService()" :disabled="customFormSubmitting"
@@ -212,7 +213,7 @@
             </template>
 
             <template x-if="customServices.length === 0 && !showCustomForm">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No custom services yet.</div>
+                <div class="empty-state"><p>No custom services yet.</p></div>
             </template>
             <template x-if="customServices.length > 0">
                 <div style="overflow-x:auto">
@@ -226,16 +227,16 @@
                             <template x-for="cs in customServices" :key="cs.service_id">
                                 <tr>
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="cs.name"></td>
-                                    <td><span class="badge-category" x-text="cs.category_name"></span></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.domains.length + ' domain' + (cs.domains.length !== 1 ? 's' : '')"></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
+                                    <td><span class="badge badge-indigo" x-text="cs.category_name"></span></td>
+                                    <td style="color:var(--text-secondary);font-size:12px" x-text="cs.domains.length + ' domain' + (cs.domains.length !== 1 ? 's' : '')"></td>
+                                    <td style="color:var(--text-secondary);font-size:12px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
                                     <td>
                                         <div style="display:flex;gap:4px">
                                             <button class="btn-icon" title="Edit" @click="editCustomService(cs)">
-                                                <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                                <i data-lucide="edit-2"></i>
                                             </button>
-                                            <button class="btn-icon" title="Delete" @click="deleteCustomService(cs.service_id)">
-                                                <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
+                                            <button class="btn-icon btn-icon-danger" title="Delete" @click="deleteCustomService(cs.service_id)">
+                                                <i data-lucide="trash-2"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -256,7 +257,7 @@
 
         <template x-if="!ssLoading">
             <div>
-                <p style="font-size:14px;color:var(--text-secondary);margin:0 0 20px">
+                <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px">
                     Force Safe Search on DNS level for the selected group. Enabling an engine redirects its domains to the official safe search endpoint automatically.
                 </p>
 
@@ -265,9 +266,10 @@
                         <div class="engine-card" :class="{ 'ss-on': ssEnabled(engine.id) }">
                             <i :data-lucide="engine.icon" style="width:28px;height:28px;color:var(--text-secondary)"></i>
                             <div class="engine-name" x-text="engine.name"></div>
-                            <div class="toggle-switch" :class="{ 'on-green': ssEnabled(engine.id) }"
-                                 :style="ssToggling[engine.id] ? 'opacity:0.5;pointer-events:none' : ''"
-                                 @click="toggleSafeSearch(engine.id)"></div>
+                            <button type="button" class="switch" role="switch"
+                                    :class="{ on: ssEnabled(engine.id) }" :aria-checked="String(ssEnabled(engine.id))"
+                                    :aria-label="'Safe Search for ' + engine.name" :disabled="ssToggling[engine.id]"
+                                    @click="toggleSafeSearch(engine.id)"></button>
                             <template x-if="engine.id === 'youtube' && ssEnabled('youtube')">
                                 <div class="yt-mode">
                                     <label>
@@ -289,8 +291,8 @@
                 </div>
 
                 <template x-if="safeSearchConfigs.filter(c => c.enabled).length > 0">
-                    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
-                        <h3 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 14px 0">Active Configurations</h3>
+                    <div class="card">
+                        <h3 class="card-title">Active Configurations</h3>
                         <div style="overflow-x:auto">
                             <table class="table">
                                 <thead>
@@ -301,13 +303,10 @@
                                         <tr>
                                             <td style="font-weight:500;color:var(--text-primary);text-transform:capitalize" x-text="cfg.engine"></td>
                                             <td>
-                                                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#10B981;font-weight:500">
-                                                    <span style="width:7px;height:7px;border-radius:50%;background:#10B981;display:inline-block"></span>
-                                                    Enabled
-                                                </span>
+                                                <span class="badge badge-success">Enabled</span>
                                             </td>
-                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.engine === 'youtube' ? cfg.youtube_mode : '—'"></td>
-                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString() : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:12px" x-text="cfg.engine === 'youtube' ? cfg.youtube_mode : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:12px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString() : '—'"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -317,8 +316,8 @@
                 </template>
 
                 <template x-if="safeSearchConfigs.filter(c => c.enabled).length === 0">
-                    <div style="text-align:center;padding:32px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;color:var(--text-secondary);font-size:14px">
-                        No Safe Search engines are enabled for this group.
+                    <div class="card empty-state">
+                        <p>No Safe Search engines are enabled for this group.</p>
                     </div>
                 </template>
             </div>
@@ -328,12 +327,12 @@
     <!-- TAB: Schedule -->
     <div x-show="activeTab === 'schedule'">
         <!-- How it works info panel -->
-        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;margin-bottom:20px;overflow:hidden">
+        <div class="card" style="margin-bottom:var(--gap);overflow:hidden;padding:0">
             <button @click="scheduleInfoOpen = !scheduleInfoOpen"
                     style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:none;border:none;cursor:pointer;color:var(--text-primary)">
                 <div style="display:flex;align-items:center;gap:8px">
-                    <i data-lucide="info" style="width:16px;height:16px;color:#6366F1;flex-shrink:0"></i>
-                    <span style="font-size:14px;font-weight:600">How scheduling works</span>
+                    <i data-lucide="info" style="width:16px;height:16px;color:var(--color-indigo);flex-shrink:0"></i>
+                    <span style="font-size:13px;font-weight:600">How scheduling works</span>
                 </div>
                 <i :data-lucide="scheduleInfoOpen ? 'chevron-up' : 'chevron-down'"
                    style="width:16px;height:16px;color:var(--text-secondary);flex-shrink:0"
@@ -346,28 +345,28 @@
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px">
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                            <i data-lucide="layers" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Schedule Profile</span>
+                            <i data-lucide="layers" style="width:15px;height:15px;color:var(--color-indigo);flex-shrink:0"></i>
+                            <span style="font-size:12px;font-weight:600;color:var(--text-primary)">Schedule Profile</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5">
                             A reusable collection of time slots with a timezone. Create one profile and assign it to multiple groups.
                         </p>
                     </div>
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                            <i data-lucide="clock" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Time Slot</span>
+                            <i data-lucide="clock" style="width:15px;height:15px;color:var(--color-indigo);flex-shrink:0"></i>
+                            <span style="font-size:12px;font-weight:600;color:var(--text-primary)">Time Slot</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5">
                             Defines which days and hours an action applies. Multiple slots can overlap — the most restrictive wins.
                         </p>
                     </div>
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                            <i data-lucide="users" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Group Assignment</span>
+                            <i data-lucide="users" style="width:15px;height:15px;color:var(--color-indigo);flex-shrink:0"></i>
+                            <span style="font-size:12px;font-weight:600;color:var(--text-primary)">Group Assignment</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5">
                             Each group can have one active profile. The schedule evaluator runs every 60 s and updates overrides automatically.
                         </p>
                     </div>
@@ -375,18 +374,18 @@
 
                 <!-- Actions legend -->
                 <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-                    <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
-                        <span style="font-size:16px;flex-shrink:0">🔴</span>
+                    <div class="notice notice-error" style="flex:1;min-width:200px">
+                        <span style="font-size:15px;flex-shrink:0">🔴</span>
                         <div>
-                            <span style="font-size:13px;font-weight:600;color:#EF4444;display:block;margin-bottom:4px">Block All</span>
-                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Blocks <strong>every</strong> DNS query for the group during this window — overrides blocklists completely.</span>
+                            <span style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Block All</span>
+                            <span style="font-size:11px;color:var(--text-secondary);line-height:1.5">Blocks <strong>every</strong> DNS query for the group during this window — overrides blocklists completely.</span>
                         </div>
                     </div>
-                    <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
-                        <span style="font-size:16px;flex-shrink:0">🟢</span>
+                    <div class="notice notice-success" style="flex:1;min-width:200px">
+                        <span style="font-size:15px;flex-shrink:0">🟢</span>
                         <div>
-                            <span style="font-size:13px;font-weight:600;color:#10B981;display:block;margin-bottom:4px">Allow All</span>
-                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Allows <strong>every</strong> domain — bypasses all blocklists. Useful for a scheduled "free access" window.</span>
+                            <span style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Allow All</span>
+                            <span style="font-size:11px;color:var(--text-secondary);line-height:1.5">Allows <strong>every</strong> domain — bypasses all blocklists. Useful for a scheduled "free access" window.</span>
                         </div>
                     </div>
                 </div>
@@ -394,28 +393,28 @@
                 <!-- Practical example -->
                 <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                        <i data-lucide="lightbulb" style="width:15px;height:15px;color:#F59E0B;flex-shrink:0"></i>
-                        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Typical example — "Kids" group</span>
+                        <i data-lucide="lightbulb" style="width:15px;height:15px;color:var(--color-warning);flex-shrink:0"></i>
+                        <span style="font-size:12px;font-weight:600;color:var(--text-primary)">Typical example — "Kids" group</span>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:10px">
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
-                            <span style="font-size:12px">🔴</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">00:00–07:00</strong> Block All</span>
+                            <span style="font-size:11px">🔴</span>
+                            <span style="font-size:11px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">00:00–07:00</strong> Block All</span>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
-                            <span style="font-size:12px">🟢</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">17:00–18:00</strong> Allow All</span>
+                            <span style="font-size:11px">🟢</span>
+                            <span style="font-size:11px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">17:00–18:00</strong> Allow All</span>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
-                            <span style="font-size:12px">🔴</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">21:00–23:59</strong> Block All</span>
+                            <span style="font-size:11px">🔴</span>
+                            <span style="font-size:11px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">21:00–23:59</strong> Block All</span>
                         </div>
                     </div>
-                    <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                    <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.5">
                         Outside those windows the group's <strong style="color:var(--text-primary)">blocklists apply normally</strong> — gaming/social blocked, the rest works. The <em>Allow All</em> at 17h grants 1 h of unrestricted access even if gaming sites are in a blocklist.
                     </p>
-                    <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15)">
-                        <span style="font-size:12px;color:#6366F1">
+                    <div class="notice notice-info" style="margin-top:10px">
+                        <span style="font-size:11px">
                             <strong>Conflict rule:</strong> if a Block All and an Allow All slot overlap, Block All always wins — the most restrictive action takes priority.
                         </span>
                     </div>
@@ -424,48 +423,48 @@
         </div>
 
         <!-- Group schedule assignment -->
-        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
-            <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 12px 0">
+        <div class="card" style="margin-bottom:var(--gap)">
+            <h3 class="card-title">
                 Schedule for group: <span x-text="groupName(selectedGroupId)"></span>
             </h3>
             <template x-if="!groupSchedule">
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                    <span style="font-size:14px;color:var(--text-secondary)">No schedule assigned.</span>
-                    <select class="group-select" x-model="scheduleAssignId">
+                    <span style="font-size:13px;color:var(--text-secondary)">No schedule assigned.</span>
+                    <select class="input" style="width:auto;padding:8px 12px" x-model="scheduleAssignId">
                         <option value="">— Select profile —</option>
                         <template x-for="p in scheduleProfiles" :key="p.id">
                             <option :value="p.id" x-text="p.name + ' (' + p.timezone + ')'"></option>
                         </template>
                     </select>
-                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                    <button class="btn btn-primary btn-sm"
                             @click="assignSchedule()" :disabled="!scheduleAssignId">Assign</button>
                 </div>
             </template>
             <template x-if="groupSchedule">
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                    <span style="font-size:14px;color:var(--text-primary);font-weight:500"
+                    <span style="font-size:13px;color:var(--text-primary);font-weight:500"
                           x-text="profileName(groupSchedule.profile_id)"></span>
-                    <span style="font-size:12px;color:var(--text-secondary)"
+                    <span style="font-size:11px;color:var(--text-secondary)"
                           x-text="profileTimezone(groupSchedule.profile_id)"></span>
-                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px"
+                    <button class="btn btn-danger-soft btn-sm"
                             @click="unassignSchedule()">Remove</button>
                 </div>
             </template>
         </div>
 
         <!-- Schedule profiles list -->
-        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
+        <div class="card">
+            <div class="card-header" style="align-items:center">
+                <h3 class="card-title">
                     Schedule Profiles (<span x-text="scheduleProfiles.length"></span>)
                 </h3>
-                <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                <button class="btn btn-primary btn-sm"
                         @click="openNewProfile()">+ New Profile</button>
             </div>
 
             <!-- New/Edit profile form -->
             <template x-if="showProfileForm">
-                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius);padding:16px;margin-bottom:16px">
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
                             <label class="form-label">Name</label>
@@ -477,11 +476,11 @@
                         </div>
                     </div>
                     <div class="form-group" style="margin-bottom:12px">
-                        <label class="form-label">Comment (optional)</label>
+                        <label class="form-label">Comment <span class="opt">(optional)</span></label>
                         <input type="text" class="input" x-model="profileForm.comment" placeholder="Optional description">
                     </div>
                     <template x-if="profileFormError">
-                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="profileFormError"></div>
+                        <div class="notice notice-error" style="margin-bottom:12px" x-text="profileFormError"></div>
                     </template>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-primary" @click="saveProfile()"
@@ -492,27 +491,27 @@
             </template>
 
             <template x-if="scheduleProfiles.length === 0 && !showProfileForm">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No schedule profiles yet. Create one to get started.</div>
+                <div class="empty-state"><p>No schedule profiles yet. Create one to get started.</p></div>
             </template>
 
             <template x-for="profile in scheduleProfiles" :key="profile.id">
-                <div style="border:1px solid var(--border-color);border-radius:8px;margin-bottom:12px;overflow:hidden">
+                <div style="border:1px solid var(--border-color);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
                     <!-- Profile header -->
                     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary)">
                         <div style="display:flex;align-items:center;gap:10px">
                             <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary)"></i>
                             <span style="font-weight:600;color:var(--text-primary)" x-text="profile.name"></span>
-                            <span style="font-size:12px;color:var(--text-secondary)" x-text="'(' + profile.timezone + ')'"></span>
+                            <span style="font-size:11px;color:var(--text-secondary)" x-text="'(' + profile.timezone + ')'"></span>
                             <template x-if="groupSchedule && groupSchedule.profile_id == profile.id">
-                                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:600">Active</span>
+                                <span class="badge badge-success">Active</span>
                             </template>
                         </div>
                         <div style="display:flex;gap:4px">
                             <button class="btn-icon" title="Edit" @click="editProfile(profile)">
-                                <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                <i data-lucide="edit-2"></i>
                             </button>
-                            <button class="btn-icon" title="Delete" @click="deleteProfile(profile.id)">
-                                <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
+                            <button class="btn-icon btn-icon-danger" title="Delete" @click="deleteProfile(profile.id)">
+                                <i data-lucide="trash-2"></i>
                             </button>
                         </div>
                     </div>
@@ -520,7 +519,7 @@
                     <!-- Slots table -->
                     <div style="padding:0 16px 12px">
                         <template x-if="(profileSlots[profile.id] || []).length === 0">
-                            <div style="padding:12px 0;color:var(--text-secondary);font-size:13px">No time slots. Add one below.</div>
+                            <div class="empty-state" style="padding:16px 0"><p>No time slots. Add one below.</p></div>
                         </template>
                         <template x-if="(profileSlots[profile.id] || []).length > 0">
                             <table class="table" style="margin-top:12px">
@@ -532,16 +531,16 @@
                                 <tbody>
                                     <template x-for="slot in (profileSlots[profile.id] || [])" :key="slot.id">
                                         <tr>
-                                            <td style="font-size:13px;color:var(--text-secondary)" x-text="daysLabel(slot.days)"></td>
-                                            <td style="font-size:13px;color:var(--text-primary)" x-text="slot.start_time"></td>
-                                            <td style="font-size:13px;color:var(--text-primary)" x-text="slot.end_time"></td>
+                                            <td style="font-size:12px;color:var(--text-secondary)" x-text="daysLabel(slot.days)"></td>
+                                            <td style="font-size:12px;color:var(--text-primary)" x-text="slot.start_time"></td>
+                                            <td style="font-size:12px;color:var(--text-primary)" x-text="slot.end_time"></td>
                                             <td>
-                                                <span :style="slot.action === 'block_all' ? 'color:#EF4444;font-weight:500;font-size:13px' : 'color:#10B981;font-weight:500;font-size:13px'"
+                                                <span :style="slot.action === 'block_all' ? 'color:var(--color-error);font-weight:500;font-size:12px' : 'color:var(--color-success);font-weight:500;font-size:12px'"
                                                       x-text="slot.action === 'block_all' ? '🔴 Block All' : '🟢 Allow All'"></span>
                                             </td>
                                             <td>
-                                                <button class="btn-icon" title="Delete slot" @click="deleteSlot(profile.id, slot.id)">
-                                                    <i data-lucide="trash-2" style="width:14px;height:14px;color:#EF4444"></i>
+                                                <button class="btn-icon btn-icon-danger" title="Delete slot" @click="deleteSlot(profile.id, slot.id)">
+                                                    <i data-lucide="trash-2"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -552,12 +551,12 @@
 
                         <!-- Add slot form -->
                         <template x-if="addingSlotFor == profile.id">
-                            <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:14px;margin-top:12px">
+                            <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:var(--radius);padding:14px;margin-top:12px">
                                 <div style="margin-bottom:10px">
                                     <label class="form-label" style="margin-bottom:6px">Days of week</label>
                                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                                         <template x-for="(day, idx) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="idx">
-                                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+                                            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
                                                 <input type="checkbox" :value="1 << idx"
                                                        :checked="(slotForm.days & (1 << idx)) !== 0"
                                                        @change="slotForm.days = $event.target.checked ? slotForm.days | (1 << idx) : slotForm.days & ~(1 << idx)">
@@ -577,23 +576,23 @@
                                     </div>
                                     <div style="flex:1;min-width:140px">
                                         <label class="form-label">Action</label>
-                                        <select class="group-select" style="width:100%" x-model="slotForm.action">
+                                        <select class="input" x-model="slotForm.action">
                                             <option value="block_all">🔴 Block All</option>
                                             <option value="allow_all">🟢 Allow All</option>
                                         </select>
                                     </div>
                                 </div>
                                 <template x-if="slotFormError">
-                                    <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="slotFormError"></div>
+                                    <div class="notice notice-error" style="margin-bottom:10px" x-text="slotFormError"></div>
                                 </template>
                                 <div style="display:flex;gap:8px">
-                                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px" @click="saveSlot(profile.id)">Save Slot</button>
-                                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px" @click="addingSlotFor = null">Cancel</button>
+                                    <button class="btn btn-primary btn-sm" @click="saveSlot(profile.id)">Save Slot</button>
+                                    <button class="btn btn-secondary btn-sm" @click="addingSlotFor = null">Cancel</button>
                                 </div>
                             </div>
                         </template>
                         <template x-if="addingSlotFor != profile.id">
-                            <button class="btn btn-secondary" style="font-size:13px;padding:5px 12px;margin-top:8px"
+                            <button class="btn btn-secondary btn-sm" style="margin-top:8px"
                                     @click="openAddSlot(profile.id)">+ Add Slot</button>
                         </template>
                     </div>

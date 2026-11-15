@@ -177,7 +177,6 @@
                 mem_total_kb: 0, mem_used_kb: 0, mem_available_kb: 0, mem_used_percent: 0,
             },
             restartRequired: false,
-            alert: {show: false, type: 'success', message: ''},
             // Security tab state
             authConfig: {enabled: false, session_ttl_hours: 24, remember_me_days: 30, login_rate_limit_attempts: 5, login_rate_limit_window_secs: 300},
             changePass: {current: '', newPassword: '', confirm: ''},
@@ -1307,10 +1306,7 @@
                 }
             },
             showAlert(type, msg) {
-                this.alert = {show: true, type, message: msg};
-                setTimeout(() => {
-                    this.alert.show = false
-                }, 5000)
+                showToast(msg, type);
             }
         }
     }

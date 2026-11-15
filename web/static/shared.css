@@ -3,16 +3,30 @@
 
 :root {
     --color-primary: #3B82F6;
+    --color-primary-hover: #2563EB;
     --color-success: #10B981;
     --color-warning: #F59E0B;
     --color-error: #EF4444;
+    --color-error-hover: #DC2626;
+    /* Category tones for badges and icons beyond the four meanings above. */
+    --color-purple: #A855F7;
+    --color-orange: #F97316;
+    --color-indigo: #6366F1;
     --bg-primary: #F9FAFB;
     --bg-secondary: #FFFFFF;
     --bg-tertiary: #F3F4F6;
     --text-primary: #111827;
     --text-secondary: #6B7280;
     --text-tertiary: #9CA3AF;
-    --border-color: #E5E7EB
+    --border-color: #E5E7EB;
+    /* The page padding and the space between boxes: one value everywhere. */
+    --gap: 14px;
+    --radius-sm: 6px;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --radius-pill: 9999px;
+    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.18)
 }
 
 .dark {
@@ -40,10 +54,68 @@
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
     background: var(--bg-primary);
     color: var(--text-primary);
     padding-left: 260px;
     margin: 0
+}
+
+main {
+    padding: var(--gap)
+}
+
+/* A stat tile's big number. */
+.stat-value {
+    font-size: 31px;
+    font-weight: 700
+}
+
+/* A stat tile with a big icon beside its label, value and caption. The icon
+   and caption take the tile's --tone. The 32px icon centres on the value line
+   (16.5px label line + half the 34.5px value line), the same with or without
+   a caption. */
+.icon-stat {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px
+}
+
+.icon-stat-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    margin-top: 18px;
+    color: var(--tone, var(--text-secondary))
+}
+
+.icon-stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary)
+}
+
+.icon-stat-value {
+    font-size: 23px;
+    font-weight: 700;
+    color: var(--text-primary)
+}
+
+.icon-stat-sub {
+    font-size: 10px;
+    color: var(--tone, var(--text-tertiary))
+}
+
+/* A row of boxes. The grid's gap spaces them, so a page's own `.card`
+   margin must not add to it. */
+.box-grid {
+    display: grid;
+    gap: var(--gap);
+    margin-bottom: var(--gap)
+}
+
+main .box-grid > * {
+    margin-bottom: 0
 }
 
 /* Preflight's `:disabled { cursor: default }` loads before the page CSS, so a
@@ -81,14 +153,14 @@ textarea:disabled {
 }
 
 .logo-text h1 {
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 700;
     color: var(--text-primary);
     margin: 0
 }
 
 .logo-subtitle {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-tertiary)
 }
 
@@ -103,7 +175,7 @@ textarea:disabled {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 8px;
@@ -114,7 +186,7 @@ textarea:disabled {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-secondary);
     margin-bottom: 6px
 }
@@ -142,7 +214,7 @@ textarea:disabled {
 
 .nav-section-title {
     padding: 8px 16px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     color: var(--text-tertiary);
     text-transform: uppercase
@@ -155,7 +227,7 @@ textarea:disabled {
     padding: 10px 16px;
     color: var(--text-secondary);
     text-decoration: none;
-    font-size: 14px;
+    font-size: 13px;
     transition: all .2s
 }
 
@@ -181,7 +253,7 @@ textarea:disabled {
     align-items: center;
     justify-content: space-between;
     padding: 0 16px 8px;
-    font-size: 12px
+    font-size: 11px
 }
 
 .sidebar-meta a {
@@ -207,23 +279,542 @@ textarea:disabled {
     border-top: 1px solid var(--border-color)
 }
 
-.theme-btn {
-    width: 100%;
-    padding: 8px;
-    background: var(--bg-tertiary);
+.card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    padding: 24px
+}
+
+/* ==== Components every page shares. A page's own CSS keeps only its layout. ==== */
+
+/* --- Page header: a title, a subtitle under it, actions on the right --- */
+
+.page-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px
+}
+
+.page-title {
+    font-size: 23px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0
+}
+
+.page-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 4px 0 0
+}
+
+/* A heading between rows of boxes; with the row's own gap it leaves 32px above. */
+.section-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: calc(32px - var(--gap)) 0 16px
+}
+
+/* --- Card text: title (with an optional description and actions), sub-title, description --- */
+
+.card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px
+}
+
+.card-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 16px
+}
+
+.card-header .card-title {
+    margin: 0
+}
+
+.card-subtitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0
+}
+
+.card-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    margin: 4px 0 0
+}
+
+.text-hint {
+    font-size: 11px;
+    color: var(--text-tertiary)
+}
+
+/* A stat tile: an icon, a label and a big number. */
+.card-stat {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    border: 1px solid var(--border-color);
+    transition: all .2s
+}
+
+.card-stat:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px)
+}
+
+/* --- Buttons --- */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     gap: 8px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    text-decoration: none;
     cursor: pointer;
+    transition: background .15s, color .15s
+}
+
+.btn:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0
+}
+
+.btn-primary { background: var(--color-primary); color: #fff }
+.btn-primary:hover:not(:disabled) { background: var(--color-primary-hover) }
+.btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
+.btn-secondary:hover:not(:disabled) { background: var(--border-color) }
+.btn-danger { background: var(--color-error); color: #fff }
+.btn-danger:hover:not(:disabled) { background: var(--color-error-hover) }
+/* A destructive action that is not the screen's main one (Revoke, Remove). */
+.btn-danger-soft { background: rgba(239, 68, 68, 0.12); color: var(--color-error) }
+.btn-danger-soft:hover:not(:disabled) { background: rgba(239, 68, 68, 0.22) }
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 6px
+}
+
+/* An icon alone, such as a table row's edit or delete. */
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border: none;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background .15s, color .15s
+}
+
+.btn-icon svg {
+    width: 16px;
+    height: 16px
+}
+
+.btn-icon:hover:not(:disabled) { background: var(--bg-tertiary); color: var(--text-primary) }
+.btn-icon-danger:hover:not(:disabled) { color: var(--color-error) }
+
+.btn-icon:disabled {
+    opacity: .4;
+    cursor: not-allowed
+}
+
+/* --- Form controls --- */
+
+.input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    box-sizing: border-box;
+    transition: border-color .15s
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--color-primary)
+}
+
+textarea.input {
+    min-height: 80px;
+    resize: vertical
+}
+
+.form-group {
+    margin-bottom: 16px
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary)
+}
+
+/* Inside a .form-label: the required asterisk and the "(optional)" note. */
+.req { color: var(--color-error) }
+.opt { color: var(--text-tertiary); font-weight: 400 }
+
+.form-hint {
+    margin: 6px 0 0;
+    font-size: 11px;
     color: var(--text-secondary)
 }
 
-.card {
+/* An on/off control: <button type="button" class="switch" role="switch"
+   :class="{on: value}" :aria-checked="String(value)">. */
+.switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 48px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--text-tertiary);
+    cursor: pointer;
+    transition: background .2s
+}
+
+.switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: transform .2s
+}
+
+.switch.on { background: var(--color-success) }
+.switch.on::after { transform: translateX(24px) }
+/* For a switch whose "on" blocks something, such as a blocked service. */
+.switch-danger.on { background: var(--color-error) }
+
+.switch:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px
+}
+
+.switch:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+/* Inside a table row. */
+.switch-sm { width: 36px; height: 20px }
+.switch-sm::after { width: 16px; height: 16px }
+.switch-sm.on::after { transform: translateX(16px) }
+
+/* The controls above a table: a label beside each control, on one wrapping row. */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px 24px
+}
+
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px
+}
+
+.filter-item > label {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap
+}
+
+.filter-bar .input {
+    width: auto;
+    padding: 8px 12px
+}
+
+.filter-end {
+    margin-left: auto
+}
+
+/* --- Tabs --- */
+
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 24px
+}
+
+.tab-btn {
+    padding: 12px 16px;
+    margin-bottom: -1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color .15s, border-color .15s
+}
+
+.tab-btn:hover { color: var(--text-primary) }
+
+.tab-btn.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary)
+}
+
+/* --- Tables: .table for lists you manage, .table-dense for logs --- */
+
+.table,
+.table-dense {
+    width: 100%;
+    border-collapse: collapse
+}
+
+/* Separate borders look the same here (each cell draws only its bottom one),
+   but a cell draws them itself: collapsed borders are drawn by the table, so
+   they stayed put while the Query Log's live feed slid the rows under them. */
+.table-dense {
+    border-collapse: separate;
+    border-spacing: 0
+}
+
+.table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap
+}
+
+.table td {
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle
+}
+
+.table tbody tr:hover { background: var(--bg-tertiary) }
+
+.table-dense th {
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-color)
+}
+
+.table-dense td {
+    padding: 8px 10px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap
+}
+
+.table-dense tbody tr:hover { opacity: .85 }
+
+/* A list's empty row or box: <td colspan="…" class="empty-state">, an icon and a line. */
+.empty-state {
+    padding: 48px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-secondary)
+}
+
+.empty-state svg {
+    display: block;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    color: var(--text-tertiary)
+}
+
+.empty-state p {
+    margin: 0
+}
+
+/* As a table cell it must beat the table's own td padding. */
+.table td.empty-state,
+.table-dense td.empty-state {
+    padding: 48px 16px
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color)
+}
+
+.pagination-info {
+    font-size: 13px;
+    color: var(--text-secondary)
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: 8px
+}
+
+/* --- Badges: a pill, coloured by meaning --- */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: none;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap
+}
+
+button.badge {
+    cursor: pointer
+}
+
+.badge-success { background: rgba(16, 185, 129, 0.12); color: var(--color-success) }
+.badge-danger { background: rgba(239, 68, 68, 0.12); color: var(--color-error) }
+.badge-warning { background: rgba(245, 158, 11, 0.12); color: var(--color-warning) }
+.badge-info { background: rgba(59, 130, 246, 0.12); color: var(--color-primary) }
+.badge-neutral { background: rgba(107, 114, 128, 0.15); color: var(--text-secondary) }
+.badge-purple { background: rgba(168, 85, 247, 0.12); color: var(--color-purple) }
+.badge-orange { background: rgba(249, 115, 22, 0.12); color: var(--color-orange) }
+.badge-indigo { background: rgba(99, 102, 241, 0.12); color: var(--color-indigo) }
+
+/* --- Notices: a message inside the page, readable in both themes --- */
+
+.notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.5
+}
+
+.notice > svg {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px
+}
+
+.notice p {
+    margin: 0
+}
+
+.notice a {
+    color: inherit;
+    text-decoration: underline
+}
+
+.notice-error { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: var(--color-error) }
+.notice-warning { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.35); color: var(--text-primary) }
+.notice-warning > svg { color: var(--color-warning) }
+.notice-info { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); color: var(--color-primary) }
+.notice-success { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: var(--color-success) }
+
+/* The restart and certificate banners on top of a page. */
+.page-banner {
+    margin-bottom: var(--gap)
+}
+
+/* --- Toasts: an action's outcome, bottom right, gone after a few seconds (showToast) --- */
+
+.toast-stack {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(420px, calc(100vw - 32px))
+}
+
+.toast {
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--color-success);
+    border-radius: var(--radius);
     background: var(--bg-secondary);
-    border-radius: 12px;
-    border: 1px solid var(--border-color)
+    color: var(--text-primary);
+    box-shadow: var(--shadow-popover);
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-line;
+    cursor: pointer;
+    animation: toast-in .2s ease
+}
+
+.toast-error { border-left-color: var(--color-error) }
+.toast-warning { border-left-color: var(--color-warning) }
+.toast-info { border-left-color: var(--color-primary) }
+
+.toast-leaving {
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity .2s, transform .2s
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px)
+    }
 }
 
 [x-cloak] {
@@ -258,7 +849,7 @@ textarea:disabled {
 }
 
 .mobile-header span {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--text-primary)
 }
@@ -274,10 +865,6 @@ textarea:disabled {
 @media (max-width: 1024px) {
     body {
         padding-left: 0
-    }
-
-    main {
-        padding: 16px !important
     }
 
     .sidebar {
@@ -314,11 +901,17 @@ textarea:disabled {
    page. Tablets keep wrapping long labels onto two lines, so most tabs stay in sight;
    phones put each label on one line and scroll. Desktop widths fit every bar, and a
    scrolling box there would clip the active tab's underline where it overlaps the
-   bar's border. */
+   bar's border, so there the bar draws its line inside and the tab covers it. */
 @media (max-width: 1024px) {
     .tab-bar {
+        border-bottom: none;
+        box-shadow: inset 0 -1px 0 var(--border-color);
         overflow-x: auto;
         scrollbar-width: none
+    }
+
+    .tab-btn {
+        margin-bottom: 0
     }
 
     .tab-bar::-webkit-scrollbar {

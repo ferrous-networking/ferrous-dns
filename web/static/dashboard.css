@@ -1,22 +1,18 @@
-        .card-stat {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 24px;
-            border: 1px solid var(--border-color);
-            transition: all .2s
+        /* The top row's tiles take a tint of their own colour (--tone). */
+        .tone-tile {
+            background: color-mix(in srgb, var(--tone) 7%, var(--bg-secondary));
+            border-color: color-mix(in srgb, var(--tone) 30%, var(--border-color))
         }
 
-        .card-stat:hover {
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transform: translateY(-2px)
+        .tone-tile-icon {
+            display: flex;
+            padding: 12px;
+            border-radius: var(--radius);
+            background: color-mix(in srgb, var(--tone) 15%, transparent);
+            color: var(--tone)
         }
 
-        /* Centers the 32px icon on the value line (18px label line + half of
-           the 36px value line), so it sits the same with or without a caption. */
-        .cache-stat-icon {
-            flex-shrink: 0;
-            margin-top: 20px
-        }
+        .tone-tile-icon svg { width: 24px; height: 24px }
 
         .timeline-chart-container {
             position: relative;
@@ -76,7 +72,7 @@
         }
 
         .chart-legend-label {
-            font-size: 13px;
+            font-size: 12px;
             color: var(--text-secondary);
             white-space: nowrap;
         }

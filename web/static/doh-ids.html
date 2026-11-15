@@ -96,32 +96,32 @@
     </div>
 </aside>
 
-<main style="padding:24px">
-    <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DoH IDs</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Register per-device DNS-over-HTTPS identifiers and assign them to client groups</p>
+<main>
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">DoH IDs</h2>
+            <p class="page-subtitle">Register per-device DNS-over-HTTPS identifiers and assign them to client groups</p>
+        </div>
     </div>
 
     <div class="card policy-card">
         <div class="policy-info">
-            <h2 class="policy-title">Allow Unregistered Client IDs</h2>
-            <p class="policy-desc">
+            <h2 class="card-title">Allow Unregistered Client IDs</h2>
+            <p class="card-desc">
                 When disabled (strict mode), requests to <code>/dns-query/&lt;ClientID&gt;</code> with an unregistered ID are rejected with <code>400 Bad Request</code>.
                 When enabled, valid unregistered IDs are accepted for Query Log attribution and inherit the client IP's group rules.
             </p>
         </div>
-        <button type="button" class="toggle-switch" :class="{ active: allowUnregisteredIds }"
+        <button type="button" class="switch" role="switch" :class="{on: allowUnregisteredIds}"
+                :aria-checked="String(allowUnregisteredIds)" aria-label="Allow Unregistered Client IDs"
                 :disabled="!configWritable || policySaving"
                 :title="configWritable ? 'Toggle unregistered DoH Client ID policy' : 'Configuration file is read-only'"
-                @click="toggleAllowUnregisteredIds()">
-            <div class="toggle-slider"></div>
-        </button>
+                @click="toggleAllowUnregisteredIds()"></button>
     </div>
 
     <div class="form-container">
-        <div class="card" style="padding:24px">
-            <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                x-text="editingEntry ? 'Edit DoH ID' : 'Add New DoH ID'"></h2>
+        <div class="card">
+            <h2 class="card-title" x-text="editingEntry ? 'Edit DoH ID' : 'Add New DoH ID'"></h2>
 
             <form @submit.prevent="saveEntry()">
                 <div class="form-group">
@@ -139,7 +139,7 @@
                                title="1–63 lowercase letters, digits, or hyphens; cannot start or end with a hyphen"
                                maxlength="63" spellcheck="false" autocomplete="off">
                         <button type="button" class="btn btn-secondary" @click="generateUuid()">
-                            <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
+                            <i data-lucide="refresh-cw"></i>
                             <span>Generate UUID</span>
                         </button>
                     </div>
@@ -151,7 +151,7 @@
 
                 <div class="form-group">
                     <label class="form-label">Group</label>
-                    <select class="select" x-model.number="form.group_id" required>
+                    <select class="input" x-model.number="form.group_id" required>
                         <template x-for="group in groups" :key="group.id">
                             <option :value="group.id" x-text="group.name"></option>
                         </template>
@@ -159,8 +159,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Comment (Optional)</label>
-                    <textarea class="textarea" x-model="form.comment" maxlength="500"
+                    <label class="form-label">Comment <span class="opt">(optional)</span></label>
+                    <textarea class="input" x-model="form.comment" maxlength="500"
                               placeholder="Add an optional note about this device"></textarea>
                 </div>
 
@@ -173,8 +173,7 @@
                     </button>
                 </div>
 
-                <div x-show="error" x-text="error"
-                     style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                <div class="notice notice-error" x-show="error" x-text="error" style="margin-top:12px"></div>
             </form>
         </div>
     </div>
@@ -206,35 +205,35 @@
                                 <code class="code-pill" x-text="`/dns-query/${entry.client_id}`"></code>
                                 <button type="button" @click="copyEndpoint(entry)" class="btn-icon"
                                         title="Copy DoH path">
-                                    <i data-lucide="copy" style="width:15px;height:15px"></i>
+                                    <i data-lucide="copy"></i>
                                 </button>
                                 <span class="copy-badge" x-show="copiedId === entry.id">Copied</span>
                             </div>
                         </td>
                         <td>
-                            <span class="badge badge-default"
+                            <span class="badge badge-info"
                                   x-text="entry.group_name || ('Group #' + entry.group_id)"></span>
                         </td>
                         <td>
-                            <span style="color:var(--text-secondary);font-size:14px"
+                            <span style="color:var(--text-secondary);font-size:13px"
                                   x-text="entry.comment || '-'"></span>
                         </td>
                         <td>
                             <div style="display:flex;gap:8px">
                                 <button type="button" @click="editEntry(entry)" class="btn-icon" title="Edit">
-                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                    <i data-lucide="edit-2"></i>
                                 </button>
-                                <button type="button" @click="deleteEntry(entry)" class="btn-icon" title="Delete">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                <button type="button" @click="deleteEntry(entry)" class="btn-icon btn-icon-danger" title="Delete">
+                                    <i data-lucide="trash-2"></i>
                                 </button>
                             </div>
                         </td>
                     </tr>
                 </template>
                 <tr x-show="dohIds.length === 0">
-                    <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="fingerprint" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No DoH IDs registered yet</p>
+                    <td colspan="6" class="empty-state">
+                        <i data-lucide="fingerprint"></i>
+                        <p>No DoH IDs registered yet</p>
                     </td>
                 </tr>
                 </tbody>

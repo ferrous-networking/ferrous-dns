@@ -88,45 +88,41 @@
         </a>
     </div>
 </aside>
-<main style="padding:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+<main>
+    <div class="page-header">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Query Log</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">DNS query history — last 24h</p>
+            <h2 class="page-title">Query Log</h2>
+            <p class="page-subtitle">DNS query history — last 24h</p>
         </div>
     </div>
-    <div class="card" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
-                <select x-model.number="pageSize" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+    <div class="card" style="margin-bottom:var(--gap)">
+        <div class="filter-bar">
+            <div class="filter-item">
+                <label for="q-page-size">Show:</label>
+                <select id="q-page-size" class="input" x-model.number="pageSize" @change="currentPage=1;_cursors={};loadQueries()">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Domain:</label>
-                <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
-                       placeholder="Search domain..."
-                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+            <div class="filter-item">
+                <label for="q-domain">Domain:</label>
+                <input id="q-domain" type="text" class="input" style="width:200px" x-model="searchDomain" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
+                       placeholder="Search domain...">
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Client:</label>
-                <select x-model="searchClient" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+            <div class="filter-item">
+                <label for="q-client">Client:</label>
+                <select id="q-client" class="input" style="width:200px" x-model="searchClient" @change="currentPage=1;_cursors={};loadQueries()">
                     <option value="">All Clients</option>
                     <template x-for="client in clients" :key="client.ip_address">
                         <option :value="client.ip_address" x-text="clientLabel(client)"></option>
                     </template>
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
-                <select x-model="category" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+            <div class="filter-item">
+                <label for="q-category">Category:</label>
+                <select id="q-category" class="input" x-model="category" @change="currentPage=1;_cursors={};loadQueries()">
                     <option value="">All Queries</option>
                     <option value="allowed">Allowed</option>
                     <option value="blocked">Blocked</option>
@@ -136,10 +132,9 @@
                     <option value="malware">Malware Detection</option>
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Protocol:</label>
-                <select x-model="protocol" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+            <div class="filter-item">
+                <label for="q-protocol">Protocol:</label>
+                <select id="q-protocol" class="input" x-model="protocol" @change="currentPage=1;_cursors={};loadQueries()">
                     <option value="">All Protocols</option>
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
@@ -148,10 +143,9 @@
                     <option value="doq">DoQ</option>
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Cookie:</label>
-                <select x-model="cookie" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+            <div class="filter-item">
+                <label for="q-cookie">Cookie:</label>
+                <select id="q-cookie" class="input" x-model="cookie" @change="currentPage=1;_cursors={};loadQueries()">
                     <option value="">All</option>
                     <option value="any">With cookie</option>
                     <option value="valid">Valid</option>
@@ -160,17 +154,16 @@
                     <option value="none">Without cookie</option>
                 </select>
             </div>
-            <div style="margin-left:auto">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input type="checkbox" x-model="autoRefresh"
-                           style="width:16px;height:16px;accent-color:var(--color-primary)">
-                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
-                </label>
+            <div class="filter-item filter-end">
+                <label for="q-live">Live update</label>
+                <button id="q-live" type="button" class="switch switch-sm" role="switch"
+                        :class="{on: autoRefresh}" :aria-checked="String(autoRefresh)"
+                        @click="autoRefresh = !autoRefresh"></button>
             </div>
         </div>
     </div>
     <div class="card table-card" style="overflow-x:auto">
-        <table>
+        <table class="table-dense">
             <thead>
             <tr>
                 <th class="col-time">TIME</th>
@@ -180,41 +173,41 @@
                 <th class="col-client">CLIENT</th>
                 <th class="col-source">SOURCE</th>
                 <th class="col-answer">ANSWER</th>
-                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
+                <th class="col-rt" style="width:90px">RESPONSE TIME</th>
                 <th class="col-action" style="width:80px">ACTION</th>
             </tr>
             </thead>
-            <tbody>
-            <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                <tr :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
-                    <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
-                    <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
+            <tbody x-ref="queryRows">
+            <template x-for="query in paginatedQueries" :key="query.id">
+                <tr :data-id="query.id"
+                    :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
+                    <td style="font-size:11px" x-text="formatTime(query.timestamp)"></td>
+                    <td style="font-family:monospace;font-size:13px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
                             <template x-if="query.dnssec_status === 'Secure'">
                                 <span class="dnssec-icon" data-tooltip="SECURE">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="query.dnssec_status === 'Insecure'">
                                 <span class="dnssec-icon" data-tooltip="INSECURE">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="query.dnssec_status === 'Bogus'">
                                 <span class="dnssec-icon" data-tooltip="BOGUS">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="!['Secure','Insecure','Bogus'].includes(query.dnssec_status)">
                                 <span class="dnssec-icon" data-tooltip="NOT VALIDATED">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                                 </span>
                             </template>
                             <span x-text="query.domain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="query.domain"></span>
                         </div>
                     </td>
-                    <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
-                              x-text="query.type"></span></td>
+                    <td class="col-type"><span class="badge badge-info" x-text="query.type"></span></td>
                     <!-- One branch per transport rather than a JS helper: the icons are the
                          Lucide glyphs from the Protocol Reference card in settings.html, and
                          Lucide only substitutes `<i data-lucide>` once while Alpine re-renders
@@ -222,19 +215,19 @@
                     <td class="col-proto">
                         <span class="proto-cell">
                         <template x-if="query.protocol === 'udp'">
-                            <span class="badge" style="background:rgba(107,114,128,0.15);color:#6B7280"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>UDP</span>
+                            <span class="badge badge-neutral"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>UDP</span>
                         </template>
                         <template x-if="query.protocol === 'tcp'">
-                            <span class="badge" style="background:rgba(107,114,128,0.15);color:#6B7280"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>TCP</span>
+                            <span class="badge badge-neutral"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>TCP</span>
                         </template>
                         <template x-if="query.protocol === 'dot'">
-                            <span class="badge" style="background:rgba(16,185,129,0.12);color:#10B981"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>DoT</span>
+                            <span class="badge badge-success"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>DoT</span>
                         </template>
                         <template x-if="query.protocol === 'doh'">
-                            <span class="badge" style="background:rgba(59,130,246,0.12);color:#3B82F6"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>DoH</span>
+                            <span class="badge badge-info"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>DoH</span>
                         </template>
                         <template x-if="query.protocol === 'doq'">
-                            <span class="badge" style="background:rgba(168,85,247,0.12);color:#A855F7"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>DoQ</span>
+                            <span class="badge badge-purple"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>DoQ</span>
                         </template>
                         <template x-if="!['udp','tcp','dot','doh','doq'].includes(query.protocol)">
                             <span style="color:var(--text-secondary)">—</span>
@@ -245,7 +238,7 @@
                         </template>
                         </span>
                     </td>
-                    <td class="col-client" style="font-size:13px">
+                    <td class="col-client" style="font-size:12px">
                         <div class="client-cell">
                             <!-- Lucide `git-merge`, inline for the same reason as the icons above. -->
                             <template x-if="query.coalesced">
@@ -261,24 +254,7 @@
                     </td>
                     <td style="max-width:0;overflow:hidden">
                         <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                              :style="query.cache_hit
-                                ? {background: 'rgba(168,85,247,0.1)', color: '#A855F7'}
-                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection'
-                                    || query.block_source === 'rate_limit' || query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC')
-                                  ? {background: 'rgba(245,158,11,0.1)', color: '#F59E0B'}
-                                  : (query.block_source === 'blocklist' || query.block_source === 'cname_cloaking')
-                                    ? {background: 'rgba(239,68,68,0.1)', color: '#ef4444'}
-                                    : (query.block_source === 'managed_domain' || query.block_source === 'schedule')
-                                      ? {background: 'rgba(249,115,22,0.1)', color: '#f97316'}
-                                      : query.block_source === 'regex_filter'
-                                        ? {background: 'rgba(139,92,246,0.1)', color: '#8b5cf6'}
-                                        : (query.block_source === 'non_fqdn' || query.block_source === 'private_ptr' || query.block_source === 'dns_cookie')
-                                          ? {background: 'rgba(107,114,128,0.15)', color: '#6B7280'}
-                                          : (query.blocked && query.block_source !== 'rate_limit')
-                                            ? {background: 'rgba(239,68,68,0.1)', color: '#ef4444'}
-                                            : query.response_status === 'LOCAL_DNS'
-                                              ? {background: 'rgba(34,197,94,0.1)', color: '#22C55E'}
-                                              : {background: 'rgba(59,130,246,0.1)', color: '#3B82F6'}"
+                              :class="sourceBadgeClass(query)"
                               x-html="formatSource(query)"
                               :title="query.upstream_pool && query.upstream_server
                                 ? query.upstream_pool + ':' + query.upstream_server
@@ -297,41 +273,210 @@
                             </div>
                         </template>
                     </td>
-                    <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                    <td class="col-rt" style="font-size:12px" x-text="formatResponseTime(query)"></td>
                     <td class="col-action">
-                        <!-- A managed allow cannot lift block_non_fqdn / block_private_ptr or a
-                             strict DNS Cookie refusal. -->
-                        <template x-if="query.block_source === 'non_fqdn' || query.block_source === 'private_ptr' || query.block_source === 'dns_cookie'">
-                            <span style="color:var(--text-secondary)">—</span>
-                        </template>
-                        <button type="button" class="btn-action"
-                            x-show="query.block_source !== 'non_fqdn' && query.block_source !== 'private_ptr' && query.block_source !== 'dns_cookie'"
-                            :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
-                            @click="handleDomainAction(query)"
-                            x-text="query.blocked ? 'Allow' : 'Block'">
-                        </button>
+                        <div class="action-cell">
+                            <template x-if="isFilterRefused(query)">
+                                <span class="action-none">—</span>
+                            </template>
+                            <button type="button" class="btn-action"
+                                x-show="!isFilterRefused(query)"
+                                :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
+                                :title="query.blocked ? 'Allow domain' : 'Block domain'"
+                                :aria-label="query.blocked ? 'Allow domain' : 'Block domain'"
+                                @click="handleDomainAction(query)">
+                                <!-- Lucide `circle-check` and `ban`, inline for the same reason as the icons above. -->
+                                <template x-if="query.blocked">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                                </template>
+                                <template x-if="!query.blocked">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+                                </template>
+                            </button>
+                            <!-- Lucide `ellipsis`. -->
+                            <button type="button" class="btn-action btn-action-more"
+                                title="More actions" aria-label="More actions" aria-haspopup="menu"
+                                :aria-expanded="menu.open && menu.query === query"
+                                @click.stop="openMenu(query, $event.currentTarget)">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             </template>
             </tbody>
         </table>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
-            <div style="font-size:14px;color:var(--text-secondary)">
-                Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span
+        <div class="pagination">
+            <div class="pagination-info">
+                Showing <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> to <span
                     x-text="Math.min(currentPage*pageSize,total)"></span> of <span
                     x-text="total"></span>
             </div>
-            <div style="display:flex;gap:8px">
-                <button @click="changePage(-1)" :disabled="currentPage===1"
-                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="currentPage===1 ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Previous
-                </button>
-                <button @click="changePage(1)" :disabled="!_hasMore"
-                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="!_hasMore ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Next
-                </button>
+            <div class="pagination-buttons">
+                <button class="btn btn-secondary" @click="changePage(-1)" :disabled="currentPage===1">Previous</button>
+                <button class="btn btn-secondary" @click="changePage(1)" :disabled="!_hasMore">Next</button>
             </div>
         </div>
+    </div>
+
+    <!-- One menu and one popover serve every row. They are fixed to the viewport,
+         so the table card's overflow cannot clip them on the last rows. Items that
+         open the popover stop the click, or it would land outside the popover and
+         close it at once. The item icons are Lucide's, inline for the same reason
+         as the table's. -->
+    <div class="row-menu" role="menu" x-ref="rowMenu" x-show="menu.open" x-cloak
+         :style="{top: menu.top + 'px', left: menu.left + 'px', visibility: menu.placed ? 'visible' : 'hidden'}"
+         @click.outside="closeMenu()" @keydown.escape.window="closeMenu(); closeWhy()">
+        <template x-if="menu.query">
+            <div>
+                <div class="row-menu-head" x-text="plainDomain(menu.query)" :title="plainDomain(menu.query)"></div>
+                <button type="button" class="row-menu-item tone-filter" role="menuitem" @click="filterByDomain(menu.query)">
+                    <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>Filter by this domain</span>
+                </button>
+                <button type="button" class="row-menu-item tone-filter" role="menuitem" @click="filterByClient(menu.query)">
+                    <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Filter by this client</span>
+                </button>
+                <template x-if="!isFilterRefused(menu.query)">
+                    <div>
+                        <button type="button" class="row-menu-item tone-why" role="menuitem" @click.stop="openWhy(menu.query)">
+                            <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span x-text="menu.query.blocked ? 'Why blocked?' : 'Why allowed?'"></span></span>
+                        </button>
+                        <div class="row-menu-sep"></div>
+                        <button type="button" class="row-menu-item" role="menuitem" :aria-expanded="menu.section === 'levels'"
+                                :class="menu.query.blocked ? 'tone-allow' : 'tone-block'"
+                                @click="toggleMenuSection('levels')">
+                            <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg><span x-text="menu.query.blocked ? 'Allow with subdomains' : 'Block with subdomains'"></span></span>
+                            <svg class="row-menu-caret" :class="{open: menu.section === 'levels'}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                        </button>
+                        <template x-if="menu.section === 'levels'">
+                            <div>
+                                <template x-for="level in domainLevels(menu.query)" :key="level">
+                                    <button type="button" class="row-menu-item row-menu-sub" role="menuitem"
+                                            @click="addSubtreeRules(menu.query, level)" x-text="level"></button>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="menu.query.blocked">
+                            <div>
+                                <button type="button" class="row-menu-item tone-allow" role="menuitem" :aria-expanded="menu.section === 'allowFor'"
+                                        @click="toggleMenuSection('allowFor')">
+                                    <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>Allow for</span>
+                                    <svg class="row-menu-caret" :class="{open: menu.section === 'allowFor'}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                </button>
+                                <template x-if="menu.section === 'allowFor'">
+                                    <div>
+                                        <template x-for="[seconds, label] in allowDurations" :key="seconds">
+                                            <button type="button" class="row-menu-item row-menu-sub" role="menuitem"
+                                                    @click="allowFor(menu.query, seconds, label)" x-text="label"></button>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="menu.query.block_source === 'managed_domain'">
+                                    <button type="button" class="row-menu-item tone-block" role="menuitem" @click.stop="openWhy(menu.query)">
+                                        <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>Remove blocking rule…</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="!menu.query.blocked">
+                            <button type="button" class="row-menu-item tone-cache" role="menuitem" @click="removeFromCache(menu.query)">
+                                <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>Remove from cache</span>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="menuClient(menu.query) || isRateLimited(menu.query)">
+                    <div>
+                        <div class="row-menu-sep"></div>
+                        <template x-if="menuClient(menu.query)">
+                            <div>
+                                <button type="button" class="row-menu-item tone-group" role="menuitem" :aria-expanded="menu.section === 'groups'"
+                                        @click="toggleMenuSection('groups')">
+                                    <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>Move client to group</span>
+                                    <svg class="row-menu-caret" :class="{open: menu.section === 'groups'}" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                </button>
+                                <template x-if="menu.section === 'groups'">
+                                    <div>
+                                        <template x-for="group in groups" :key="group.id">
+                                            <button type="button" class="row-menu-item row-menu-sub row-menu-group" role="menuitem"
+                                                    :disabled="group.id === clientGroupId(menu.query)"
+                                                    @click="moveClient(menu.query, group)">
+                                                <span x-text="group.name + (group.enabled === false ? ' (disabled)' : '')"></span>
+                                                <span x-show="group.id === clientGroupId(menu.query)">✓</span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="isRateLimited(menu.query)">
+                            <button type="button" class="row-menu-item tone-rate" role="menuitem" @click="exemptFromRateLimit(menu.query)">
+                                <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>Exempt client from rate limit</span>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+                <div class="row-menu-sep"></div>
+                <button type="button" class="row-menu-item tone-copy" role="menuitem" @click="copyDomain(menu.query)">
+                    <span class="row-menu-label"><svg class="row-menu-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy domain</span>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <div class="row-popover" role="dialog" aria-label="Why this query was blocked or allowed"
+         x-ref="whyPopover" x-show="why.open" x-cloak
+         :style="{top: why.top + 'px', left: why.left + 'px', visibility: why.placed ? 'visible' : 'hidden'}" @click.outside="closeWhy()">
+        <template x-if="why.query">
+            <div>
+                <div class="why-head">
+                    <div style="min-width:0">
+                        <div class="why-title" x-text="why.query.blocked ? 'Why blocked?' : 'Why allowed?'"></div>
+                        <div class="why-domain" x-text="plainDomain(why.query)" :title="plainDomain(why.query)"></div>
+                        <div class="why-sub" x-text="groupLabel(ruleGroupId(why.query)) + ' · rules as they are now'"></div>
+                    </div>
+                    <!-- Lucide `x`. -->
+                    <button type="button" class="btn-action btn-action-more" title="Close" aria-label="Close" @click="closeWhy()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <template x-if="runtimeBlockLabel(why.query)">
+                    <p class="why-note" x-text="'Blocked by ' + runtimeBlockLabel(why.query) + ', a rule applied at query time that this test cannot evaluate.'"></p>
+                </template>
+                <div class="why-empty" x-show="why.loading">Checking…</div>
+                <div class="why-error" x-show="why.error" x-text="why.error"></div>
+                <template x-if="why.result && !why.loading">
+                    <div>
+                        <div class="why-section">Allow rules</div>
+                        <template x-if="why.result.allow_reasons.length === 0">
+                            <div class="why-empty">None</div>
+                        </template>
+                        <template x-for="(m, i) in why.result.allow_reasons" :key="'allow-' + i">
+                            <div class="why-rule">
+                                <span class="why-rule-name" x-text="m.name" :title="m.name"></span>
+                                <span class="badge why-kind why-kind-allow" x-text="m.kind"></span>
+                                <span class="why-rule-match" x-text="m.match_type"></span>
+                            </div>
+                        </template>
+                        <div class="why-section">Blocking rules</div>
+                        <template x-if="why.result.block_matches.length === 0">
+                            <div class="why-empty">None</div>
+                        </template>
+                        <template x-for="(m, i) in why.result.block_matches" :key="'block-' + i">
+                            <div class="why-rule">
+                                <span class="why-rule-name" x-text="m.name" :title="m.name"></span>
+                                <span class="badge why-kind why-kind-block" x-text="m.kind"></span>
+                                <span class="why-rule-match" x-text="m.match_type"></span>
+                                <template x-if="m.kind === 'managed_domain' && m.source_id != null">
+                                    <button type="button" class="why-remove" @click="removeManagedRule(m)">Remove</button>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <a class="why-link" :href="dnsFilterTestLink(why.query)">Open in DNS Filter</a>
+            </div>
+        </template>
     </div>
 </main>
 <script src="/static/queries.js"></script>

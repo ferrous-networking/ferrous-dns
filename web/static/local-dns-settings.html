@@ -99,39 +99,41 @@
     </div>
 </aside>
 
-<main style="padding:24px">
-    <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">Local DNS</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Manage local DNS records for devices on your network</p>
+<main>
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Local DNS</h2>
+            <p class="page-subtitle">Manage local DNS records for devices on your network</p>
+        </div>
     </div>
 
     <div class="tab-bar">
         <button class="tab-btn active">
             DNS Records
-            <span x-text="records.length" style="margin-left:8px;padding:2px 8px;border-radius:12px;font-size:12px;background:var(--bg-tertiary);color:var(--text-secondary)">0</span>
+            <span x-text="records.length" class="badge badge-neutral" style="margin-left:8px;padding:2px 8px">0</span>
         </button>
     </div>
 
     <!-- DNS RECORDS -->
     <div>
 
-        <div style="margin-bottom:24px">
-            <div class="card" style="padding:24px">
-                <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;color:var(--text-primary)" x-text="editingRecord ? 'Edit DNS Record' : 'Add DNS Record'"></h2>
+        <div style="margin-bottom:var(--gap)">
+            <div class="card">
+                <h2 class="card-title" x-text="editingRecord ? 'Edit DNS Record' : 'Add DNS Record'"></h2>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div class="form-group">
-                        <label class="form-label">Hostname <span style="color:var(--color-error)">*</span></label>
+                        <label class="form-label">Hostname <span class="req">*</span></label>
                         <input type="text" class="input" x-model="form.hostname" placeholder="e.g. server">
-                        <p style="margin:6px 0 0;font-size:12px;color:var(--text-tertiary)">Use <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px;font-family:monospace">*</code> to cover every subdomain of the domain beside it.</p>
+                        <p class="form-hint">Use <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px;font-family:monospace">*</code> to cover every subdomain of the domain beside it.</p>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Domain <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <label class="form-label">Domain <span class="opt">(optional)</span></label>
                         <input type="text" class="input" x-model="form.domain" placeholder="e.g. local">
                     </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
                     <div class="form-group">
-                        <label class="form-label">IP Address <span style="color:var(--color-error)">*</span></label>
+                        <label class="form-label">IP Address <span class="req">*</span></label>
                         <input type="text" class="input" x-model="form.ip" placeholder="e.g. 10.0.1.1">
                     </div>
                     <div class="form-group">
@@ -151,12 +153,12 @@
                     <button class="btn btn-secondary" @click="cancelEdit()" x-text="editingRecord ? 'Cancel' : 'Clear'"></button>
                 </div>
                 <div x-show="addError" x-text="addError"
-                     style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                     class="notice notice-error" style="margin-top:12px"></div>
 
                 <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border-color)">
-                    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 6px">Records are stored in <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px;font-family:monospace;font-size:12px">ferrous-dns.toml</code> and cached permanently in memory.</p>
-                    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 6px">A wildcard record answers for every subdomain below its domain, but not for the domain itself. An exact record always wins over a wildcard covering the same name.</p>
-                    <p style="font-size:12px;color:var(--text-tertiary);margin:0;font-style:italic">Changes are applied immediately and resolved in &lt;0.1ms. The config file can be version-controlled with Git.</p>
+                    <p class="card-desc" style="margin:0 0 6px">Records are stored in <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px;font-family:monospace;font-size:11px">ferrous-dns.toml</code> and cached permanently in memory.</p>
+                    <p class="card-desc" style="margin:0 0 6px">A wildcard record answers for every subdomain below its domain, but not for the domain itself. An exact record always wins over a wildcard covering the same name.</p>
+                    <p class="text-hint" style="margin:0;font-style:italic">Changes are applied immediately and resolved in &lt;0.1ms. The config file can be version-controlled with Git.</p>
                 </div>
             </div>
         </div>
@@ -177,34 +179,34 @@
                     <template x-for="record in records" :key="record.id">
                         <tr>
                             <td>
-                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.fqdn"></span>
-                                <span x-show="record.fqdn.startsWith('*.')" class="badge badge-amber" style="margin-left:8px">WILDCARD</span>
+                                <span style="font-family:monospace;font-size:12px;color:var(--text-primary)" x-text="record.fqdn"></span>
+                                <span x-show="record.fqdn.startsWith('*.')" class="badge badge-warning" style="margin-left:8px">WILDCARD</span>
                             </td>
                             <td>
-                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.ip"></span>
+                                <span style="font-family:monospace;font-size:12px;color:var(--text-primary)" x-text="record.ip"></span>
                             </td>
                             <td>
-                                <span class="badge" :class="record.record_type === 'A' ? 'badge-blue' : 'badge-purple'" x-text="record.record_type"></span>
+                                <span class="badge" :class="record.record_type === 'A' ? 'badge-info' : 'badge-purple'" x-text="record.record_type"></span>
                             </td>
                             <td>
-                                <span style="color:var(--text-secondary);font-size:14px" x-text="record.ttl + 's'"></span>
+                                <span style="color:var(--text-secondary);font-size:13px" x-text="record.ttl + 's'"></span>
                             </td>
                             <td>
                                 <div style="display:flex;gap:4px">
-                                    <button @click="editRecord(record)" class="btn-icon" title="Edit" style="color:var(--text-secondary)">
-                                        <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                    <button @click="editRecord(record)" class="btn-icon" title="Edit">
+                                        <i data-lucide="edit-2"></i>
                                     </button>
-                                    <button @click="deleteRecord(record.id)" class="btn-icon" title="Delete" style="color:var(--color-error)">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    <button @click="deleteRecord(record.id)" class="btn-icon btn-icon-danger" title="Delete">
+                                        <i data-lucide="trash-2"></i>
                                     </button>
                                 </div>
                             </td>
                         </tr>
                     </template>
                     <tr x-show="records.length === 0">
-                        <td colspan="5" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                            <i data-lucide="server" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                            <p style="margin:0">No DNS records yet. Add one above to get started.</p>
+                        <td colspan="5" class="empty-state">
+                            <i data-lucide="server"></i>
+                            <p>No DNS records yet. Add one above to get started.</p>
                         </td>
                     </tr>
                     </tbody>

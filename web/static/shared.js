@@ -135,8 +135,8 @@ function showRestartBanner() {
     if (!main) return;
     const banner = document.createElement('div');
     banner.id = 'global-restart-banner';
-    banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px';
-    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Configuration saved. Restart the server to apply changes.</p>';
+    banner.className = 'notice notice-warning page-banner';
+    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p>Configuration saved. Restart the server to apply changes.</p>';
     main.insertBefore(banner, main.children[1] || null);
 }
 
@@ -168,11 +168,10 @@ function showCertificateBanner(expiresAt) {
     if (!main) return;
     const expired = expiresAtMs <= Date.now();
     const days = daysUntil(expiresAtMs);
-    const [bg, border, text] = expired ? ['#FEE2E2', '#EF4444', '#991B1B'] : ['#FEF3C7', '#F59E0B', '#92400E'];
     const banner = document.createElement('div');
     banner.id = 'global-certificate-banner';
-    banner.style.cssText = `background:${bg};border:1px solid ${border};border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px`;
-    banner.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${border}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><p style="font-size:14px;color:${text};margin:0;font-weight:500"></p>`;
+    banner.className = `notice ${expired ? 'notice-error' : 'notice-warning'} page-banner`;
+    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg><p></p>';
     const date = new Date(expiresAtMs).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     const when = expired ? `expired on ${date}`
         : days === 0 ? `expires today, ${date}`
@@ -183,7 +182,6 @@ function showCertificateBanner(expiresAt) {
     const link = document.createElement('a');
     link.href = '/settings.html#security';
     link.textContent = 'Settings → Security';
-    link.style.cssText = `color:${text};text-decoration:underline`;
     link.addEventListener('click', event => {
         // Already on Settings, where the hash may not change: tell the page anyway.
         if (document.body.dataset.page !== 'settings') return;
@@ -198,6 +196,31 @@ function showCertificateBanner(expiresAt) {
     else main.insertBefore(banner, main.children[1] || null);
 }
 
+// --- Toasts: an action's outcome, bottom right. Errors stay a little longer;
+// a click dismisses one at once. `kind` is success, error, warning or info. ---
+
+function showToast(message, kind = 'success') {
+    let stack = document.getElementById('toast-stack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toast-stack';
+        stack.className = 'toast-stack';
+        stack.setAttribute('role', 'status');
+        stack.setAttribute('aria-live', 'polite');
+        document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${kind}`;
+    toast.textContent = message;
+    const dismiss = () => {
+        toast.classList.add('toast-leaving');
+        setTimeout(() => toast.remove(), 200);
+    };
+    toast.addEventListener('click', dismiss);
+    stack.appendChild(toast);
+    setTimeout(dismiss, kind === 'error' ? 6000 : 3500);
+}
+
 // --- Server version label (sidebar footer), linked to its release notes ---
 
 function showServerVersion() {
@@ -207,7 +230,7 @@ function showServerVersion() {
     el.href = `https://github.com/ferrous-networking/ferrous-dns/releases/tag/v${window.FERROUS_VERSION}`;
 }
 
-// --- UI that follows the server config: the DNSSEC UI and the restart and certificate banners ---
+// --- UI that follows the server config: the DNSSEC and DoH UI and the restart and certificate banners ---
 
 async function applyServerConfigUi() {
     try {
@@ -215,11 +238,12 @@ async function applyServerConfigUi() {
         if (!res.ok) return;
         const config = await res.json();
         hideDnssecUiWhenDisabled(config.dns || {});
+        hideDohUiWhenDisabled(config.server || {});
         // The server clears `restart_required` by restarting; Settings renders its own banner.
         if (config.restart_required && document.body.dataset.page !== 'settings') showRestartBanner();
         if (typeof config.web_certificate_expires_at === 'number') showCertificateBanner(config.web_certificate_expires_at);
     } catch (e) {
-        // fail-open: keep the DNSSEC UI visible and the banners hidden on any error
+        // fail-open: keep the DNSSEC and DoH UI visible and the banners hidden on any error
     }
 }
 
@@ -239,10 +263,28 @@ function hideDnssecUiWhenDisabled(dns) {
         .forEach(el => { el.style.display = 'none'; });
 }
 
+// Hide the DoH IDs sidebar item when DoH is disabled. Fail-open: only hide on a definite false.
+function hideDohUiWhenDisabled(server) {
+    const encryptedDns = server.encrypted_dns || {};
+    if (encryptedDns.doh_enabled !== false) return;
+    document.querySelectorAll('a[href="/doh-ids.html"]')
+        .forEach(el => { el.style.display = 'none'; });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     showServerVersion();
     applyServerConfigUi();
 });
+
+// --- Managed domain expiry, stored as UTC `YYYY-MM-DD HH:MM:SS` ---
+
+// The time alone when it falls today, with the date when it does not.
+function formatExpiry(expiresAt) {
+    const at = new Date(expiresAt.replace(' ', 'T') + 'Z');
+    return at.toDateString() === new Date().toDateString()
+        ? at.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+        : at.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+}
 
 // --- Mobile sidebar toggle ---
 
@@ -296,11 +338,20 @@ function groupUpstreamsByPool(upstreams) {
     return Array.from(pools.values());
 }
 
-function upstreamStrategyStyle(strategy) {
-    if (strategy === 'Parallel') return 'background:rgba(168,85,247,0.12);color:#A855F7';
-    if (strategy === 'Failover') return 'background:rgba(59,130,246,0.12);color:#3B82F6';
-    if (strategy === 'Balanced') return 'background:rgba(16,185,129,0.12);color:#10B981';
-    return 'background:var(--bg-tertiary);color:var(--text-secondary)';
+// The badge colour of an upstream pool's strategy.
+function upstreamStrategyBadge(strategy) {
+    if (strategy === 'Parallel') return 'badge-purple';
+    if (strategy === 'Failover') return 'badge-info';
+    if (strategy === 'Balanced') return 'badge-success';
+    return 'badge-neutral';
+}
+
+// The badge colour of an upstream's health status.
+function upstreamStatusBadge(status) {
+    if (status === 'Healthy') return 'badge-success';
+    if (status === 'Unhealthy') return 'badge-danger';
+    if (status === 'Partial') return 'badge-warning';
+    return 'badge-neutral';
 }
 
 function upstreamStatusColor(status) {

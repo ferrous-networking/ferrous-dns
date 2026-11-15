@@ -98,6 +98,14 @@
                 const defGroup = this.defaultGroupId();
                 this.testForm.group_id = defGroup;
                 this.btForm.group_id = defGroup;
+                // The Query Log's "Open in DNS Filter" links here as #test=<domain>&group=<id>.
+                const linked = new URLSearchParams(location.hash.slice(1));
+                if (linked.has('test')) {
+                    this.testForm.domain = linked.get('test');
+                    if (linked.has('group')) this.testForm.group_id = linked.get('group');
+                    this.switchTab('test');
+                    this.runTest();
+                }
                 await this.$nextTick();
                 scheduleLucide(0);
             },
@@ -197,7 +205,7 @@
                         source.group_ids = newIds;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to update groups: ' + errorText);
+                        showToast('Failed to update groups: ' + errorText, 'error');
                         await this.loadSources();
                     }
                 } catch (e) {
@@ -281,7 +289,7 @@
                     if (res.ok) {
                         source.enabled = !source.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        showToast('Failed to toggle status', 'error');
                     }
                 } catch (e) {
                     console.error('Error toggling status:', e);
@@ -302,11 +310,11 @@
                         await this.loadSources();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        showToast('Failed to delete: ' + errorText, 'error');
                     }
                 } catch (e) {
                     console.error('Error deleting source:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 
@@ -342,7 +350,7 @@
                         source.group_ids = newIds;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to update groups: ' + errorText);
+                        showToast('Failed to update groups: ' + errorText, 'error');
                         await this.loadWhitelistSources();
                     }
                 } catch (e) {
@@ -426,7 +434,7 @@
                     if (res.ok) {
                         source.enabled = !source.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        showToast('Failed to toggle status', 'error');
                     }
                 } catch (e) {
                     console.error('Error toggling allowlist status:', e);
@@ -447,11 +455,11 @@
                         await this.loadWhitelistSources();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        showToast('Failed to delete: ' + errorText, 'error');
                     }
                 } catch (e) {
                     console.error('Error deleting allowlist source:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 
@@ -579,7 +587,7 @@
                     if (res.ok) {
                         domain.enabled = !domain.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        showToast('Failed to toggle status', 'error');
                     }
                 } catch (e) {
                     console.error('Error toggling managed domain status:', e);
@@ -597,7 +605,7 @@
                         domain.group_id = newGroupId;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
+                        showToast('Failed to change group: ' + errorText, 'error');
                         await this.loadManagedDomains();
                     }
                 } catch (e) {
@@ -619,11 +627,11 @@
                         await this.loadManagedDomains();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        showToast('Failed to delete: ' + errorText, 'error');
                     }
                 } catch (e) {
                     console.error('Error deleting managed domain:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 
@@ -723,7 +731,7 @@
                     if (res.ok) {
                         filter.enabled = !filter.enabled;
                     } else {
-                        alert('Failed to toggle status');
+                        showToast('Failed to toggle status', 'error');
                     }
                 } catch (e) {
                     console.error('Error toggling regex filter status:', e);
@@ -741,7 +749,7 @@
                         filter.group_id = newGroupId;
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
+                        showToast('Failed to change group: ' + errorText, 'error');
                         await this.loadRegexFilters();
                     }
                 } catch (e) {
@@ -763,11 +771,11 @@
                         await this.loadRegexFilters();
                     } else {
                         const errorText = await res.text();
-                        alert('Failed to delete: ' + errorText);
+                        showToast('Failed to delete: ' + errorText, 'error');
                     }
                 } catch (e) {
                     console.error('Error deleting regex filter:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 

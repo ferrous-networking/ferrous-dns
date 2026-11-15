@@ -155,10 +155,10 @@
                         await this.loadEntries();
                     } else {
                         console.error('Failed to remove cache entry:', await res.text());
-                        alert(`Failed to remove "${entry.domain}" (${entry.type}).`);
+                        showToast(`Failed to remove "${entry.domain}" (${entry.type}).`, 'error');
                     }
                 } catch (e) {
-                    alert(`Network error: ${e.message}`);
+                    showToast(`Network error: ${e.message}`, 'error');
                 } finally {
                     this.removing = null;
                 }

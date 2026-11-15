@@ -94,11 +94,11 @@
                             const data = await res.json();
                             if (data && data.error) message = data.error;
                         } catch (_) {}
-                        alert(message);
+                        showToast(message, 'error');
                     }
                 } catch (e) {
                     console.error('Error updating DoH policy:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 } finally {
                     this.policySaving = false;
                 }
@@ -234,11 +234,11 @@
                             const data = await res.json();
                             if (data && data.error) message = data.error;
                         } catch (_) {}
-                        alert(message);
+                        showToast(message, 'error');
                     }
                 } catch (e) {
                     console.error('Error deleting DoH ID:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 

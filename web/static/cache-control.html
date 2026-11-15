@@ -87,44 +87,41 @@
         </a>
     </div>
 </aside>
-<main style="padding:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+<main>
+    <div class="page-header">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Cache Control</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">
+            <h2 class="page-title">Cache Control</h2>
+            <p class="page-subtitle">
                 Entries currently held in the DNS cache — <span x-text="recordsTotal"></span> total
             </p>
         </div>
     </div>
-    <div class="card" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
-                <select x-model.number="pageSize" @change="currentPage=1;loadEntries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+    <div class="card" style="margin-bottom:var(--gap)">
+        <div class="filter-bar">
+            <div class="filter-item">
+                <label for="c-page-size">Show:</label>
+                <select id="c-page-size" class="input" x-model.number="pageSize" @change="currentPage=1;loadEntries()">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Domain:</label>
-                <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;loadEntries()"
-                       placeholder="Search domain..."
-                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+            <div class="filter-item">
+                <label for="c-domain">Domain:</label>
+                <input id="c-domain" type="text" class="input" style="width:200px" x-model="searchDomain" @input.debounce.400ms="currentPage=1;loadEntries()"
+                       placeholder="Search domain...">
             </div>
-            <div style="margin-left:auto">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input type="checkbox" x-model="autoRefresh"
-                           style="width:16px;height:16px;accent-color:var(--color-primary)">
-                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
-                </label>
+            <div class="filter-item filter-end">
+                <label for="c-live">Live update</label>
+                <button id="c-live" type="button" class="switch switch-sm" role="switch"
+                        :class="{on: autoRefresh}" :aria-checked="String(autoRefresh)"
+                        @click="autoRefresh = !autoRefresh"></button>
             </div>
         </div>
     </div>
     <div class="card table-card" style="overflow-x:auto">
-        <table>
+        <table class="table-dense">
             <thead>
             <tr>
                 <th class="col-time th-sort" @click="sortBy('cached_at')" title="Sort by insertion time">TIME<span
@@ -148,39 +145,38 @@
             <tbody>
             <template x-for="entry in entries" :key="entryKey(entry)">
                 <tr>
-                    <td style="font-size:12px" x-text="formatCachedAt(entry.cached_at)"></td>
-                    <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
+                    <td style="font-size:11px" x-text="formatCachedAt(entry.cached_at)"></td>
+                    <td style="font-family:monospace;font-size:13px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
                             <template x-if="entry.dnssec_status === 'Secure'">
                                 <span class="dnssec-icon" data-tooltip="SECURE">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="entry.dnssec_status === 'Insecure'">
                                 <span class="dnssec-icon" data-tooltip="INSECURE">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="entry.dnssec_status === 'Bogus'">
                                 <span class="dnssec-icon" data-tooltip="BOGUS">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
                             <template x-if="!['Secure','Insecure','Bogus'].includes(entry.dnssec_status)">
                                 <span class="dnssec-icon" data-tooltip="NOT VALIDATED">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                                 </span>
                             </template>
                             <span x-text="entry.domain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="entry.domain"></span>
                             <template x-if="entry.group_id != null">
-                                <span class="badge" style="flex-shrink:0;background:rgba(139,92,246,0.1);color:#8B5CF6;font-family:inherit"
+                                <span class="badge badge-indigo" style="flex-shrink:0;font-family:inherit"
                                       :title="'Split-horizon answer for client group ' + entry.group_id + ' only'"
                                       x-text="'group ' + entry.group_id"></span>
                             </template>
                         </div>
                     </td>
-                    <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
-                              x-text="entry.type"></span></td>
+                    <td class="col-type"><span class="badge badge-info" x-text="entry.type"></span></td>
                     <td class="col-answer">
                         <template x-if="entry.answers && entry.answers.length">
                             <div class="answer-tip" :data-tooltip="entry.answers.join('\n')">
@@ -200,23 +196,22 @@
                             <span style="color:var(--text-secondary)">—</span>
                         </template>
                     </td>
-                    <td class="col-ttl" style="font-size:13px">
+                    <td class="col-ttl" style="font-size:12px">
                         <span x-text="formatTtl(entry)"></span>
                         <template x-if="entry.stale">
-                            <span class="badge-stale">stale</span>
+                            <span class="badge badge-warning" style="margin-left:4px;padding:1px 6px;font-size:9px">stale</span>
                         </template>
                     </td>
-                    <td class="col-hit" style="font-size:13px" x-text="entry.hits"></td>
-                    <td class="col-refresh" style="font-size:13px" x-text="entry.refreshes"></td>
+                    <td class="col-hit" style="font-size:12px" x-text="entry.hits"></td>
+                    <td class="col-refresh" style="font-size:12px" x-text="entry.refreshes"></td>
                     <td class="col-action">
                         <template x-if="!entry.permanent">
-                            <button type="button" class="btn-action btn-action-remove"
+                            <button type="button" class="btn btn-danger-soft btn-sm"
                                 :disabled="removing === entryKey(entry)"
-                                @click="removeEntry(entry)">Remove
-                            </button>
+                                @click="removeEntry(entry)">Remove</button>
                         </template>
                         <template x-if="entry.permanent">
-                            <span style="color:var(--text-secondary);font-size:12px"
+                            <span style="color:var(--text-secondary);font-size:11px"
                                   title="Local DNS record — remove it in Local DNS settings">local record</span>
                         </template>
                     </td>
@@ -224,27 +219,22 @@
             </template>
             <template x-if="entries.length === 0">
                 <tr>
-                    <td colspan="8" style="text-align:center;color:var(--text-secondary);padding:32px 0"
-                        x-text="searchDomain ? 'No cached entries match this domain.' : 'No entries in the cache yet.'"></td>
+                    <td colspan="8" class="empty-state">
+                        <p x-text="searchDomain ? 'No cached entries match this domain.' : 'No entries in the cache yet.'"></p>
+                    </td>
                 </tr>
             </template>
             </tbody>
         </table>
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
-            <div style="font-size:14px;color:var(--text-secondary)">
+        <div class="pagination">
+            <div class="pagination-info">
                 Showing <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> to <span
                     x-text="Math.min(currentPage*pageSize,total)"></span> of <span
                     x-text="total"></span>
             </div>
-            <div style="display:flex;gap:8px">
-                <button @click="changePage(-1)" :disabled="currentPage===1"
-                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="currentPage===1 ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Previous
-                </button>
-                <button @click="changePage(1)" :disabled="!hasMore"
-                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="!hasMore ? {opacity: 0.5, cursor: 'not-allowed'} : {}">Next
-                </button>
+            <div class="pagination-buttons">
+                <button class="btn btn-secondary" @click="changePage(-1)" :disabled="currentPage===1">Previous</button>
+                <button class="btn btn-secondary" @click="changePage(1)" :disabled="!hasMore">Next</button>
             </div>
         </div>
     </div>
