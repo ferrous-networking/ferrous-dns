@@ -7,7 +7,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Cache refresh maximizes coverage](cache-refresh-maximize-coverage.md) — never cap total refresh throughput with a fixed rate; bound concurrency instead
 - [Web TLS Secure-cookie invariant](web-tls-secure-cookie-invariant.md) — the cookie's `Secure` flag follows the live transport, never the config flag
 - [DnsResolution wire-data invariant](dns-resolution-wire-data-invariant.md) — no `upstream_wire_data` means every non-A/AAAA answer reaches the client empty
-- [Runtime verification recipe](runtime-verification-recipe.md) — minimal config to run the binary; enum casing, main×branch, pkill, auth-off curl, UI-save, fake-upstream load
+- [Runtime verification recipe](runtime-verification-recipe.md) — minimal config to run the binary; enum casing, main×branch, pkill, auth-off curl, UI-save, fake-upstream load, live UI session
 - [Issue #216 blocklist sync](issue-216-blocklist-sync.md) — three defects behind "blocklists not syncing", now fixed; plus why there is no per-source refresh
 - [Deadlock tests need a timeout guard](deadlock-tests-need-timeout-guard.md) — run the suspect call on a thread behind `recv_timeout`, so a hang fails CI instead of blocking it
 - [`/verify` name collision](verify-skill-name-collision.md) — the Skill tool loads the bundled runtime skill, not this repo's CI gate; run the steps or use `/pre-pr`
@@ -43,8 +43,10 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Malware exemptions via groups](decisions/malware-exemptions-via-groups.md) — #356: config exemption lists → DNS Filter allow + per-group switch; one screening gate, cache hits too
 - [Rcode response counters](decisions/rcode-response-counters.md) — #363: `ferrousdns_responses_total{rcode}` counted at the handler's exits; per-site counters and a SERVFAIL table rejected
 - [bind_address "auto": dual-stack, IPv4 without kernel IPv6](decisions/bind-address-auto-dual-stack.md) — #385 default `[::]`; #386 family follows the address, IP_PKTINFO path, `listen_config` probe; seccomp test harness
-- [A disabled group falls back to the default group](decisions/disabled-group-falls-back-to-default.md) — #382: IP/subnet/DoH matches of a disabled group resolve to Protected in the loader's SQL; migration re-enabled old ones; backup carries it
+- [A disabled group falls back to the default group](decisions/disabled-group-falls-back-to-default.md) — #382/#388: a disabled group's IP/subnet/DoH matches resolve to Protected in the loader's SQL; migration re-enabled old ones
 - [Upgrades keep existing behaviour](decisions/upgrades-keep-existing-behaviour.md) — v1.0.0 rule: new behaviour is opt-in; why the Docker DB stays at /data/ferrous-dns.db, import keeps a full restore
+- [Startup hold + list cache](decisions/startup-hold-and-list-cache.md) — #365: no port opens until the first block build (≤30 s); lists kept in lists/ beside the DB, re-downloaded after
+- [Web UI shared components](decisions/web-ui-shared-components.md) — 11-14: one component set in shared.css + showToast; h2 24px, 24px cards, .table/.table-dense, pills, switches, no alert()
 
 ## Bugs
 
@@ -64,12 +66,13 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — pools/routes, rate_limit, malware + group-id translation fixed by #306 (10-23); other DNS fields still unmirrored
 - [String :style wipes the inline style](bugs/alpine-string-style-replaces-inline-style.md) — Alpine replaces style="" on a string binding; bind objects; 19 elements fixed by #384 (07dcbb78, 11-09)
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
+- [Alpine floating-element traps](bugs/alpine-floating-element-traps.md) — x-show shows via setTimeout (0 width at $nextTick), $refs dies with a detached caller, .outside closes on the opening click, $nextTick runs after a paint
 - [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in #297 (e2136494, v0.9.24)
 - [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); labels (#326) by #361
 - [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — #324 fixed by #360 (776daeda, 11-03): overshoot + headroom, rotating cursor; open: `insert_permanent` pass overlap, `evict_if_full` bias
 - [Manual client names can't be cleared](bugs/manual-client-name-cannot-be-cleared.md) — since #343 a blank name changes nothing; pre-migration names (NULL source) still lose to PTR/mDNS
-- [Known test flakes](bugs/known-test-flakes.md) — UDP-pool runtime race + TCP reconnect bound fixed by #377 (11-09); hour-boundary rollup, flush at :00, `free_port` AddrInUse open
+- [Known test flakes](bugs/known-test-flakes.md) — UDP-pool race + TCP reconnect bound fixed by #377 (11-09); never time a live test from the spawn (tarpaulin: 9 s, #389); hour-boundary rollup, flush at :00, `free_port` AddrInUse open
 - [Docker DB path vs the image default](bugs/docker-database-path-ignores-image-default.md) — DB stays at /data/ferrous-dns.db, docs fixed by #371 (d526ad3e, 11-08); env-equals-default skip is a trap
-- [Unfiltered window after a start](bugs/cold-start-unfiltered-window.md) — answers before the block index compiles (~0.2 s, HaGeZi Pro); lists re-downloaded each start; #365 (v1.0.0)
+- [Unfiltered window after a start](bugs/cold-start-unfiltered-window.md) — answers before the block index compiled (~0.2 s); #365 fixed by PR #389 (10a78b33, merged 11-12)
 - [Backup import overwrites host fields](bugs/backup-import-overwrites-host-fields.md) — fixed by #372 (b7904e7b, 11-08): opt-in `?keep_host_settings=true`; a missing snapshot key keeps the value
 - [Two cache hit rates](bugs/cache-hit-rate-two-definitions.md) — /stats + screens use query-log hits ÷ (hits+misses); /cache/metrics + the gauge count lookups; open, unfiled (11-09)

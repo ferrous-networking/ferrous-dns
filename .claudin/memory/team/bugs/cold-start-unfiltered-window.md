@@ -1,6 +1,6 @@
 ---
 name: cold-start-unfiltered-window
-description: After every start the server answers queries before the block index is compiled, so blocked names resolve normally for a moment (~0.2 s measured with HaGeZi Pro); lists are re-downloaded each start; open, filed as #365 on v1.0.0 (2026-11-04)
+description: After every start the server answered queries before the block index was compiled (~0.2 s with HaGeZi Pro), and lists were re-downloaded each start; #365, fixed by PR #389 (10a78b33, merged 2026-11-12)
 type: project
 ---
 
@@ -10,6 +10,6 @@ type: project
 
 **Repro:** Start with HaGeZi Pro enabled and `dig` a blocked name in a tight loop from the moment the process launches. Compare the answers against the timestamp of the `Block index compiled` log line.
 
-**Status:** Open, filed 2026-11-04 as #365 on milestone v1.0.0. It is listed as a follow-up in PR #363 (#318). `docs/operations/sizing.md#restarts` documents the window. The candidate fixes were not decided: hold answers until the index compiles, or keep a cached copy of each list on disk.
+**Status:** Filed 2026-11-04 as #365 on milestone v1.0.0, a follow-up of PR #363 (#318). Fixed on branch `fix/startup-filter-window` (2026-11-12): red `3c98053b`, hold `fc94ddb6`, list cache `9e153767`, docs `a91f114c`. Both options were taken: no port opens until the first build (≤30 s), and each list is kept in `lists/` beside the database. The design is in [[startup-hold-and-list-cache]]. PR #389 merged 2026-11-12 as `10a78b33`, closing #365.
 
-**Why not fixed:** It was found while measuring for the operations guide, and is out of that PR's scope.
+**Why not fixed in #363:** It was found while measuring for the operations guide, and was out of that PR's scope.

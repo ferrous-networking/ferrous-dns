@@ -40,4 +40,11 @@ caused this bug.
 the fixed sum is still 964 and the thresholds above did not move. A `min-width: 1254px`
 container rule widens CLIENT to 220px (964 + 70 + 220). Widening any column above the
 1184px step means raising that 1254 too.
+
+**On branch `feat/query-log-row-actions` (2026-11-14, not merged yet):**
+- SOURCE is 220px and RESPONSE TIME 90px. The fixed sum is still 964, so RT still hides below 1184 and CLIENT still widens at 1254.
+- SOURCE stays visible below RT's step, so every lower threshold rose by 20: ANSWER below 1094, TYPE+PROTOCOL below 944, ACTION below 770, phone rules below 690.
+- `main` padding is 14px on every side, set in `shared.css`. The card's padding is the shared `.card` 24px (it was queries.css's 16px until the 2026-11-14 standardization). On desktop the container is therefore `viewport − 338px`, so every column threshold fires at a viewport 16px wider than with the old 16px card padding. The thresholds themselves are unchanged: they measure the container, not the viewport.
+- ACTION stays 80px: the Block/Allow icon plus a ⋯ menu button, 24px each.
+
 Related: [[mobile-layout-overflow]].

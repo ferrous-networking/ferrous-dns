@@ -34,6 +34,26 @@ enabled = true
 
 Run it from a directory containing a `migrations` symlink to the repo's `migrations/` — the app resolves `./migrations` relative to the working directory, not the config path.
 
+**A live UI session on the shipped config** (2026-11-14):
+- **Setup:** copy `ferrous-dns.toml` into a scratch dir next to a `migrations` symlink. Run `target/debug/ferrous-dns --config ferrous-dns.toml --dns-port 25353 --web-port 8080 --bind 127.0.0.1`. On a dev host, systemd-resolved and Docker already hold port 53.
+- **Not from the repo root:** the auth setup and Settings saves rewrite the tracked `ferrous-dns.toml`, and the `lists/` dir created beside the DB is not gitignored.
+- **Iterating:** the web assets are `include_str!`'d, so every UI tweak needs a rebuild and a restart. An asset-only debug rebuild takes about 2 s.
+- **Traffic for Query Log and Clients:** loop `dig -b 127.0.0.N` over a list of names. Loopback accepts any 127/8 source, and each source address shows up as its own client. About 5 qps, with about 10% random NXDOMAIN subdomains, stays far under the shipped rate limit (1000 qps per /24, 50 NXDOMAIN/s).
+- **Blocking screens:** the shipped config has no blocklist, so they stay empty.
+- **Rate-limited rows on the first page:** set `[dns.rate_limit] queries_per_second = 5` and `burst_size = 5` on the verification instance. Then most of 25 concurrent digs from one 127.x source come back `RATE_LIMITED`; the bucket is per /24, so every 127.0.0.x shares it.
+- **Burst first:** fire that burst before the normal names, or the Query Log's 25-row first page holds only burst rows.
+- **Clear leftovers before seeding:** a rule an earlier run created, such as a still-live temporary allow, flips the next run's verdicts.
+- **Expected console noise:** right after a restart the cache is empty, so the UI's "Remove from cache" logs a 404 in the console.
+- **UI-wide change check** (used 2026-11-14 for the standardization round):
+  - Drive playwright-core over all 11 pages at 1920, 1440, 1280, 1024, 768 and 390px in light, plus 1920 in dark.
+  - Collect `pageerror` and console errors.
+  - Flag any element under `main` whose right edge passes `clientWidth` with no `overflow` auto/scroll/hidden ancestor.
+  - Save a full-page screenshot per page.
+  - It runs in about 2 minutes.
+- **Outcomes are toasts since that round:** read `.toast`, not `page.on('dialog')`. A dialog listener now sees only `confirm()`.
+- **Checking an animation:** in the page, sample every row's `getBoundingClientRect().top` on `requestAnimationFrame` for a few seconds while traffic flows, then per frame take the median move of rows present in both frames. Count one-frame jumps (|move| > 20 px) and still frames. This caught a FLIP flash and transition-start stalls that screenshots and timing logs missed (2026-11-15).
+- **After a host reboot** the scratchpad is empty (it is tmpfs): the instance dir, its database, start and traffic scripts are gone, and the next start shows the auth setup screen again (seen 2026-11-15).
+
 **Stop that instance before running `make ci`, or pick another DNS port** (25353 worked on 2026-10-16). `crates/infrastructure/tests/helpers/dns_server_mock.rs:104` binds port **15353**, the same port as the config above. A verification instance still running there makes `test_mock_server_starts` fail with a bare `assertion failed: result.is_ok()`, which looks nothing like a port conflict.
 
 **Main × branch side by side:** before the first edit, build `main` and copy `target/debug/ferrous-dns` to the scratchpad. Then run it and the branch build on different web/DNS ports, each in its own directory with its own `migrations` symlink, and diff the same curl script's output.
