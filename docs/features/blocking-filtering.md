@@ -137,7 +137,7 @@ A `*.` rule covers every name **below** the base — `video.ads.example.com`, `a
 
 Domains in the allowlist bypass all blocking, even if present in a blocklist.
 
-Manage the allowlist via the dashboard (**DNS Filter > Managed Domains**) or the REST API — entries are stored in the SQLite database. You can also add a domain directly from the query log with one click, for good or for 15 minutes, 1 hour or 1 day; a temporary allow is deleted when it expires ([Allow/Block from Query Log](../configuration/blocking.md#allowblock-from-query-log)).
+Manage the allowlist via the dashboard (**DNS Filter > Managed Domains**) or the REST API — entries are stored in the SQLite database. To add many at once, switch the form to **Bulk** and paste one domain per line; text after `#` is a comment. The reply says which lines were added, which were already there and which are invalid, and only the invalid lines stay in the box to fix ([Create Domains in Bulk](../api.md#create-domains-in-bulk)). You can also add a domain directly from the query log with one click, for good or for 15 minutes, 1 hour or 1 day; a temporary allow is deleted when it expires ([Allow/Block from Query Log](../configuration/blocking.md#allowblock-from-query-log)).
 
 !!! warning "Not configured via TOML"
     Use the dashboard or API to allow-list domains. The `whitelist` array older releases accepted in `[blocking]` was never read, and a file that still has entries in it loads with a warning.
