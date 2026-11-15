@@ -96,16 +96,17 @@
     </div>
 </aside>
 
-<main style="padding:24px">
-    <div style="margin-bottom:24px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Groups Management</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Organize network clients into logical groups</p>
+<main>
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Groups Management</h2>
+            <p class="page-subtitle">Organize network clients into logical groups</p>
+        </div>
     </div>
 
     <div class="form-container">
-        <div class="card" style="padding:24px">
-            <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
-                x-text="editingGroup ? 'Edit Group' : 'Add New Group'"></h2>
+        <div class="card">
+            <h2 class="card-title" x-text="editingGroup ? 'Edit Group' : 'Add New Group'"></h2>
 
             <form @submit.prevent="saveGroup()">
                 <div class="form-group">
@@ -115,29 +116,32 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Comment (Optional)</label>
-                    <textarea class="textarea" x-model="form.comment"
+                    <label class="form-label">Comment <span class="opt">(optional)</span></label>
+                    <textarea class="input" x-model="form.comment"
                               placeholder="Add a description for this group"></textarea>
                 </div>
 
                 <div class="form-group" x-show="!editingGroup || !editingGroup.is_default">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                        <input type="checkbox" x-model="form.enabled" style="width:18px;height:18px;cursor:pointer">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <button type="button" class="switch" role="switch" :class="{on: form.enabled}"
+                                :aria-checked="String(form.enabled)" aria-label="Group Enabled"
+                                @click="form.enabled = !form.enabled"></button>
                         <span class="form-label" style="margin:0">Group Enabled</span>
-                    </label>
-                    <p style="font-size:13px;color:var(--text-secondary);margin-top:6px">
+                    </div>
+                    <p class="form-hint">
                         Off gives every client in this group, matched by IP, subnet or DoH ID, the
                         default group's rules instead. Applies at once, with no restart.
                     </p>
                 </div>
 
                 <div class="form-group" x-show="malwareDetectionEnabled">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                        <input type="checkbox" x-model="form.malware_detection_enabled"
-                               style="width:18px;height:18px;cursor:pointer">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <button type="button" class="switch" role="switch" :class="{on: form.malware_detection_enabled}"
+                                :aria-checked="String(form.malware_detection_enabled)" aria-label="Malware Detection"
+                                @click="form.malware_detection_enabled = !form.malware_detection_enabled"></button>
                         <span class="form-label" style="margin:0">Malware Detection</span>
-                    </label>
-                    <p style="font-size:13px;color:var(--text-secondary);margin-top:6px">
+                    </div>
+                    <p class="form-hint">
                         Off exempts every client in this group from DNS tunneling, DGA, rebinding,
                         NXDOMAIN hijack and response IP checks, such as a monitoring server. Blocklists
                         and CNAME cloaking still apply. Applies at once, with no restart.
@@ -153,8 +157,7 @@
                     </button>
                 </div>
 
-                <div x-show="error" x-text="error"
-                     style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                <div class="notice notice-error" x-show="error" x-text="error" style="margin-top:12px"></div>
             </form>
         </div>
     </div>
@@ -178,20 +181,20 @@
                         <td>
                             <div style="display:flex;align-items:center;gap:8px">
                                 <span style="font-weight:500;color:var(--text-primary)" x-text="group.name"></span>
-                                <span x-show="group.is_default" class="badge badge-default">Default</span>
+                                <span x-show="group.is_default" class="badge badge-info">Default</span>
                             </div>
                         </td>
                         <td>
-                            <span class="badge" :class="group.enabled ? 'badge-success' : 'badge-inactive'"
+                            <span class="badge" :class="group.enabled ? 'badge-success' : 'badge-neutral'"
                                   x-text="group.enabled ? 'Enabled' : 'Disabled'"></span>
                         </td>
                         <td x-show="malwareDetectionEnabled">
                             <span class="badge"
-                                  :class="group.malware_detection_enabled ? 'badge-success' : 'badge-inactive'"
+                                  :class="group.malware_detection_enabled ? 'badge-success' : 'badge-neutral'"
                                   x-text="group.malware_detection_enabled ? 'On' : 'Off'"></span>
                         </td>
                         <td>
-                            <span style="color:var(--text-secondary);font-size:14px"
+                            <span style="color:var(--text-secondary);font-size:13px"
                                   x-text="group.comment || '-'"></span>
                         </td>
                         <td>
@@ -201,20 +204,19 @@
                         <td>
                             <div style="display:flex;gap:8px">
                                 <button @click="editGroup(group)" class="btn-icon" title="Edit">
-                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                    <i data-lucide="edit-2"></i>
                                 </button>
-                                <button @click="deleteGroup(group)" class="btn-icon" :disabled="group.is_default"
+                                <button @click="deleteGroup(group)" class="btn-icon btn-icon-danger" :disabled="group.is_default"
                                         title="Delete">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"
-                                       :style="group.is_default ? {opacity: 0.3} : {}"></i>
+                                    <i data-lucide="trash-2"></i>
                                 </button>
                             </div>
                         </td>
                     </tr>
                 </template>
                 <tr x-show="groups.length === 0">
-                    <td :colspan="malwareDetectionEnabled ? 6 : 5" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="layers" style="width:48px;height:48px;margin-bottom:16px"></i>
+                    <td :colspan="malwareDetectionEnabled ? 6 : 5" class="empty-state">
+                        <i data-lucide="layers"></i>
                         <p>No groups found</p>
                     </td>
                 </tr>

@@ -80,6 +80,7 @@ pub async fn get_queries(
         .queries
         .into_iter()
         .map(|q| QueryResponse {
+            id: q.id.unwrap_or_default(),
             timestamp: q.timestamp.unwrap_or_default(),
             domain: q.domain,
             client: q.client_ip.to_string(),

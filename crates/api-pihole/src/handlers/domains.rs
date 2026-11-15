@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use ferrous_dns_application::ports::{ManagedDomainUpdate, RegexFilterUpdate};
+use ferrous_dns_application::ports::{ManagedDomainUpdate, NewManagedDomain, RegexFilterUpdate};
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain, RegexFilter};
 
 use crate::{
@@ -274,7 +274,15 @@ async fn create_entry(
         DomainKind::Exact => state
             .blocking
             .create_managed_domain
-            .execute(item.clone(), item, action, group_id, comment, enabled)
+            .execute(NewManagedDomain {
+                name: item.clone(),
+                domain: item,
+                action,
+                group_id,
+                comment,
+                enabled,
+                expires_in: None,
+            })
             .await
             .map(drop),
         DomainKind::Regex => state

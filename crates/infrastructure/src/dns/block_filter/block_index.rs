@@ -68,6 +68,14 @@ pub struct RegexRule {
     pub regex: Regex,
 }
 
+/// A managed deny rule's database identity, kept for attribution only: the hot
+/// path reads `managed_denies` and `managed_deny_wildcards`.
+#[derive(Debug, Clone)]
+pub struct ManagedDenyRule {
+    pub id: i64,
+    pub name: String,
+}
+
 #[derive(Default)]
 pub struct AllowlistIndex {
     /// The manual allowlist, which names no source.
@@ -114,6 +122,9 @@ pub struct BlockIndex {
     pub allowlists: AllowlistIndex,
     pub managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>>,
     pub managed_deny_wildcards: HashMap<i64, SuffixTrie>,
+    /// Per group, the managed deny rules under the domain they store (`x` or
+    /// `*.x`), so `explain` can name them.
+    pub managed_deny_rules: HashMap<i64, HashMap<CompactString, Vec<ManagedDenyRule>>>,
     pub allow_regex_patterns: HashMap<i64, Vec<RegexRule>>,
     pub block_regex_patterns: HashMap<i64, Vec<RegexRule>>,
     pub groups_with_advanced_rules: HashSet<i64>,
@@ -134,6 +145,7 @@ impl BlockIndex {
             allowlists: AllowlistIndex::default(),
             managed_denies: HashMap::new(),
             managed_deny_wildcards: HashMap::new(),
+            managed_deny_rules: HashMap::new(),
             allow_regex_patterns: HashMap::new(),
             block_regex_patterns: HashMap::new(),
             groups_with_advanced_rules: HashSet::new(),
@@ -266,25 +278,31 @@ impl BlockIndex {
 
         self.collect_allow_matches(domain, group_id, &mut allow_reasons);
 
-        // Managed (custom) deny domains.
+        // Managed (custom) deny domains, one match per rule.
         if let Some(set) = self.managed_denies.get(&group_id) {
             if set.contains(domain) {
-                block_matches.push(BlockMatch {
-                    kind: BlockMatchKind::ManagedDomain,
-                    source_id: None,
-                    name: "Managed domain".to_string(),
-                    match_type: MatchType::Exact,
-                });
+                self.collect_managed_deny_matches(
+                    group_id,
+                    &[domain],
+                    MatchType::Exact,
+                    &mut block_matches,
+                );
             }
         }
         if let Some(trie) = self.managed_deny_wildcards.get(&group_id) {
             if trie.lookup(domain) != 0 {
-                block_matches.push(BlockMatch {
-                    kind: BlockMatchKind::ManagedDomain,
-                    source_id: None,
-                    name: "Managed domain".to_string(),
-                    match_type: MatchType::Wildcard,
-                });
+                // Each ancestor of `domain` may hold a `*.` rule of its own.
+                let patterns: Vec<String> = domain
+                    .match_indices('.')
+                    .map(|(dot, _)| format!("*.{}", &domain[dot + 1..]))
+                    .collect();
+                let patterns: Vec<&str> = patterns.iter().map(String::as_str).collect();
+                self.collect_managed_deny_matches(
+                    group_id,
+                    &patterns,
+                    MatchType::Wildcard,
+                    &mut block_matches,
+                );
             }
         }
 
@@ -328,6 +346,40 @@ impl BlockIndex {
             blocked,
             allow_reasons,
             block_matches,
+        }
+    }
+
+    /// One named [`BlockMatch`] per managed deny rule stored under any of
+    /// `patterns`, or a single unnamed one when none is found.
+    fn collect_managed_deny_matches(
+        &self,
+        group_id: i64,
+        patterns: &[&str],
+        match_type: MatchType,
+        out: &mut Vec<BlockMatch>,
+    ) {
+        let before = out.len();
+        if let Some(rules) = self.managed_deny_rules.get(&group_id) {
+            for rule in patterns
+                .iter()
+                .filter_map(|pattern| rules.get(*pattern))
+                .flatten()
+            {
+                out.push(BlockMatch {
+                    kind: BlockMatchKind::ManagedDomain,
+                    source_id: Some(rule.id),
+                    name: rule.name.clone(),
+                    match_type,
+                });
+            }
+        }
+        if out.len() == before {
+            out.push(BlockMatch {
+                kind: BlockMatchKind::ManagedDomain,
+                source_id: None,
+                name: "Managed domain".to_string(),
+                match_type,
+            });
         }
     }
 

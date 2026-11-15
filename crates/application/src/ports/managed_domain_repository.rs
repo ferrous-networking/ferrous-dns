@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
+use std::time::Duration;
 
 /// Fields to change on a managed domain; `None` keeps the stored value, and
 /// `comment: Some(None)` clears it.
@@ -13,17 +14,23 @@ pub struct ManagedDomainUpdate {
     pub enabled: Option<bool>,
 }
 
+/// A managed domain to create.
+#[derive(Debug, Clone)]
+pub struct NewManagedDomain {
+    pub name: String,
+    pub domain: String,
+    pub action: DomainAction,
+    pub group_id: i64,
+    pub comment: Option<String>,
+    pub enabled: bool,
+    /// Expires the rule that long after it is created; `None` keeps it until
+    /// it is deleted.
+    pub expires_in: Option<Duration>,
+}
+
 #[async_trait]
 pub trait ManagedDomainRepository: Send + Sync {
-    async fn create(
-        &self,
-        name: String,
-        domain: String,
-        action: DomainAction,
-        group_id: i64,
-        comment: Option<String>,
-        enabled: bool,
-    ) -> Result<ManagedDomain, DomainError>;
+    async fn create(&self, new: NewManagedDomain) -> Result<ManagedDomain, DomainError>;
 
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError>;
 
@@ -45,6 +52,9 @@ pub trait ManagedDomainRepository: Send + Sync {
     ) -> Result<ManagedDomain, DomainError>;
 
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
+
+    /// Deletes every rule whose expiry has passed and returns how many.
+    async fn delete_expired(&self) -> Result<u64, DomainError>;
 
     async fn bulk_create_for_service(
         &self,

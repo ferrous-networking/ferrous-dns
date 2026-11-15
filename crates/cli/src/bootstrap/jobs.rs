@@ -1,7 +1,7 @@
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
-    BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, QueryLogRollupJob, RetentionJob,
-    ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob,
+    BlocklistSyncJob, ClientSyncJob, ManagedDomainExpiryJob, QueryLogRetentionJob,
+    QueryLogRollupJob, RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob,
 };
 use sqlx::SqlitePool;
 use tracing::info;
@@ -30,6 +30,7 @@ pub fn spawn_jobs(
     WalCheckpointJob::new(wal_pool, config.database.wal_checkpoint_interval_secs).spawn();
     ScheduleEvaluatorJob::new(repos.schedule_profile.clone(), repos.schedule_state.clone()).spawn();
     SessionCleanupJob::new(repos.session.clone(), repos.mfa.clone()).spawn();
+    ManagedDomainExpiryJob::new(use_cases.purge_expired_managed_domains.clone()).spawn();
 
     info!("All background jobs started");
 }

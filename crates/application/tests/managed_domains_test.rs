@@ -1,13 +1,29 @@
-use ferrous_dns_application::ports::{ManagedDomainRepository, ManagedDomainUpdate};
+use ferrous_dns_application::ports::{
+    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+};
 use ferrous_dns_application::use_cases::managed_domains::{
     CreateManagedDomainUseCase, DeleteManagedDomainUseCase, GetManagedDomainsUseCase,
-    UpdateManagedDomainUseCase,
+    PurgeExpiredManagedDomainsUseCase, UpdateManagedDomainUseCase,
 };
 use ferrous_dns_domain::{DomainAction, DomainError};
 use std::sync::Arc;
+use std::time::Duration;
 
 mod helpers;
 use helpers::{MockBlockFilterEngine, MockGroupRepository, MockManagedDomainRepository};
+
+/// An enabled, permanent rule in the default group, with no comment.
+fn new_domain(name: &str, domain: &str, action: DomainAction) -> NewManagedDomain {
+    NewManagedDomain {
+        name: name.to_string(),
+        domain: domain.to_string(),
+        action,
+        group_id: 1,
+        comment: None,
+        enabled: true,
+        expires_in: None,
+    }
+}
 
 #[tokio::test]
 async fn test_get_all_empty() {
@@ -23,24 +39,18 @@ async fn test_get_all_empty() {
 #[tokio::test]
 async fn test_get_all_with_domains() {
     let repo = Arc::new(MockManagedDomainRepository::new());
-    repo.create(
-        "Block Ads".to_string(),
-        "ads.example.com".to_string(),
+    repo.create(new_domain(
+        "Block Ads",
+        "ads.example.com",
         DomainAction::Deny,
-        1,
-        None,
-        true,
-    )
+    ))
     .await
     .unwrap();
-    repo.create(
-        "Allow Company".to_string(),
-        "mycompany.com".to_string(),
+    repo.create(new_domain(
+        "Allow Company",
+        "mycompany.com",
         DomainAction::Allow,
-        1,
-        None,
-        true,
-    )
+    ))
     .await
     .unwrap();
 
@@ -55,14 +65,11 @@ async fn test_get_all_with_domains() {
 async fn test_get_by_id_found() {
     let repo = Arc::new(MockManagedDomainRepository::new());
     let created = repo
-        .create(
-            "Block Ads".to_string(),
-            "ads.example.com".to_string(),
+        .create(new_domain(
+            "Block Ads",
+            "ads.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await
         .unwrap();
     let id = created.id.unwrap();
@@ -95,14 +102,10 @@ async fn test_create_deny_success() {
     let use_case = CreateManagedDomainUseCase::new(repo.clone(), group_repo, engine.clone());
 
     let result = use_case
-        .execute(
-            "Block Ads".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            1,
-            Some("Block ads domain".to_string()),
-            true,
-        )
+        .execute(NewManagedDomain {
+            comment: Some("Block ads domain".to_string()),
+            ..new_domain("Block Ads", "ads.example.com", DomainAction::Deny)
+        })
         .await;
 
     assert!(result.is_ok());
@@ -113,8 +116,62 @@ async fn test_create_deny_success() {
     assert_eq!(domain.action, DomainAction::Deny);
     assert_eq!(domain.group_id, 1);
     assert!(domain.enabled);
+    assert!(domain.expires_at.is_none());
     assert_eq!(repo.count().await, 1);
     assert_eq!(engine.reload_count().await, 1);
+}
+
+#[tokio::test]
+async fn test_create_with_expiry_stores_expires_at() {
+    let repo = Arc::new(MockManagedDomainRepository::new());
+    let group_repo = Arc::new(MockGroupRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine.clone());
+
+    let domain = use_case
+        .execute(NewManagedDomain {
+            expires_in: Some(Duration::from_secs(3600)),
+            ..new_domain("Allow for an hour", "ads.example.com", DomainAction::Allow)
+        })
+        .await
+        .unwrap();
+
+    assert!(domain.expires_at.is_some());
+    assert_eq!(engine.reload_count().await, 1);
+}
+
+#[tokio::test]
+async fn test_create_rejects_expiry_outside_bounds() {
+    let repo = Arc::new(MockManagedDomainRepository::new());
+    let group_repo = Arc::new(MockGroupRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let use_case = CreateManagedDomainUseCase::new(repo.clone(), group_repo, engine.clone());
+    let with_expiry = |secs: u64| NewManagedDomain {
+        expires_in: Some(Duration::from_secs(secs)),
+        ..new_domain(
+            &format!("Expiry {secs}"),
+            "ads.example.com",
+            DomainAction::Allow,
+        )
+    };
+
+    for secs in [0, 59, 30 * 24 * 3600 + 1] {
+        let result = use_case.execute(with_expiry(secs)).await;
+
+        assert!(
+            matches!(result, Err(DomainError::InvalidManagedDomain(_))),
+            "{secs} s: {result:?}"
+        );
+    }
+    for secs in [60, 30 * 24 * 3600] {
+        use_case
+            .execute(with_expiry(secs))
+            .await
+            .unwrap_or_else(|e| panic!("{secs} s: {e:?}"));
+    }
+
+    assert_eq!(repo.count().await, 2);
+    assert_eq!(engine.reload_count().await, 2);
 }
 
 #[tokio::test]
@@ -125,14 +182,11 @@ async fn test_create_allow_success() {
     let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let result = use_case
-        .execute(
-            "Allow Company".to_string(),
-            "mycompany.com".to_string(),
+        .execute(new_domain(
+            "Allow Company",
+            "mycompany.com",
             DomainAction::Allow,
-            1,
-            None,
-            true,
-        )
+        ))
         .await;
 
     assert!(result.is_ok());
@@ -148,14 +202,7 @@ async fn test_create_invalid_name_empty() {
     let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let result = use_case
-        .execute(
-            "".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        .execute(new_domain("", "ads.example.com", DomainAction::Deny))
         .await;
 
     assert!(result.is_err());
@@ -173,14 +220,7 @@ async fn test_create_invalid_domain_empty() {
     let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let result = use_case
-        .execute(
-            "Empty Domain".to_string(),
-            "".to_string(),
-            DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        .execute(new_domain("Empty Domain", "", DomainAction::Deny))
         .await;
 
     assert!(result.is_err());
@@ -198,14 +238,10 @@ async fn test_create_group_not_found() {
     let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let result = use_case
-        .execute(
-            "Test".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            999,
-            None,
-            true,
-        )
+        .execute(NewManagedDomain {
+            group_id: 999,
+            ..new_domain("Test", "ads.example.com", DomainAction::Deny)
+        })
         .await;
 
     assert!(result.is_err());
@@ -225,14 +261,11 @@ async fn test_update_toggle_enabled() {
     let update_uc = UpdateManagedDomainUseCase::new(repo, group_repo, engine.clone());
 
     let created = create_uc
-        .execute(
-            "Toggle Domain".to_string(),
-            "ads.example.com".to_string(),
+        .execute(new_domain(
+            "Toggle Domain",
+            "ads.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await
         .unwrap();
 
@@ -261,14 +294,11 @@ async fn test_update_change_action() {
     let update_uc = UpdateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let created = create_uc
-        .execute(
-            "Change Action".to_string(),
-            "ads.example.com".to_string(),
+        .execute(new_domain(
+            "Change Action",
+            "ads.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await
         .unwrap();
 
@@ -320,14 +350,11 @@ async fn test_update_invalid_group() {
     let update_uc = UpdateManagedDomainUseCase::new(repo, group_repo, engine);
 
     let created = create_uc
-        .execute(
-            "Test Domain".to_string(),
-            "ads.example.com".to_string(),
+        .execute(new_domain(
+            "Test Domain",
+            "ads.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await
         .unwrap();
 
@@ -357,14 +384,11 @@ async fn test_delete_success() {
     let delete_uc = DeleteManagedDomainUseCase::new(repo.clone(), engine.clone());
 
     let created = create_uc
-        .execute(
-            "To Delete".to_string(),
-            "ads.example.com".to_string(),
+        .execute(new_domain(
+            "To Delete",
+            "ads.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await
         .unwrap();
     let id = created.id.unwrap();
@@ -402,16 +426,49 @@ async fn test_reload_called_even_if_fails_gracefully() {
     let use_case = CreateManagedDomainUseCase::new(repo, group_repo, engine.clone());
 
     let result = use_case
-        .execute(
-            "Test".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        .execute(new_domain("Test", "ads.example.com", DomainAction::Deny))
         .await;
 
     // CRUD should succeed even if reload fails
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_purge_expired_deletes_past_rules_and_reloads_only_then() {
+    let repo = Arc::new(MockManagedDomainRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let mut ids = Vec::new();
+    for (name, expires_in) in [
+        ("Permanent", None),
+        ("Future", Some(Duration::from_secs(3600))),
+        ("Past", Some(Duration::from_secs(3600))),
+    ] {
+        let created = repo
+            .create(NewManagedDomain {
+                expires_in,
+                ..new_domain(name, "ads.example.com", DomainAction::Allow)
+            })
+            .await
+            .unwrap();
+        ids.push(created.id);
+    }
+    repo.expire(ids[2].unwrap()).await;
+    let purge = PurgeExpiredManagedDomainsUseCase::new(repo.clone(), engine.clone());
+
+    assert_eq!(purge.execute().await.unwrap(), 1);
+    assert_eq!(engine.reload_count().await, 1);
+    let left: Vec<Option<i64>> = repo
+        .get_all_domains()
+        .await
+        .into_iter()
+        .map(|d| d.id)
+        .collect();
+    assert_eq!(left, ids[..2]);
+
+    assert_eq!(purge.execute().await.unwrap(), 0);
+    assert_eq!(
+        engine.reload_count().await,
+        1,
+        "nothing expired, so nothing to reload"
+    );
 }

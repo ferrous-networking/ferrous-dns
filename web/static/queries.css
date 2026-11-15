@@ -1,20 +1,6 @@
-        .card {
-            padding: 16px
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 12px;
-            border-radius: 9999px;
-            font-size: 12px;
-            font-weight: 600
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
+        /* The dense look (padding, font, borders, hover) is shared.css's
+           .table-dense; this file keeps the column layout. */
+        .table-dense {
             table-layout: fixed;
             min-width: 560px
         }
@@ -22,11 +8,12 @@
         .col-time { width: 100px }
         .col-proto { width: 104px }
         .col-client { width: 150px }
-        .col-source { width: 200px }
-        .col-answer {
+        .col-source { width: 220px }
+        /* Two classes, or shared.css's `.table-dense td` font-size wins. */
+        .table-dense .col-answer {
             width: 150px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
             line-height: 1.4
         }
 
@@ -46,9 +33,9 @@
         .answer-more {
             flex-shrink: 0;
             padding: 1px 6px;
-            border-radius: 9999px;
+            border-radius: var(--radius-pill);
             font-family: inherit;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 600;
             background: rgba(107, 114, 128, 0.15);
             color: var(--text-secondary)
@@ -69,7 +56,7 @@
             padding: 4px 8px;
             border-radius: 4px;
             font-family: monospace;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.5;
             text-align: left;
             white-space: pre;
@@ -90,7 +77,7 @@
            answer-tip. */
         .coalesced-icon {
             display: inline-flex;
-            color: #6366F1
+            color: var(--color-indigo)
         }
 
         /* CLIENT stays on one line: the name gives way to an ellipsis before
@@ -135,9 +122,9 @@
             display: inline-flex
         }
 
-        .cookie-valid { color: #22C55E }
-        .cookie-client { color: #6B7280 }
-        .cookie-invalid { color: #EAB308 }
+        .cookie-valid { color: var(--color-success) }
+        .cookie-client { color: var(--text-secondary) }
+        .cookie-invalid { color: var(--color-warning) }
 
         /* DOMAIN is the only flexible column: it gets whatever the fixed ones
            leave. Hide columns by the card's width rather than the viewport's —
@@ -157,45 +144,28 @@
             .col-client { width: 220px }
         }
 
-        @container (max-width: 1073px) {
+        @container (max-width: 1093px) {
             .col-answer { display: none }
         }
 
-        @container (max-width: 923px) {
+        @container (max-width: 943px) {
             .col-type { display: none }
             .col-proto { display: none }
         }
 
-        @container (max-width: 749px) {
+        @container (max-width: 769px) {
             .col-action { display: none }
         }
 
         /* Phones: drop the table min-width and the CLIENT column, and shrink
            TIME/SOURCE so the DOMAIN column keeps enough room to show the
            queried name instead of collapsing to zero width. */
-        @container (max-width: 669px) {
-            table { min-width: 0 }
+        @container (max-width: 689px) {
+            .table-dense { min-width: 0 }
             .col-client { display: none }
             .col-time { width: 86px }
             .col-source { width: 116px }
-            th, td { padding: 8px 6px }
-        }
-
-        th {
-            padding: 8px 10px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 12px;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            border-bottom: 1px solid var(--border-color)
-        }
-
-        td {
-            padding: 8px 10px;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 14px;
-            white-space: nowrap
+            .table-dense th, .table-dense td { padding: 8px 6px }
         }
 
         tr.row-allowed {
@@ -214,8 +184,26 @@
             background: rgba(245, 158, 11, 0.08)
         }
 
-        tr:hover {
-            opacity: 0.85
+        /* Live update: the body glides down (queries.js glide) to make room
+           under the header, which is opaque and on top. Once a new row's place
+           is clear, the whole row fades in, with a blue glow that settles into
+           its own row colour. */
+        .table-card .table-dense th {
+            position: relative;
+            z-index: 1;
+            background: var(--bg-secondary)
+        }
+
+        @keyframes row-appear {
+            from { opacity: 0 }
+        }
+
+        @keyframes row-glow {
+            from { background-color: rgba(59, 130, 246, 0.16) }
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            tr.row-fresh { animation: row-appear 0.3s ease-out, row-glow 1s ease-out }
         }
 
         .dnssec-icon {
@@ -233,7 +221,7 @@
             transform: translateX(-50%);
             padding: 3px 8px;
             border-radius: 4px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             font-family: monospace;
             letter-spacing: 0.05em;
@@ -265,15 +253,211 @@
             opacity: 1;
         }
 
-        .dnssec-icon[data-tooltip="SECURE"]::after        { color: #22C55E; }
-        .dnssec-icon[data-tooltip="INSECURE"]::after      { color: #EAB308; }
-        .dnssec-icon[data-tooltip="BOGUS"]::after         { color: #EF4444; }
-        .dnssec-icon[data-tooltip="NOT VALIDATED"]::after { color: #9CA3AF; }
+        /* The lock strokes currentColor, and the tooltip takes the same colour. */
+        .dnssec-icon[data-tooltip="SECURE"]               { color: var(--color-success); }
+        .dnssec-icon[data-tooltip="INSECURE"]             { color: var(--color-warning); }
+        .dnssec-icon[data-tooltip="BOGUS"]                { color: var(--color-error); }
+        .dnssec-icon[data-tooltip="NOT VALIDATED"]        { color: var(--text-secondary); }
+        .dnssec-icon[data-tooltip="NOT VALIDATED"]::after { color: var(--text-tertiary); }
 
-        .col-action { text-align: center }
-        .btn-action { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s }
+        .table-dense .col-action { text-align: center }
+        .action-cell { display: inline-flex; align-items: center; gap: 4px }
+        .action-none { color: var(--text-secondary); min-width: 24px }
+        .btn-action { display: inline-flex; align-items: center; justify-content: center; padding: 5px; border-radius: var(--radius-sm); border: none; cursor: pointer; transition: background 0.15s }
         .btn-action:disabled { opacity: 0.5; cursor: not-allowed }
-        .btn-action-allow { background: rgba(16, 185, 129, 0.15); color: #10B981 }
-        .btn-action-allow:hover:not(:disabled) { background: rgba(16, 185, 129, 0.3) }
-        .btn-action-block { background: rgba(239, 68, 68, 0.15); color: #EF4444 }
-        .btn-action-block:hover:not(:disabled) { background: rgba(239, 68, 68, 0.3) }
+        /* Neutral like the ⋯ beside it; the action's colour shows on hover. */
+        .btn-action-allow,
+        .btn-action-block { background: transparent; color: var(--text-secondary) }
+        .btn-action-allow:hover:not(:disabled),
+        .btn-action-allow:focus-visible { background: rgba(16, 185, 129, 0.15); color: var(--color-success) }
+        .btn-action-block:hover:not(:disabled),
+        .btn-action-block:focus-visible { background: rgba(239, 68, 68, 0.15); color: var(--color-error) }
+        .btn-action-more { background: transparent; color: var(--text-secondary) }
+        .btn-action-more:hover:not(:disabled) { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        /* Row actions menu and Why? popover: one of each, fixed to the viewport. */
+        .row-menu,
+        .row-popover {
+            position: fixed;
+            z-index: 60;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-popover)
+        }
+
+        .row-menu {
+            width: 240px;
+            padding: 6px
+        }
+
+        .row-menu-head {
+            padding: 4px 10px 8px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid var(--border-color);
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .row-menu-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+            padding: 7px 10px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: none;
+            color: var(--text-primary);
+            font-size: 12px;
+            text-align: left;
+            cursor: pointer
+        }
+
+        .row-menu-item:hover:not(:disabled),
+        .row-menu-item:focus-visible { background: var(--bg-tertiary) }
+        .row-menu-item:disabled { color: var(--text-secondary); cursor: default }
+
+        .row-menu-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0
+        }
+
+        .row-menu-icon {
+            flex-shrink: 0;
+            color: var(--text-secondary)
+        }
+
+        /* Each item's icon takes its action's colour on hover. */
+        .row-menu-item:hover:not(:disabled) .row-menu-icon,
+        .row-menu-item:focus-visible .row-menu-icon { color: var(--tone, var(--text-primary)) }
+        .tone-filter { --tone: var(--color-primary) }
+        .tone-why { --tone: var(--color-indigo) }
+        .tone-allow { --tone: var(--color-success) }
+        .tone-block { --tone: var(--color-error) }
+        .tone-cache { --tone: var(--color-purple) }
+        .tone-group { --tone: var(--color-orange) }
+        .tone-rate { --tone: var(--color-warning) }
+        .tone-copy { --tone: #14B8A6 }
+
+        /* Lines up with the labels after the 14px icon and its 10px gap. */
+        .row-menu-sub {
+            padding-left: 34px;
+            font-family: monospace;
+            font-size: 11px
+        }
+
+        .row-menu-group { font-family: inherit }
+
+        .row-menu-sub span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        /* Lucide `chevron-right`, turned down while its section is open. */
+        .row-menu-caret { flex-shrink: 0; color: var(--text-secondary); transition: transform 0.15s }
+        .row-menu-caret.open { transform: rotate(90deg) }
+
+        .row-menu-sep {
+            height: 1px;
+            margin: 4px 0;
+            background: var(--border-color)
+        }
+
+        .row-popover {
+            width: min(440px, calc(100vw - 16px));
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 14px
+        }
+
+        .why-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px
+        }
+
+        .why-title { font-size: 13px; font-weight: 700; color: var(--text-primary) }
+
+        .why-domain {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .why-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px }
+
+        .why-note {
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--color-warning);
+            font-size: 11px
+        }
+
+        .why-section {
+            margin: 10px 0 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary)
+        }
+
+        .why-rule {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px
+        }
+
+        .why-rule-name {
+            flex: 1;
+            min-width: 0;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .why-kind { padding: 2px 8px; font-size: 10px }
+        .why-kind-allow { background: rgba(16, 185, 129, 0.1); color: var(--color-success) }
+        .why-kind-block { background: rgba(239, 68, 68, 0.1); color: var(--color-error) }
+        .why-rule-match { font-size: 11px; color: var(--text-secondary) }
+
+        .why-remove {
+            padding: 3px 8px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--color-error);
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer
+        }
+
+        .why-remove:hover { background: rgba(239, 68, 68, 0.3) }
+        .why-empty { font-size: 12px; color: var(--text-secondary); padding: 4px 0 }
+        .why-error { font-size: 12px; color: var(--color-error); padding: 4px 0 }
+
+        .why-link {
+            display: inline-block;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--color-primary)
+        }

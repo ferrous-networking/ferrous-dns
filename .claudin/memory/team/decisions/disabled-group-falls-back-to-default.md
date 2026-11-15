@@ -1,6 +1,6 @@
 ---
 name: disabled-group-falls-back-to-default
-description: Issue #382 (2026-11-12, branch fix/disabled-group-policy) — a disabled group's clients (IP, subnet, DoH ID) resolve to the default group, mapped in the client-group loader's SQL; a migration re-enabled existing disabled groups; the backup carries the flag. Pi-hole "unfiltered" and fall-through rejected
+description: Issue #382, fixed by PR #388 (a19d5836, 2026-11-12) — a disabled group's clients (IP, subnet, DoH ID) resolve to the default group in the client-group loader's SQL; a migration re-enabled old disabled groups; the backup carries the flag. Pi-hole "unfiltered" and fall-through rejected
 type: project
 scope: clients/groups, block-filter, backup
 impact: functional
@@ -37,4 +37,4 @@ paths:
 - **Removing the switch:** the switch is now useful, and the Pi-hole API exposes it anyway.
 - **A config opt-in key** for the upgrade: a permanent switch whose only job is to make another switch work.
 
-**Evidence:** plan `.claudin/plans/snazzy-gathering-globe.md`. The commits on `fix/disabled-group-policy`: red `b60ef6b7`, fix `b4fedc96`, migration `6ca73e63`, backup `7f1811b9`. A live main × branch run on 2026-11-12: on main, toggling did nothing; on the branch, the Kids deny was lifted and the Protected deny applied, then reverted with no restart. An upgrade from main's database re-enabled Kids. An export → import carried `enabled: false` and took effect at once.
+**Evidence:** plan `.claudin/plans/snazzy-gathering-globe.md`; PR #388, squash-merged 2026-11-12 as `a19d5836` (closed #382). Its branch commits on `fix/disabled-group-policy`: red `b60ef6b7`, fix `b4fedc96`, migration `6ca73e63`, backup `7f1811b9`. `make ci` and `/pre-pr` passed (2,741 tests), and a mutation audit broke each guarded line with its test going red. A live main × branch run on 2026-11-12: on main, toggling did nothing; on the branch, the Kids deny was lifted and the Protected deny applied, then reverted with no restart. An upgrade from main's database re-enabled Kids. An export → import carried `enabled: false` and took effect at once.

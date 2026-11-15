@@ -40,10 +40,10 @@
                        @keydown.enter="setupAdmin()">
             </div>
             <p x-show="setupPassword && setupConfirm && setupPassword !== setupConfirm" x-cloak
-               style="font-size:12px;color:#ef4444;margin-bottom:12px">Passwords do not match.</p>
+               style="font-size:11px;color:#ef4444;margin-bottom:12px">Passwords do not match.</p>
             <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
             <p x-show="setupPassword && setupPassword.length < 8" x-cloak
-               style="font-size:12px;color:#ef4444;margin-bottom:12px">Password must be at least 8 characters.</p>
+               style="font-size:11px;color:#ef4444;margin-bottom:12px">Password must be at least 8 characters.</p>
             <button class="login-btn" @click="setupAdmin()" :disabled="loading || !setupPassword || setupPassword.length < 8 || setupPassword !== setupConfirm">
                 <span x-show="!loading">Create Password</span>
                 <span x-show="loading">Setting up...</span>

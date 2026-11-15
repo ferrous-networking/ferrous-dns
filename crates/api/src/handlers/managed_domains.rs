@@ -3,8 +3,9 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use ferrous_dns_application::ports::ManagedDomainUpdate;
+use ferrous_dns_application::ports::{ManagedDomainUpdate, NewManagedDomain};
 use ferrous_dns_domain::DomainError;
+use std::time::Duration;
 use tracing::debug;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -111,13 +112,18 @@ async fn create_managed_domain(
 ) -> Result<(StatusCode, Json<ManagedDomainResponse>), ApiError> {
     let action = parse_action(&req.action)?;
 
-    let group_id = req.group_id.unwrap_or(1);
-    let enabled = req.enabled.unwrap_or(true);
-
     let domain = state
         .blocking
         .create_managed_domain
-        .execute(req.name, req.domain, action, group_id, req.comment, enabled)
+        .execute(NewManagedDomain {
+            name: req.name,
+            domain: req.domain,
+            action,
+            group_id: req.group_id.unwrap_or(1),
+            comment: req.comment,
+            enabled: req.enabled.unwrap_or(true),
+            expires_in: req.expires_in_secs.map(Duration::from_secs),
+        })
         .await?;
 
     Ok((

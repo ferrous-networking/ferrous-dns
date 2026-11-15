@@ -5,7 +5,8 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
     FilterDecision, GroupRepository, MalwareExemptionPort, ManagedDomainRepository,
-    ManagedDomainUpdate, QueryLogRepository, TimeGranularity, WhitelistSourceRepository,
+    ManagedDomainUpdate, NewManagedDomain, QueryLogRepository, TimeGranularity,
+    WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
     BlockSource, BlocklistSource, Client, ClientStats, DnsQuery, DnssecStats, DomainAction,
@@ -1256,6 +1257,14 @@ impl MockManagedDomainRepository {
     pub async fn get_all_domains(&self) -> Vec<ManagedDomain> {
         self.domains.read().await.clone()
     }
+
+    /// Moves the expiry of rule `id` into the past.
+    pub async fn expire(&self, id: i64) {
+        let mut domains = self.domains.write().await;
+        if let Some(managed) = domains.iter_mut().find(|d| d.id == Some(id)) {
+            managed.expires_at = Some("2000-01-01 00:00:00".to_string());
+        }
+    }
 }
 
 impl Default for MockManagedDomainRepository {
@@ -1266,15 +1275,16 @@ impl Default for MockManagedDomainRepository {
 
 #[async_trait]
 impl ManagedDomainRepository for MockManagedDomainRepository {
-    async fn create(
-        &self,
-        name: String,
-        domain: String,
-        action: DomainAction,
-        group_id: i64,
-        comment: Option<String>,
-        enabled: bool,
-    ) -> Result<ManagedDomain, DomainError> {
+    async fn create(&self, new: NewManagedDomain) -> Result<ManagedDomain, DomainError> {
+        let NewManagedDomain {
+            name,
+            domain,
+            action,
+            group_id,
+            comment,
+            enabled,
+            expires_in,
+        } = new;
         let mut domains = self.domains.write().await;
 
         if domains
@@ -1302,6 +1312,11 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
             service_id: None,
             created_at: Some("2026-01-01 00:00:00".to_string()),
             updated_at: Some("2026-01-01 00:00:00".to_string()),
+            expires_at: expires_in.map(|d| {
+                (chrono::Utc::now() + chrono::Duration::from_std(d).unwrap())
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            }),
         };
 
         domains.push(managed.clone());
@@ -1388,6 +1403,14 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
         Ok(())
     }
 
+    async fn delete_expired(&self) -> Result<u64, DomainError> {
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut domains = self.domains.write().await;
+        let len_before = domains.len();
+        domains.retain(|d| d.expires_at.as_deref().is_none_or(|at| at > now.as_str()));
+        Ok((len_before - domains.len()) as u64)
+    }
+
     async fn bulk_create_for_service(
         &self,
         service_id: &str,
@@ -1411,6 +1434,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
                 service_id: Some(Arc::from(service_id)),
                 created_at: Some("2026-01-01 00:00:00".to_string()),
                 updated_at: Some("2026-01-01 00:00:00".to_string()),
+                expires_at: None,
             });
             count += 1;
         }

@@ -107,7 +107,7 @@
 
             async deleteGroup(group) {
                 if (group.is_default) {
-                    alert('Cannot delete the Protected group');
+                    showToast('Cannot delete the Protected group', 'error');
                     return;
                 }
 
@@ -126,14 +126,14 @@
                         const errorText = await res.text();
                         if (res.status === 409) {
                             // Assigned clients, DoH IDs, or a pool that routes for the group: the server says which.
-                            alert(JSON.parse(errorText).error);
+                            showToast(JSON.parse(errorText).error, 'error');
                         } else {
-                            alert('Failed to delete group: ' + errorText);
+                            showToast('Failed to delete group: ' + errorText, 'error');
                         }
                     }
                 } catch (e) {
                     console.error('Error deleting group:', e);
-                    alert('Network error: ' + e.message);
+                    showToast('Network error: ' + e.message, 'error');
                 }
             },
 

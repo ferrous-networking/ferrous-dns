@@ -2,6 +2,12 @@ use crate::errors::domain_error::DomainError;
 use crate::value_objects::validators::exceeds_chars;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Shortest expiry a temporary managed domain may carry.
+pub const MIN_MANAGED_DOMAIN_EXPIRY: Duration = Duration::from_secs(60);
+/// Longest expiry a temporary managed domain may carry: 30 days.
+pub const MAX_MANAGED_DOMAIN_EXPIRY: Duration = Duration::from_secs(30 * 24 * 3600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -45,6 +51,9 @@ pub struct ManagedDomain {
     pub service_id: Option<Arc<str>>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    /// When the rule stops applying and is removed; `None` for a rule that
+    /// never expires.
+    pub expires_at: Option<String>,
 }
 
 impl ManagedDomain {
@@ -82,6 +91,17 @@ impl ManagedDomain {
             return Err(
                 "Domain contains invalid characters (only alphanumeric, hyphens, dots and underscores are allowed)".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    pub fn validate_expiry(expires_in: Duration) -> Result<(), String> {
+        if !(MIN_MANAGED_DOMAIN_EXPIRY..=MAX_MANAGED_DOMAIN_EXPIRY).contains(&expires_in) {
+            return Err(format!(
+                "Expiry must be between {} and {} seconds",
+                MIN_MANAGED_DOMAIN_EXPIRY.as_secs(),
+                MAX_MANAGED_DOMAIN_EXPIRY.as_secs()
+            ));
         }
         Ok(())
     }

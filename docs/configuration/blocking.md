@@ -206,6 +206,20 @@ See [Client Management](../features/client-management.md) for details.
 
 ## Allow/Block from Query Log
 
-Any domain in the query log can be allowed or blocked by clicking the Allow or Block button next to it. The button adds a managed domain to the group the query was decided in, the client's group at the time, and names that group in its confirmation; clients in other groups are not affected. Changes take effect immediately without a server restart.
+Every row of the query log ends with an Allow or Block icon and a **⋯** menu. The icon adds a managed domain for the queried name to the group the query was decided in, the client's group at the time, and names that group in its confirmation; clients in other groups are not affected. Changes take effect immediately without a server restart.
 
-Both buttons create a **manual rule**, which is the highest-priority verdict in the pipeline: **Allow** also exempts the domain from all five [malware detection](../features/malware-detection.md) engines, and **Block** survives pausing blocking and any schedule bypass window.
+The **⋯** menu holds the other actions. Each one that adds a rule puts it in the same group as the icon does:
+
+| Action | Rows | What it does |
+|:-------|:-----|:-------------|
+| Filter by this domain / client | all | Narrows the log to the row's domain or client |
+| Why blocked? / Why allowed? | all but filtered queries | Runs the [filter test](../api.md#test-a-domain) for the row's domain and group, and lists every allow and blocking rule that matches, by name. Rules applied at query time (schedules, CNAME cloaking, malware detection, rate limiting) are outside the test, so the popover names the row's source for those. A managed rule in the list can be removed from there; a rule that Block Services created is left to Block Services |
+| Block / Allow with subdomains | all but filtered queries | Offers the row's name and each of its parents, and adds two rules for the one you pick: the name itself and `*.name`, because a wildcard does not match the name it starts from |
+| Allow for 15 minutes / 1 hour / 1 day | blocked | Adds an allow that is deleted when it expires, at most 30 seconds late. **DNS Filter > Managed Domains** shows when |
+| Remove blocking rule… | blocked by a managed domain | Opens **Why blocked?**, where each managed rule has a **Remove** button |
+| Remove from cache | allowed | Evicts the cached answer for the row's name and type, so the next query resolves it again |
+| Move client to group | clients listed in **Clients** | Assigns the client to another group; its next queries follow that group's rules |
+| Exempt client from rate limit | rate-limited | Adds the client's address to `[dns.rate_limit] whitelist`, which applies after a restart |
+| Copy domain | all | Copies the queried name |
+
+Every rule these actions create is a **manual rule**, which is the highest-priority verdict in the pipeline: an allow also exempts the domain from all five [malware detection](../features/malware-detection.md) engines while it lasts, and a block survives pausing blocking and any schedule bypass window.

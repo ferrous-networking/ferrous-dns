@@ -42,6 +42,9 @@ pub struct ManagedDomainResponse {
     pub service_id: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    /// When the rule stops applying and is removed, in UTC; `null` for a rule
+    /// that never expires.
+    pub expires_at: Option<String>,
 }
 
 impl ManagedDomainResponse {
@@ -57,6 +60,7 @@ impl ManagedDomainResponse {
             service_id: d.service_id.as_ref().map(|s| s.to_string()),
             created_at: d.created_at,
             updated_at: d.updated_at,
+            expires_at: d.expires_at,
         }
     }
 }
@@ -74,6 +78,9 @@ pub struct CreateManagedDomainRequest {
     pub group_id: Option<i64>,
     pub comment: Option<String>,
     pub enabled: Option<bool>,
+    /// Removes the rule this many seconds after it is created, 60 to 2592000
+    /// (30 days). Absent keeps it until it is deleted.
+    pub expires_in_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]

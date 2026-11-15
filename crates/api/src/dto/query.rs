@@ -55,6 +55,9 @@ pub struct PaginatedQueries {
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct QueryResponse {
+    /// The row's id in the query log: stable across reads, higher for newer
+    /// rows. A `next_cursor` is one of these.
+    pub id: i64,
     pub timestamp: String,
     #[schema(value_type = String)]
     pub domain: Arc<str>,

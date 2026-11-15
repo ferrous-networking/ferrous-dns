@@ -94,185 +94,166 @@
         </a>
     </div>
 </aside>
-<main style="padding:24px">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
-        <div class="card-stat">
+<main>
+    <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <div class="card-stat tone-tile" style="--tone:var(--color-primary)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)">
-                    <i data-lucide="package" style="width:24px;height:24px;color:#3B82F6"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
+                <div class="tone-tile-icon"><i data-lucide="package"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(stats.queries_total)">0</p>
+            <p class="stat-value" style="color:var(--text-primary)" x-text="formatNumber(stats.queries_total)">0</p>
         </div>
-        <div class="card-stat">
+        <div class="card-stat tone-tile" style="--tone:var(--color-error)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)">
-                    <i data-lucide="shield-ban" style="width:24px;height:24px;color:#EF4444"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked</p>
+                <div class="tone-tile-icon"><i data-lucide="shield-ban"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">Blocked</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_blocked)">0</p>
+            <p class="stat-value" style="color:var(--color-error)" x-text="formatNumber(stats.queries_blocked)">0</p>
         </div>
-        <div class="card-stat">
+        <div class="card-stat tone-tile" style="--tone:var(--color-purple)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)">
-                    <i data-lucide="gauge" style="width:24px;height:24px;color:#A855F7"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
+                <div class="tone-tile-icon"><i data-lucide="gauge"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="formatTime(stats.avg_query_time_ms||0)">0
+            <p class="stat-value" style="color:var(--color-purple)" x-text="formatTime(stats.avg_query_time_ms||0)">0
                 ms</p>
         </div>
-        <div class="card-stat">
+        <div class="card-stat tone-tile" :style="{'--tone': malwareDetectionEnabled ? 'var(--color-warning)' : 'var(--text-tertiary)'}">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(245,158,11,0.1)">
-                    <i data-lucide="shield-alert" style="width:24px;height:24px;color:#F59E0B"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Malware Detection</p>
+                <div class="tone-tile-icon"><i data-lucide="shield-alert"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">Malware Detection</p>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
-                <p style="font-size:32px;font-weight:700" :style="{color: malwareDetectionEnabled ? '#F59E0B' : 'var(--text-tertiary)'}" x-text="formatNumber(stats.queries_malware_detected || 0)">0</p>
+                <p class="stat-value" :style="{color: malwareDetectionEnabled ? 'var(--color-warning)' : 'var(--text-tertiary)'}" x-text="formatNumber(stats.queries_malware_detected || 0)">0</p>
                 <span x-show="!malwareDetectionEnabled" x-cloak title="Turned off in Settings → Malware Detection"
-                      style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tertiary);color:var(--text-secondary);font-weight:600">Disabled</span>
+                      class="badge badge-neutral" style="font-size:10px;padding:2px 8px">Disabled</span>
             </div>
         </div>
-        <div class="card-stat" id="dnssec-bogus-card">
+        <div class="card-stat tone-tile" id="dnssec-bogus-card" style="--tone:var(--color-error)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)">
-                    <i data-lucide="lock" style="width:24px;height:24px;color:#EF4444"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">DNSSEC Bogus</p>
+                <div class="tone-tile-icon"><i data-lucide="lock"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">DNSSEC Bogus</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_dnssec_bogus || 0)">0</p>
+            <p class="stat-value" style="color:var(--color-error)" x-text="formatNumber(stats.queries_dnssec_bogus || 0)">0</p>
         </div>
-        <div class="card-stat">
+        <div class="card-stat tone-tile" style="--tone:var(--color-orange)">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(249,115,22,0.1)">
-                    <i data-lucide="shield-check" style="width:24px;height:24px;color:#F97316"></i>
-                </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked Domains</p>
+                <div class="tone-tile-icon"><i data-lucide="shield-check"></i></div>
+                <p style="font-size:13px;font-weight:500;color:var(--text-secondary)">Blocked Domains</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#F97316" x-text="formatNumber(blockFilterStats.total_blocked_domains)">0</p>
+            <p class="stat-value" style="color:var(--color-orange)" x-text="formatNumber(blockFilterStats.total_blocked_domains)">0</p>
         </div>
     </div>
-    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Performance</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
-        <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <i data-lucide="zap" class="cache-stat-icon" style="width:32px;height:32px;color:#A855F7"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="formatNumber(cacheMetrics.total_hits)">0</p>
-                    <p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">
-                        0%</p></div>
+    <h2 class="section-title">Cache Performance</h2>
+    <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <div class="card icon-stat" style="--tone:var(--color-purple)">
+            <i data-lucide="zap" class="icon-stat-icon"></i>
+            <div>
+                <p class="icon-stat-label">Cache Hits</p>
+                <p class="icon-stat-value" x-text="formatNumber(cacheMetrics.total_hits)">0</p>
+                <p class="icon-stat-sub" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">0%</p>
             </div>
         </div>
-        <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <i data-lucide="clock" class="cache-stat-icon" style="width:32px;height:32px;color:#3B82F6"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Time</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p></div>
+        <div class="card icon-stat" style="--tone:var(--color-primary)">
+            <i data-lucide="clock" class="icon-stat-icon"></i>
+            <div>
+                <p class="icon-stat-label">Cache Time</p>
+                <p class="icon-stat-value" x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p>
             </div>
         </div>
-        <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <i data-lucide="refresh-cw" class="cache-stat-icon" style="width:32px;height:32px;color:#F59E0B"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="formatNumber(cacheMetrics.total_refreshes)">0</p></div>
+        <div class="card icon-stat" style="--tone:var(--color-warning)">
+            <i data-lucide="refresh-cw" class="icon-stat-icon"></i>
+            <div>
+                <p class="icon-stat-label">Cache Refreshes</p>
+                <p class="icon-stat-value" x-text="formatNumber(cacheMetrics.total_refreshes)">0</p>
             </div>
         </div>
-        <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:flex-start;gap:12px">
-                <i data-lucide="database" class="cache-stat-icon" style="width:32px;height:32px;color:#10B981"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="formatNumber(cacheMetrics.total_entries)">0</p></div>
+        <div class="card icon-stat" style="--tone:var(--color-success)">
+            <i data-lucide="database" class="icon-stat-icon"></i>
+            <div>
+                <p class="icon-stat-label">Cache Entries</p>
+                <p class="icon-stat-value" x-text="formatNumber(cacheMetrics.total_entries)">0</p>
             </div>
         </div>
     </div>
     <div id="certificate-banner-slot"></div>
-    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Queries over Time</h2>
-    <div class="card" style="padding:24px;margin-bottom:24px">
+    <h2 class="section-title">Queries over Time</h2>
+    <div class="card" style="margin-bottom:var(--gap)">
         <div class="timeline-chart-container">
             <canvas id="timelineChart"></canvas>
         </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;align-items:stretch">
-        <div class="card chart-card" style="padding:24px"><h3
-                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Types</h3>
+    <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));align-items:stretch">
+        <div class="card chart-card"><h3 class="card-title">Query Types</h3>
             <div class="chart-row">
                 <div class="chart-canvas-wrap"><canvas id="queryTypesChart"></canvas></div>
                 <ul id="queryTypesChartLegend" class="chart-legend"></ul>
             </div>
         </div>
-        <div class="card chart-card" style="padding:24px"><h3
-                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Source</h3>
+        <div class="card chart-card"><h3 class="card-title">Query Source</h3>
             <div class="chart-row">
                 <div class="chart-canvas-wrap"><canvas id="cacheSourceChart"></canvas></div>
                 <ul id="cacheSourceChartLegend" class="chart-legend"></ul>
             </div>
         </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
-        <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Blocked Domains</h3>
-            <table style="width:100%;border-collapse:collapse">
+    <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr))">
+        <div class="card">
+            <h3 class="card-title">Top Blocked Domains</h3>
+            <table class="table">
                 <thead>
-                    <tr style="border-bottom:2px solid var(--border-color)">
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Hits</th>
+                    <tr>
+                        <th>#</th>
+                        <th>Domain</th>
+                        <th style="text-align:right">Hits</th>
                     </tr>
                 </thead>
                 <tbody>
                     <template x-for="(d, i) in (topBlockedDomains || [])" :key="i">
-                        <tr style="border-bottom:1px solid var(--border-color)">
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="d.domain"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="d.count.toLocaleString()"></td>
+                        <tr>
+                            <td style="color:var(--text-secondary)" x-text="i+1"></td>
+                            <td style="word-break:break-all" x-text="d.domain"></td>
+                            <td style="text-align:right" x-text="d.count.toLocaleString()"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="!topBlockedDomains || topBlockedDomains.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No blocked domains</p>
+            <p x-show="!topBlockedDomains || topBlockedDomains.length === 0" class="empty-state">No blocked domains</p>
         </div>
-        <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Clients</h3>
-            <table style="width:100%;border-collapse:collapse">
+        <div class="card">
+            <h3 class="card-title">Top Clients</h3>
+            <table class="table">
                 <thead>
-                    <tr style="border-bottom:2px solid var(--border-color)">
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Client</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Queries</th>
+                    <tr>
+                        <th>#</th>
+                        <th>Client</th>
+                        <th style="text-align:right">Queries</th>
                     </tr>
                 </thead>
                 <tbody>
                     <template x-for="(c, i) in (topClients || [])" :key="i">
-                        <tr style="border-bottom:1px solid var(--border-color)">
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary)" x-text="c.hostname || c.ip"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="c.count.toLocaleString()"></td>
+                        <tr>
+                            <td style="color:var(--text-secondary)" x-text="i+1"></td>
+                            <td x-text="c.hostname || c.ip"></td>
+                            <td style="text-align:right" x-text="c.count.toLocaleString()"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="!topClients || topClients.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No data</p>
+            <p x-show="!topClients || topClients.length === 0" class="empty-state">No data</p>
         </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
-        <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Upstream</h3>
-            <p x-show="upstreamHealth.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No upstream servers configured</p>
+    <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr))">
+        <div class="card">
+            <h3 class="card-title">Upstream</h3>
+            <p x-show="upstreamHealth.length === 0" class="empty-state">No upstream servers configured</p>
             <div x-show="upstreamHealth.length > 0">
                 <template x-for="(pool, poolIdx) in groupUpstreamsByPool(upstreamHealth)" :key="pool.pool_name">
                     <div :style="poolIdx > 0 ? 'margin-top:16px' : ''">
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-bottom:2px solid var(--border-color);margin-bottom:2px">
                             <i data-lucide="layers" style="width:14px;height:14px;color:var(--text-tertiary);flex-shrink:0"></i>
-                            <span style="font-size:12px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.06em" x-text="pool.pool_name"></span>
-                            <span :style="'font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;' + upstreamStrategyStyle(pool.strategy)"
+                            <span style="font-size:11px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.06em" x-text="pool.pool_name"></span>
+                            <span class="badge" :class="upstreamStrategyBadge(pool.strategy)" style="font-size:9px;padding:2px 8px"
                                   x-text="pool.strategy"></span>
                         </div>
                         <template x-for="group in pool.servers" :key="group.address">
@@ -281,11 +262,11 @@
                                      style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;user-select:none">
                                     <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
                                         <div :style="'flex-shrink:0;width:8px;height:8px;border-radius:50%;background:' + upstreamStatusColor(group.status)"></div>
-                                        <span style="font-size:14px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                        <span style="font-size:13px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                                               x-text="group.address"></span>
                                     </div>
                                     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
-                                        <span :style="'background:' + upstreamStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
+                                        <span class="badge" :class="upstreamStatusBadge(group.status)" style="font-size:10px"
                                               x-text="group.status"></span>
                                         <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
                                            style="width:16px;height:16px;color:var(--text-tertiary)"></i>
@@ -296,23 +277,24 @@
                                         <div style="padding:6px 0 6px 20px">
                                             <div style="display:flex;align-items:center;justify-content:space-between">
                                                 <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                                                    <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
+                                                    <span style="font-size:12px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
                                                           x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
-                                                    <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
+                                                    <span class="badge" :class="ep.family === 'ipv4' ? 'badge-info' : ep.family === 'ipv6' ? 'badge-indigo' : 'badge-neutral'"
+                                                          style="flex-shrink:0;font-size:9px;padding:2px 7px"
                                                           x-text="ep.family.toUpperCase()"></span>
-                                                    <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                                    <span style="font-size:12px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                                                           x-text="ep.address"></span>
                                                 </div>
                                                 <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
                                                     <template x-if="ep.latency_ms != null">
-                                                        <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
+                                                        <span style="font-size:10px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
                                                     </template>
-                                                    <span :style="'background:' + upstreamStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
+                                                    <span class="badge" :class="upstreamStatusBadge(ep.status)" style="font-size:9px;padding:2px 8px"
                                                           x-text="ep.status"></span>
                                                 </div>
                                             </div>
                                             <p x-show="ep.last_error && ep.status !== 'Healthy'" x-text="ep.last_error"
-                                               style="margin:4px 0 0 24px;font-size:11px;line-height:1.5;color:var(--color-error);overflow-wrap:anywhere"></p>
+                                               style="margin:4px 0 0 24px;font-size:10px;line-height:1.5;color:var(--color-error);overflow-wrap:anywhere"></p>
                                         </div>
                                     </template>
                                 </div>
@@ -322,44 +304,44 @@
                 </template>
             </div>
         </div>
-        <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Refreshes</h3>
-            <table style="width:100%;border-collapse:collapse">
+        <div class="card">
+            <h3 class="card-title">Cache Refreshes</h3>
+            <table class="table">
                 <thead>
-                    <tr style="border-bottom:2px solid var(--border-color)">
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Type</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Refreshes</th>
+                    <tr>
+                        <th>#</th>
+                        <th>Domain</th>
+                        <th>Type</th>
+                        <th style="text-align:right">Refreshes</th>
                     </tr>
                 </thead>
                 <tbody>
                     <template x-for="(e, i) in cacheOverview.top_refreshed" :key="e.domain + ' ' + e.type">
-                        <tr style="border-bottom:1px solid var(--border-color)">
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="e.domain"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="e.type"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="e.refreshes.toLocaleString()"></td>
+                        <tr>
+                            <td style="color:var(--text-secondary)" x-text="i+1"></td>
+                            <td style="word-break:break-all" x-text="e.domain"></td>
+                            <td style="color:var(--text-secondary)" x-text="e.type"></td>
+                            <td style="text-align:right" x-text="e.refreshes.toLocaleString()"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="cacheOverview.top_refreshed.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No refreshes yet</p>
+            <p x-show="cacheOverview.top_refreshed.length === 0" class="empty-state">No refreshes yet</p>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
-                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expired</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expired)">0</div>
+                <div style="background:var(--bg-tertiary);border-radius:var(--radius);padding:14px">
+                    <div style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expired</div>
+                    <div style="font-size:19px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expired)">0</div>
                 </div>
-                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">New</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.inserted)">0</div>
+                <div style="background:var(--bg-tertiary);border-radius:var(--radius);padding:14px">
+                    <div style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">New</div>
+                    <div style="font-size:19px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.inserted)">0</div>
                 </div>
-                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expiring</div>
-                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expiring_soon)">0</div>
+                <div style="background:var(--bg-tertiary);border-radius:var(--radius);padding:14px">
+                    <div style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expiring</div>
+                    <div style="font-size:19px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expiring_soon)">0</div>
                 </div>
             </div>
-            <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px"
+            <p style="font-size:11px;color:var(--text-tertiary);margin-top:8px"
                x-text="'Expired and new count since the server started. Expiring: TTL ends within ' + cacheOverview.expiring_window_secs + ' s.'"></p>
         </div>
     </div>

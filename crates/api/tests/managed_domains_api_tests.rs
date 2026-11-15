@@ -338,6 +338,61 @@ async fn send_json(app: axum::Router, method: &str, uri: &str, body: Value) -> (
 }
 
 #[tokio::test]
+async fn test_create_managed_domain_with_expiry_reports_expires_at() {
+    let app = test_app().await.router;
+
+    let (status, temporary) = send_json(
+        app.clone(),
+        "POST",
+        "/managed-domains",
+        json!({
+            "name": "Allow for an hour",
+            "domain": "ads.example.com",
+            "action": "allow",
+            "expires_in_secs": 3600
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{temporary}");
+    assert!(temporary["expires_at"].is_string(), "{temporary}");
+
+    let (status, permanent) = send_json(
+        app,
+        "POST",
+        "/managed-domains",
+        json!({
+            "name": "Allow for good",
+            "domain": "ads.example.com",
+            "action": "allow"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{permanent}");
+    assert!(permanent["expires_at"].is_null(), "{permanent}");
+}
+
+#[tokio::test]
+async fn test_create_managed_domain_rejects_expiry_outside_bounds() {
+    let app = test_app().await.router;
+
+    for secs in [30, 3_000_000] {
+        let (status, json) = send_json(
+            app.clone(),
+            "POST",
+            "/managed-domains",
+            json!({
+                "name": format!("Expiry {secs}"),
+                "domain": "ads.example.com",
+                "action": "allow",
+                "expires_in_secs": secs
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{secs} s: {json}");
+    }
+}
+
+#[tokio::test]
 async fn test_update_managed_domain_null_comment_clears_it_and_absent_keeps_it() {
     let app = test_app().await.router;
     let (_, created) = send_json(

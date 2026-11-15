@@ -46,6 +46,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 tls_key_path: config.server.web_tls.tls_key_path.clone(),
             },
             encrypted_dns: EncryptedDnsConfigResponse {
+                doh_enabled: config.server.encrypted_dns.doh_enabled,
                 doh_allow_unregistered_ids: config.server.encrypted_dns.doh_allow_unregistered_ids,
             },
         },

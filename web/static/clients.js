@@ -116,11 +116,11 @@
                         await this.loadStats();
                         scheduleLucide(50);
                     } else {
-                        alert('Failed: ' + await res.text());
+                        showToast('Failed: ' + await res.text(), 'error');
                     }
                 } catch (e) {
                     console.error(e);
-                    alert('Error saving client');
+                    showToast('Error saving client', 'error');
                 }
             },
 
@@ -166,9 +166,9 @@
             },
 
             getBadgeClass() {
-                if (this.form.type === 'ip') return 'badge-ip';
-                if (this.form.type === 'subnet') return 'badge-subnet';
-                if (this.form.type === 'mac') return 'badge-mac';
+                if (this.form.type === 'ip') return 'notice-info';
+                if (this.form.type === 'subnet') return 'notice-success';
+                if (this.form.type === 'mac') return 'notice-warning';
                 return '';
             },
 
@@ -184,7 +184,7 @@
 
             async submitForm() {
                 if (!this.form.type || this.form.type === 'mac' || this.form.error) {
-                    alert(this.form.error || 'Invalid address');
+                    if (!this.form.error) this.form.error = 'Invalid address';
                     return;
                 }
                 try {
@@ -192,7 +192,7 @@
                     else { await this.submitClient(); }
                 } catch (e) {
                     console.error('Submission error:', e);
-                    alert('Error: ' + e.message);
+                    showToast('Error: ' + e.message, 'error');
                 }
             },
 
@@ -207,8 +207,8 @@
                         mac_address: null
                     })
                 });
-                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Client added successfully!'); }
-                else { alert('Failed: ' + await res.text()); }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); showToast('Client added successfully!'); }
+                else { showToast('Failed: ' + await res.text(), 'error'); }
             },
 
             async submitSubnet() {
@@ -221,8 +221,8 @@
                         comment: this.form.metadata || null
                     })
                 });
-                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Subnet added successfully!'); }
-                else { alert('Failed: ' + await res.text()); }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); showToast('Subnet added successfully!'); }
+                else { showToast('Failed: ' + await res.text(), 'error'); }
             },
 
             resetForm() {
@@ -234,10 +234,10 @@
                 try {
                     const res = await fetch(`${API_BASE}/clients/${id}`, { method: 'DELETE' });
                     if (res.ok) { await this.loadAll(); scheduleLucide(); }
-                    else { alert('Failed: ' + await res.text()); }
+                    else { showToast('Failed: ' + await res.text(), 'error'); }
                 } catch (e) {
                     console.error(e);
-                    alert('Error deleting client');
+                    showToast('Error deleting client', 'error');
                 }
             },
 
@@ -246,10 +246,10 @@
                 try {
                     const res = await fetch(`${API_BASE}/client-subnets/${id}`, { method: 'DELETE' });
                     if (res.ok) { await this.loadAll(); scheduleLucide(); }
-                    else { alert('Failed: ' + await res.text()); }
+                    else { showToast('Failed: ' + await res.text(), 'error'); }
                 } catch (e) {
                     console.error(e);
-                    alert('Error deleting subnet');
+                    showToast('Error deleting subnet', 'error');
                 }
             },
 
@@ -279,11 +279,11 @@
                     scheduleLucide(100);
                     this.selectedSubnets = [];
                     this.selectAllSubnets = false;
-                    if (failed === 0) alert(`${deleted} subnet${deleted > 1 ? 's' : ''} deleted successfully!`);
-                    else alert(`Deleted ${deleted}. Failed to delete ${failed}.`);
+                    if (failed === 0) showToast(`${deleted} subnet${deleted > 1 ? 's' : ''} deleted successfully!`);
+                    else showToast(`Deleted ${deleted}. Failed to delete ${failed}.`, 'error');
                 } catch (e) {
                     console.error('Bulk delete error:', e);
-                    alert('Error during bulk delete operation');
+                    showToast('Error during bulk delete operation', 'error');
                 }
             },
 

@@ -111,13 +111,14 @@
                 stopRatePolling();
             },
 
+            // The status badge's colour.
             statusClass(status) {
                 return ({
-                    Secure: 'secure',
-                    Insecure: 'insecure',
-                    Bogus: 'bogus',
-                    Indeterminate: 'indeterminate'
-                })[status] || 'indeterminate';
+                    Secure: 'badge-success',
+                    Insecure: 'badge-warning',
+                    Bogus: 'badge-danger',
+                    Indeterminate: 'badge-neutral'
+                })[status] || 'badge-neutral';
             },
 
             clientLabel(query) {
