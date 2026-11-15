@@ -337,7 +337,9 @@ async fn send_json(app: axum::Router, method: &str, uri: &str, body: Value) -> (
     if bytes.is_empty() {
         return (status, Value::Null);
     }
-    (status, serde_json::from_slice(&bytes).unwrap())
+    let body = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
+    (status, body)
 }
 
 #[tokio::test]
@@ -809,4 +811,18 @@ async fn test_openapi_lists_bulk_route() {
         .get("/managed-domains/bulk")
         .expect("bulk route documented");
     assert!(path.post.is_some());
+}
+
+#[tokio::test]
+async fn test_bulk_create_accepts_a_full_list_of_long_domains() {
+    let app = test_app().await.router;
+    // 10000 entries of 253 characters, the longest domain, is about 2.6 MB.
+    let domains: Vec<String> = (0..10_000)
+        .map(|i| format!("{i:05}{}.com", "a".repeat(244)))
+        .collect();
+
+    let (status, json) = post_bulk(&app, json!({ "domains": domains, "action": "deny" })).await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["results"].as_array().unwrap().len(), 10_000);
 }
