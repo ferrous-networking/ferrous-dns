@@ -44,7 +44,7 @@ pub fn build_pihole_state(
         blocking: PiholeBlockingState {
             block_filter_engine,
             get_managed_domains: use_cases.get_managed_domains.clone(),
-            create_managed_domain: use_cases.create_managed_domain.clone(),
+            bulk_create_managed_domains: use_cases.bulk_create_managed_domains.clone(),
             update_managed_domain: use_cases.update_managed_domain.clone(),
             delete_managed_domain: use_cases.delete_managed_domain.clone(),
             get_regex_filters: use_cases.get_regex_filters.clone(),

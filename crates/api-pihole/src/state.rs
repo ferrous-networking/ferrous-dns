@@ -6,8 +6,8 @@ use ferrous_dns_application::use_cases::{
     ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_application::use_cases::{
-    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
-    CreateGroupUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
+    BulkCreateManagedDomainsUseCase, CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase,
+    CreateClientSubnetUseCase, CreateGroupUseCase, CreateManualClientUseCase,
     CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
     DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
     DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase,
@@ -87,7 +87,8 @@ pub struct PiholeQueryState {
 pub struct PiholeBlockingState {
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     pub get_managed_domains: Arc<GetManagedDomainsUseCase>,
-    pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
+    /// Every exact-domain write, so an array costs one block filter rebuild.
+    pub bulk_create_managed_domains: Arc<BulkCreateManagedDomainsUseCase>,
     pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
     pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
     pub get_regex_filters: Arc<GetRegexFiltersUseCase>,
