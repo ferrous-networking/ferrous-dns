@@ -6,7 +6,7 @@ scope: web UI (web/static)
 impact: structural
 ---
 
-**Decision:** Every page uses one set of components defined once in `web/static/shared.css`: `.page-header`/`.page-title`, `.card` (24px padding), `.card-title` (18px), `.btn-*`, `.input`, `.switch`, `.badge` + colour variants, `.table` and `.table-dense`, `.notice`, `.pagination`, `.filter-bar`, `--gap`. Action outcomes go through `showToast()` in `shared.js`. Page CSS keeps only what is page-specific. Viudes chose each rule on 2026-11-14 in two decision rounds after a three-agent audit. Until then every page carried its own copy: 7 `.btn`, 6 `.table`, 6 `.badge`, 3 tab bars, about 90 `alert()`/`confirm()` calls and about 200 hardcoded hex colours.
+**Decision:** Every page uses one set of components defined once in `web/static/shared.css`: `.page-header`/`.page-title`, `.card` (24px padding), `.card-title` (18px), `.btn-*`, `.input`, `.switch`, `.segmented` (a form's mutually exclusive modes, added for #353's Single | Bulk), `.badge` + colour variants, `.table` and `.table-dense`, `.notice`, `.pagination`, `.filter-bar`, `--gap`. Action outcomes go through `showToast()` in `shared.js`. Page CSS keeps only what is page-specific. Viudes chose each rule on 2026-11-14 in two decision rounds after a three-agent audit. Until then every page carried its own copy: 7 `.btn`, 6 `.table`, 6 `.badge`, 3 tab bars, about 90 `alert()`/`confirm()` calls and about 200 hardcoded hex colours.
 
 **Why:** Those copies had drifted, and the drift caused real bugs:
 - Settings' `btn-danger` had no CSS.
