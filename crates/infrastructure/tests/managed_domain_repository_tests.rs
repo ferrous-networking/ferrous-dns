@@ -591,19 +591,15 @@ async fn test_create_many_checks_presence_per_group() {
         .execute(&pool)
         .await
         .unwrap();
-    repo.create(NewManagedDomain {
-        group_id: 2,
-        ..new_domain("Shop", "shop.com", DomainAction::Allow)
-    })
-    .await
-    .unwrap();
-
-    let outcomes = repo
-        .create_many(vec![bulk_named_after("shop.com", DomainAction::Allow)])
+    repo.create(new_domain("Shop", "shop.com", DomainAction::Allow))
         .await
         .unwrap();
+    let mut kids = bulk_named_after("shop.com", DomainAction::Allow);
+    kids.rule.group_id = 2;
 
-    assert_eq!(created(&outcomes[0]).group_id, 1);
+    let outcomes = repo.create_many(vec![kids]).await.unwrap();
+
+    assert_eq!(created(&outcomes[0]).group_id, 2);
 }
 
 #[tokio::test]
