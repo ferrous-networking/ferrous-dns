@@ -1,14 +1,30 @@
 #[path = "support/db.rs"]
 mod db;
 
-use ferrous_dns_application::ports::{ManagedDomainRepository, ManagedDomainUpdate};
+use ferrous_dns_application::ports::{
+    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+};
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
 use ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository;
 use sqlx::SqlitePool;
+use std::time::Duration;
 
 async fn repo() -> (SqliteManagedDomainRepository, SqlitePool) {
     let pool = db::migrated_pool().await;
     (SqliteManagedDomainRepository::new(pool.clone()), pool)
+}
+
+/// An enabled, permanent rule in the default group, with no comment.
+fn new_domain(name: &str, domain: &str, action: DomainAction) -> NewManagedDomain {
+    NewManagedDomain {
+        name: name.to_string(),
+        domain: domain.to_string(),
+        action,
+        group_id: 1,
+        comment: None,
+        enabled: true,
+        expires_in: None,
+    }
 }
 
 async fn create(
@@ -17,14 +33,10 @@ async fn create(
     action: DomainAction,
     enabled: bool,
 ) -> ManagedDomain {
-    repo.create(
-        name.to_string(),
-        "ads.example.com".to_string(),
-        action,
-        1,
-        None,
+    repo.create(NewManagedDomain {
         enabled,
-    )
+        ..new_domain(name, "ads.example.com", action)
+    })
     .await
     .unwrap()
 }
@@ -34,14 +46,10 @@ async fn test_create_and_get_by_id() {
     let (repo, _pool) = repo().await;
 
     let domain = repo
-        .create(
-            "Block Ads".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            1,
-            Some("Block ads".to_string()),
-            true,
-        )
+        .create(NewManagedDomain {
+            comment: Some("Block ads".to_string()),
+            ..new_domain("Block Ads", "ads.example.com", DomainAction::Deny)
+        })
         .await
         .unwrap();
 
@@ -52,10 +60,66 @@ async fn test_create_and_get_by_id() {
     assert_eq!(domain.comment.as_deref(), Some("Block ads"));
     assert!(domain.enabled);
     assert!(domain.service_id.is_none());
+    assert!(domain.expires_at.is_none());
 
     let fetched = repo.get_by_id(domain.id.unwrap()).await.unwrap().unwrap();
     assert_eq!(fetched.name.as_ref(), "Block Ads");
     assert_eq!(fetched.action, DomainAction::Deny);
+}
+
+#[tokio::test]
+async fn test_create_with_expiry_stores_expires_at() {
+    let (repo, _pool) = repo().await;
+    let before = chrono::Utc::now() + chrono::Duration::minutes(59);
+
+    let domain = repo
+        .create(NewManagedDomain {
+            expires_in: Some(Duration::from_secs(3600)),
+            ..new_domain("Temporary", "ads.example.com", DomainAction::Allow)
+        })
+        .await
+        .unwrap();
+
+    let expires_at = domain.expires_at.clone().expect("expiry stored");
+    let parsed = chrono::NaiveDateTime::parse_from_str(&expires_at, "%Y-%m-%d %H:%M:%S")
+        .unwrap()
+        .and_utc();
+    assert!(parsed > before, "{expires_at} is not about an hour away");
+    assert!(parsed <= chrono::Utc::now() + chrono::Duration::minutes(61));
+
+    let fetched = repo.get_by_id(domain.id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(fetched.expires_at, Some(expires_at));
+}
+
+#[tokio::test]
+async fn test_delete_expired_removes_only_rules_past_their_expiry() {
+    let (repo, pool) = repo().await;
+    let permanent = create(&repo, "Permanent", DomainAction::Allow, true).await;
+    let future = repo
+        .create(NewManagedDomain {
+            expires_in: Some(Duration::from_secs(3600)),
+            ..new_domain("Future", "ads.example.com", DomainAction::Allow)
+        })
+        .await
+        .unwrap();
+    let past = create(&repo, "Past", DomainAction::Allow, true).await;
+    sqlx::query("UPDATE managed_domains SET expires_at = '2000-01-01 00:00:00' WHERE id = ?")
+        .bind(past.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(repo.delete_expired().await.unwrap(), 1);
+
+    let ids: Vec<Option<i64>> = repo
+        .get_all()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|d| d.id)
+        .collect();
+    assert_eq!(ids, vec![future.id, permanent.id]);
+    assert_eq!(repo.delete_expired().await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -79,14 +143,11 @@ async fn test_create_duplicate_name_fails() {
     create(&repo, "Duplicate", DomainAction::Deny, true).await;
 
     let result = repo
-        .create(
-            "Duplicate".to_string(),
-            "tracker.example.com".to_string(),
+        .create(new_domain(
+            "Duplicate",
+            "tracker.example.com",
             DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
+        ))
         .await;
 
     assert!(
@@ -100,14 +161,10 @@ async fn test_create_missing_group_returns_group_not_found() {
     let (repo, _pool) = repo().await;
 
     let result = repo
-        .create(
-            "Orphan".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
-            999,
-            None,
-            true,
-        )
+        .create(NewManagedDomain {
+            group_id: 999,
+            ..new_domain("Orphan", "ads.example.com", DomainAction::Deny)
+        })
         .await;
 
     assert!(
@@ -164,16 +221,9 @@ async fn test_get_all_paged_search_filters_total_and_page() {
         ("Charlie", "cdn.other.org"),
         ("Delta", "pixel.EXAMPLE.io"),
     ] {
-        repo.create(
-            name.to_string(),
-            domain.to_string(),
-            DomainAction::Deny,
-            1,
-            None,
-            true,
-        )
-        .await
-        .unwrap();
+        repo.create(new_domain(name, domain, DomainAction::Deny))
+            .await
+            .unwrap();
     }
 
     let (page, total) = repo.get_all_paged(2, 1, Some("example")).await.unwrap();
@@ -191,14 +241,10 @@ async fn test_get_all_paged_orders_name_ties_by_group() {
         .await
         .unwrap();
     for group_id in [2, 1] {
-        repo.create(
-            "Shared".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Deny,
+        repo.create(NewManagedDomain {
             group_id,
-            None,
-            true,
-        )
+            ..new_domain("Shared", "ads.example.com", DomainAction::Deny)
+        })
         .await
         .unwrap();
     }
@@ -214,14 +260,11 @@ async fn test_get_all_paged_orders_name_ties_by_group() {
 async fn test_update_name_keeps_other_fields() {
     let (repo, _pool) = repo().await;
     let id = repo
-        .create(
-            "Original Name".to_string(),
-            "ads.example.com".to_string(),
-            DomainAction::Allow,
-            1,
-            Some("note".to_string()),
-            false,
-        )
+        .create(NewManagedDomain {
+            comment: Some("note".to_string()),
+            enabled: false,
+            ..new_domain("Original Name", "ads.example.com", DomainAction::Allow)
+        })
         .await
         .unwrap()
         .id

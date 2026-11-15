@@ -1,11 +1,16 @@
 use crate::repositories::{
     contains_pattern, db_err, is_fk_violation, is_unique_violation, parse_db_action, sql_now,
+    sql_ts,
 };
 use async_trait::async_trait;
-use ferrous_dns_application::ports::{ManagedDomainRepository, ManagedDomainUpdate};
-use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
+use chrono::Utc;
+use ferrous_dns_application::ports::{
+    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+};
+use ferrous_dns_domain::{DomainError, ManagedDomain};
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::instrument;
 
 type ManagedDomainRow = (
@@ -19,7 +24,11 @@ type ManagedDomainRow = (
     Option<String>,
     String,
     String,
+    Option<String>,
 );
+
+const COLUMNS: &str =
+    "id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at, expires_at";
 
 pub struct SqliteManagedDomainRepository {
     pool: SqlitePool,
@@ -42,6 +51,7 @@ impl SqliteManagedDomainRepository {
             service_id,
             created_at,
             updated_at,
+            expires_at,
         ) = row;
         ManagedDomain {
             id: Some(id),
@@ -54,29 +64,41 @@ impl SqliteManagedDomainRepository {
             service_id: service_id.map(|s| Arc::from(s.as_str())),
             created_at: Some(created_at),
             updated_at: Some(updated_at),
+            expires_at,
         }
     }
+}
+
+/// The stored expiry `expires_in` from now.
+fn expiry_after(expires_in: Duration) -> Result<String, DomainError> {
+    chrono::Duration::from_std(expires_in)
+        .ok()
+        .and_then(|d| Utc::now().checked_add_signed(d))
+        .map(sql_ts)
+        .ok_or_else(|| DomainError::InvalidManagedDomain("Expiry is out of range".to_string()))
 }
 
 #[async_trait]
 impl ManagedDomainRepository for SqliteManagedDomainRepository {
     #[instrument(skip(self))]
-    async fn create(
-        &self,
-        name: String,
-        domain: String,
-        action: DomainAction,
-        group_id: i64,
-        comment: Option<String>,
-        enabled: bool,
-    ) -> Result<ManagedDomain, DomainError> {
+    async fn create(&self, new: NewManagedDomain) -> Result<ManagedDomain, DomainError> {
+        let NewManagedDomain {
+            name,
+            domain,
+            action,
+            group_id,
+            comment,
+            enabled,
+            expires_in,
+        } = new;
         let now = sql_now();
+        let expires_at = expires_in.map(expiry_after).transpose()?;
 
-        let row = sqlx::query_as::<_, ManagedDomainRow>(
-            "INSERT INTO managed_domains (name, domain, action, group_id, comment, enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             RETURNING id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at",
-        )
+        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+            "INSERT INTO managed_domains (name, domain, action, group_id, comment, enabled, created_at, updated_at, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING {COLUMNS}"
+        ))
         .bind(&name)
         .bind(&domain)
         .bind(action.to_str())
@@ -85,6 +107,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         .bind(enabled)
         .bind(&now)
         .bind(&now)
+        .bind(&expires_at)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
@@ -104,10 +127,9 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
 
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError> {
-        let row = sqlx::query_as::<_, ManagedDomainRow>(
-            "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
-             FROM managed_domains WHERE id = ?",
-        )
+        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+            "SELECT {COLUMNS} FROM managed_domains WHERE id = ?"
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await
@@ -118,10 +140,9 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
 
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError> {
-        let rows = sqlx::query_as::<_, ManagedDomainRow>(
-            "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
-             FROM managed_domains ORDER BY name ASC",
-        )
+        let rows = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+            "SELECT {COLUMNS} FROM managed_domains ORDER BY name ASC"
+        ))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to query all managed domains"))?;
@@ -158,7 +179,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         // A name is unique only within its group, so the group breaks ties and
         // every page boundary falls in the same place on every request.
         let page_sql = format!(
-            "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
+            "SELECT {COLUMNS}
              FROM managed_domains{where_clause} ORDER BY name ASC, group_id ASC LIMIT ? OFFSET ?"
         );
         let mut page_query = sqlx::query_as::<_, ManagedDomainRow>(&page_sql);
@@ -191,7 +212,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         } = update;
         let replace_comment = comment.is_some();
         let comment = comment.flatten();
-        let row = sqlx::query_as::<_, ManagedDomainRow>(
+        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
             "UPDATE managed_domains
              SET name = COALESCE(?, name),
                  domain = COALESCE(?, domain),
@@ -201,8 +222,8 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
                  enabled = COALESCE(?, enabled),
                  updated_at = ?
              WHERE id = ?
-             RETURNING id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at",
-        )
+             RETURNING {COLUMNS}"
+        ))
         .bind(&name)
         .bind(&domain)
         .bind(action.map(|a| a.to_str()))
@@ -244,6 +265,17 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         }
 
         Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_expired(&self) -> Result<u64, DomainError> {
+        let result = sqlx::query("DELETE FROM managed_domains WHERE expires_at <= ?")
+            .bind(sql_now())
+            .execute(&self.pool)
+            .await
+            .map_err(db_err("Failed to delete expired managed domains"))?;
+
+        Ok(result.rows_affected())
     }
 
     #[instrument(skip(self, domains))]

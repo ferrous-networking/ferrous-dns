@@ -16,13 +16,13 @@ use ferrous_dns_application::use_cases::{
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
     GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
     GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
-    GetWhitelistSourcesUseCase, ManageTimeSlotsUseCase, ReclaimFreeSpaceUseCase,
-    RecordMdnsHostnamesUseCase, RollUpQueryLogUseCase, SetClientCommentUseCase,
-    SyncArpCacheUseCase, SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase,
-    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientSubnetUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateDohIdUseCase,
-    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
-    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    GetWhitelistSourcesUseCase, ManageTimeSlotsUseCase, PurgeExpiredManagedDomainsUseCase,
+    ReclaimFreeSpaceUseCase, RecordMdnsHostnamesUseCase, RollUpQueryLogUseCase,
+    SetClientCommentUseCase, SyncArpCacheUseCase, SyncBlocklistSourcesUseCase,
+    SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateDohIdUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -85,6 +85,7 @@ pub struct UseCases {
     pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
     pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
     pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
+    pub purge_expired_managed_domains: Arc<PurgeExpiredManagedDomainsUseCase>,
     pub get_regex_filters: Arc<GetRegexFiltersUseCase>,
     pub create_regex_filter: Arc<CreateRegexFilterUseCase>,
     pub update_regex_filter: Arc<UpdateRegexFilterUseCase>,
@@ -280,6 +281,10 @@ impl UseCases {
                 repos.block_filter_engine.clone(),
             )),
             delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
+                repos.managed_domain.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            purge_expired_managed_domains: Arc::new(PurgeExpiredManagedDomainsUseCase::new(
                 repos.managed_domain.clone(),
                 repos.block_filter_engine.clone(),
             )),

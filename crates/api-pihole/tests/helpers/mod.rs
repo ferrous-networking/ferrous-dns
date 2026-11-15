@@ -377,7 +377,8 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             enabled    INTEGER NOT NULL DEFAULT 1,
             service_id TEXT,
             created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+            updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT
         )",
     )
     .execute(&pool)

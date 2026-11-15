@@ -75,7 +75,7 @@ pub use local_records::{
 };
 pub use managed_domains::{
     CreateManagedDomainUseCase, DeleteManagedDomainUseCase, GetManagedDomainsUseCase,
-    UpdateManagedDomainUseCase,
+    PurgeExpiredManagedDomainsUseCase, UpdateManagedDomainUseCase,
 };
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetClientActivityUseCase, GetQueryLogStorageUseCase,

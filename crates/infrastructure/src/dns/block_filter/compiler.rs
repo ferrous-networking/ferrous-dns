@@ -1,6 +1,6 @@
 use super::block_index::{
-    AllowlistIndex, BlockIndex, RegexRule, SourceBitSet, SourceDescriptor, SourceMeta,
-    MANUAL_SOURCE_BIT, MANUAL_SOURCE_BIT_INDEX, UNNAMED_ALLOW_BIT,
+    AllowlistIndex, BlockIndex, ManagedDenyRule, RegexRule, SourceBitSet, SourceDescriptor,
+    SourceMeta, MANUAL_SOURCE_BIT, MANUAL_SOURCE_BIT_INDEX, UNNAMED_ALLOW_BIT,
 };
 use super::download::ListDownloader;
 use super::list_cache::ListCache;
@@ -408,6 +408,8 @@ async fn record_downloads(
 }
 
 struct ManagedDomainEntry {
+    id: i64,
+    name: String,
     domain: String,
     action: DomainAction,
     group_id: i64,
@@ -640,11 +642,15 @@ pub(super) async fn compile_block_index(
         .fetch_all(pool)
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-    let managed_rows =
-        sqlx::query("SELECT domain, action, group_id FROM managed_domains WHERE enabled = 1")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    // An expired rule stops applying here even before the expiry job deletes it.
+    let managed_rows = sqlx::query(
+        "SELECT id, name, domain, action, group_id FROM managed_domains
+         WHERE enabled = 1 AND (expires_at IS NULL OR expires_at > ?)",
+    )
+    .bind(crate::repositories::sql_now())
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
     let regex_rows = sqlx::query(
         "SELECT id, name, pattern, action, group_id FROM regex_filters WHERE enabled = 1",
     )
@@ -671,6 +677,8 @@ pub(super) async fn compile_block_index(
             .iter()
             .filter_map(|row| {
                 Some(ManagedDomainEntry {
+                    id: row.get("id"),
+                    name: row.get("name"),
                     domain: row.get::<String, _>("domain").to_ascii_lowercase(),
                     action: parse_action(row)?,
                     group_id: row.get("group_id"),
@@ -691,7 +699,20 @@ pub(super) async fn compile_block_index(
         let mut managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>> =
             HashMap::new();
         let mut managed_deny_wildcards: HashMap<i64, SuffixTrie> = HashMap::new();
+        let mut managed_deny_rules: HashMap<i64, HashMap<CompactString, Vec<ManagedDenyRule>>> =
+            HashMap::new();
         for entry in &managed_entries {
+            if entry.action == DomainAction::Deny {
+                managed_deny_rules
+                    .entry(entry.group_id)
+                    .or_default()
+                    .entry(CompactString::new(&entry.domain))
+                    .or_default()
+                    .push(ManagedDenyRule {
+                        id: entry.id,
+                        name: entry.name.clone(),
+                    });
+            }
             match entry.action {
                 DomainAction::Deny if entry.domain.starts_with("*.") => {
                     managed_deny_wildcards
@@ -733,6 +754,7 @@ pub(super) async fn compile_block_index(
             allowlists,
             managed_denies,
             managed_deny_wildcards,
+            managed_deny_rules,
             allow_regex_patterns: regex_filters.allow_patterns,
             block_regex_patterns: regex_filters.block_patterns,
             groups_with_advanced_rules,

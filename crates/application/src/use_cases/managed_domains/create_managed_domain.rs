@@ -1,10 +1,12 @@
 use crate::use_cases::groups::require_group;
 use ferrous_dns_domain::value_objects::validators::validate_comment;
-use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
+use ferrous_dns_domain::{DomainError, ManagedDomain};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 
-use crate::ports::{BlockFilterEnginePort, GroupRepository, ManagedDomainRepository};
+use crate::ports::{
+    BlockFilterEnginePort, GroupRepository, ManagedDomainRepository, NewManagedDomain,
+};
 
 pub struct CreateManagedDomainUseCase {
     repo: Arc<dyn ManagedDomainRepository>,
@@ -26,39 +28,26 @@ impl CreateManagedDomainUseCase {
     }
 
     #[instrument(skip(self))]
-    pub async fn execute(
-        &self,
-        name: String,
-        domain: String,
-        action: DomainAction,
-        group_id: i64,
-        comment: Option<String>,
-        enabled: bool,
-    ) -> Result<ManagedDomain, DomainError> {
-        ManagedDomain::validate_name(&name).map_err(DomainError::InvalidManagedDomain)?;
-        ManagedDomain::validate_domain(&domain).map_err(DomainError::InvalidManagedDomain)?;
-        validate_comment(comment.as_deref()).map_err(DomainError::InvalidManagedDomain)?;
+    pub async fn execute(&self, new: NewManagedDomain) -> Result<ManagedDomain, DomainError> {
+        ManagedDomain::validate_name(&new.name).map_err(DomainError::InvalidManagedDomain)?;
+        ManagedDomain::validate_domain(&new.domain).map_err(DomainError::InvalidManagedDomain)?;
+        validate_comment(new.comment.as_deref()).map_err(DomainError::InvalidManagedDomain)?;
+        if let Some(expires_in) = new.expires_in {
+            ManagedDomain::validate_expiry(expires_in)
+                .map_err(DomainError::InvalidManagedDomain)?;
+        }
 
-        require_group(self.group_repo.as_ref(), group_id).await?;
+        require_group(self.group_repo.as_ref(), new.group_id).await?;
 
-        let managed_domain = self
-            .repo
-            .create(
-                name.clone(),
-                domain.clone(),
-                action,
-                group_id,
-                comment,
-                enabled,
-            )
-            .await?;
+        let managed_domain = self.repo.create(new).await?;
 
         info!(
             domain_id = ?managed_domain.id,
-            name = %name,
-            domain = %domain,
-            action = %action.to_str(),
-            group_id = group_id,
+            name = %managed_domain.name,
+            domain = %managed_domain.domain,
+            action = %managed_domain.action.to_str(),
+            group_id = managed_domain.group_id,
+            expires_at = ?managed_domain.expires_at,
             "Managed domain created successfully"
         );
 

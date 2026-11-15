@@ -84,7 +84,9 @@ pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use local_record_creator::LocalRecordCreator;
 pub use malware_exemption_port::MalwareExemptionPort;
-pub use managed_domain_repository::{ManagedDomainRepository, ManagedDomainUpdate};
+pub use managed_domain_repository::{
+    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+};
 pub use mfa_repository::MfaRepository;
 pub use nxdomain_hijack_probe_target::NxdomainHijackProbeTarget;
 pub use nxdomain_hijack_store::NxdomainHijackIpStore;
