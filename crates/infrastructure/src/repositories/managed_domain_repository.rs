@@ -84,14 +84,16 @@ fn expiry_after(expires_in: Duration) -> Result<String, DomainError> {
         .ok_or_else(|| DomainError::InvalidManagedDomain("Expiry is out of range".to_string()))
 }
 
-/// The permanent rules of `group_id`, which a temporary rule does not stand in for.
+/// The permanent rules written for `group_id` by hand. A temporary rule does
+/// not stand in for a permanent one, and a blocked service's rule goes away
+/// when the service is unblocked.
 async fn held_rules(
     tx: &mut Transaction<'_, Sqlite>,
     group_id: i64,
 ) -> Result<HashSet<HeldRule>, DomainError> {
     let rows: Vec<(String, String, bool)> = sqlx::query_as(
         "SELECT domain, action, enabled FROM managed_domains
-         WHERE group_id = ? AND expires_at IS NULL",
+         WHERE group_id = ? AND expires_at IS NULL AND service_id IS NULL",
     )
     .bind(group_id)
     .fetch_all(&mut **tx)
@@ -197,9 +199,12 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         entries: Vec<BulkManagedDomain>,
     ) -> Result<Vec<CreateManyOutcome>, DomainError> {
         let now = sql_now();
+        // IMMEDIATE takes the write lock up front, waiting out the busy
+        // timeout: a deferred transaction that reads first cannot wait for it
+        // when its first write upgrades the lock.
         let mut tx = self
             .pool
-            .begin()
+            .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(db_err("Failed to begin transaction for bulk create"))?;
 

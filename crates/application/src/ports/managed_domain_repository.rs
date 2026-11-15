@@ -41,7 +41,7 @@ pub struct BulkManagedDomain {
 pub enum CreateManyOutcome {
     Created(ManagedDomain),
     /// The group already has a permanent rule for the domain with the same
-    /// action and enabled state.
+    /// action and enabled state, other than a blocked service's rule.
     AlreadyPresent,
     /// The group already has a rule under each name.
     NameTaken,

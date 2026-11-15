@@ -1519,7 +1519,7 @@ The reply holds one result per domain, in request order:
 | `status` | Meaning |
 |:---------|:--------|
 | `added` | The rule was created |
-| `existing` | The group already has a permanent rule for the domain with the same action and enabled state, so nothing was written. With an `error`, both names the rule could take are used by other rules |
+| `existing` | The group already has a permanent rule for the domain with the same action and enabled state, so nothing was written. A blocked service's rule does not count, since it goes when the service is unblocked. With an `error`, every name the rule could take is used by other rules |
 | `invalid` | The domain is not valid; `error` says why |
 
 A temporary rule, such as an allow from the query log, does not count as existing: the bulk rule is added beside it and outlasts it. Sending the same list again adds nothing twice.

@@ -1336,6 +1336,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
             let present = self.domains.read().await.iter().any(|d| {
                 d.group_id == rule.group_id
                     && d.expires_at.is_none()
+                    && d.service_id.is_none()
                     && d.domain.eq_ignore_ascii_case(&rule.domain)
                     && d.action == rule.action
                     && d.enabled == rule.enabled

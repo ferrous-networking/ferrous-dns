@@ -117,7 +117,8 @@ pub enum BulkEntryStatus {
     /// A rule was created.
     Added,
     /// The group already has a permanent rule for the domain with the same
-    /// action and enabled state, or every name the rule could take is used.
+    /// action and enabled state (a blocked service's rule does not count), or
+    /// every name the rule could take is used.
     Existing,
     /// The domain is not valid; `error` says why.
     Invalid,
