@@ -538,7 +538,7 @@ The following are planned for future releases:
 
 Vulnerabilities are reported privately ([`SECURITY.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/.github/SECURITY.md)) and published as [GitHub security advisories](https://github.com/ferrous-networking/ferrous-dns/security/advisories) once a release fixes them.
 
-An external review of the DNS message parsing, the authentication and both HTTP APIs is planned ([#319](https://github.com/ferrous-networking/ferrous-dns/issues/319)); this page will say when it happened and how far it went.
+An external review of the DNS message parsing, the authentication and both HTTP APIs is planned ([#392](https://github.com/ferrous-networking/ferrous-dns/issues/392)); this page will say when it happened and how far it went.
 
 ---
 
