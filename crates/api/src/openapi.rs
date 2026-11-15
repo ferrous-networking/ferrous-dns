@@ -140,6 +140,10 @@ impl Modify for SecurityAddon {
         dto::PaginatedManagedDomains,
         dto::CreateManagedDomainRequest,
         dto::UpdateManagedDomainRequest,
+        dto::BulkCreateManagedDomainsRequest,
+        dto::BulkCreateManagedDomainsResponse,
+        dto::BulkEntryResponse,
+        dto::BulkEntryStatus,
         // regex filters
         dto::RegexFilterResponse,
         dto::CreateRegexFilterRequest,

@@ -671,3 +671,142 @@ async fn test_bulk_create_answers_a_result_per_entry_in_order() {
     assert_eq!(rule["comment"], "bulk import");
     assert_eq!(rule["enabled"], true);
 }
+
+async fn post_bulk(app: &axum::Router, body: Value) -> (StatusCode, Value) {
+    send_json(app.clone(), "POST", "/managed-domains/bulk", body).await
+}
+
+#[tokio::test]
+async fn test_bulk_create_gives_an_allow_beside_a_same_named_deny_the_fallback_name() {
+    let app = test_app().await.router;
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["both.example.com"], "action": "deny" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["both.example.com"], "action": "allow" }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["results"][0]["status"], "added", "{json}");
+    let listed = get_json(app, "/managed-domains?search=both").await;
+    assert_eq!(
+        names(&listed),
+        vec!["both.example.com", "both.example.com (allow)"]
+    );
+}
+
+#[tokio::test]
+async fn test_bulk_create_rejects_empty_and_oversized_lists() {
+    let app = test_app().await.router;
+    let too_many: Vec<String> = (0..10_001).map(|i| format!("d{i}.example.com")).collect();
+
+    for domains in [json!([]), json!(too_many)] {
+        let (status, json) = post_bulk(&app, json!({ "domains": domains, "action": "deny" })).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+        assert_eq!(
+            json["error"],
+            "Invalid input: domains must list 1 to 10000 entries"
+        );
+    }
+    let listed = get_json(app, "/managed-domains").await;
+    assert_eq!(listed["total"], 0);
+}
+
+#[tokio::test]
+async fn test_bulk_create_accepts_the_maximum_list() {
+    let app = test_app().await.router;
+    let domains: Vec<String> = (0..10_000).map(|i| format!("d{i}.example.com")).collect();
+
+    let (status, json) = post_bulk(&app, json!({ "domains": domains, "action": "deny" })).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["results"].as_array().unwrap().len(), 10_000);
+    let listed = get_json(app, "/managed-domains?limit=1").await;
+    assert_eq!(listed["total"], 10_000);
+}
+
+#[tokio::test]
+async fn test_bulk_create_rejects_bad_action_or_comment() {
+    let app = test_app().await.router;
+
+    let (status, json) = post_bulk(&app, json!({ "domains": ["a.com"], "action": "block" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["a.com"], "action": "deny", "comment": "x".repeat(501) }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+    assert_eq!(
+        json["error"],
+        "Invalid managed domain: Comment cannot exceed 500 characters"
+    );
+
+    let listed = get_json(app, "/managed-domains").await;
+    assert_eq!(listed["total"], 0);
+}
+
+#[tokio::test]
+async fn test_bulk_create_unknown_group_is_404() {
+    let app = test_app().await.router;
+
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["a.com"], "action": "deny", "group_id": 999 }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND, "{json}");
+}
+
+#[tokio::test]
+async fn test_bulk_route_is_not_taken_for_an_id() {
+    let app = test_app().await.router;
+    let (_, json) = post_bulk(&app, json!({ "domains": ["a.com"], "action": "deny" })).await;
+    assert_eq!(json["results"][0]["status"], "added", "{json}");
+    let listed = get_json(app.clone(), "/managed-domains").await;
+    let id = listed["data"][0]["id"].as_i64().unwrap();
+
+    let by_id = get_json(app.clone(), &format!("/managed-domains/{id}")).await;
+    assert_eq!(by_id["domain"], "a.com");
+    let (status, _) = send_json(app, "GET", "/managed-domains/bulk", Value::Null).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn test_bulk_create_needs_auth() {
+    let helpers::TestApp { mut state, .. } = test_app().await;
+    let mut config = ferrous_dns_domain::Config::default();
+    config.auth.enabled = true;
+    state.auth.get_auth_status = std::sync::Arc::new(
+        ferrous_dns_application::use_cases::GetAuthStatusUseCase::new(std::sync::Arc::new(
+            tokio::sync::RwLock::new(config),
+        )),
+    );
+    let app = ferrous_dns_api::create_api_router_with_openapi(state).0;
+
+    let (status, _) = post_bulk(&app, json!({ "domains": ["a.com"], "action": "deny" })).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_openapi_lists_bulk_route() {
+    let helpers::TestApp { state, .. } = test_app().await;
+    let openapi = ferrous_dns_api::create_api_router_with_openapi(state).1;
+
+    let path = openapi
+        .paths
+        .paths
+        .get("/managed-domains/bulk")
+        .expect("bulk route documented");
+    assert!(path.post.is_some());
+}

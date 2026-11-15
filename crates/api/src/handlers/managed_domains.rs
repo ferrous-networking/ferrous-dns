@@ -4,6 +4,7 @@ use axum::{
     response::Json,
 };
 use ferrous_dns_application::ports::{ManagedDomainUpdate, NewManagedDomain};
+use ferrous_dns_application::use_cases::BulkNewManagedDomains;
 use ferrous_dns_domain::DomainError;
 use std::time::Duration;
 use tracing::debug;
@@ -11,8 +12,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{
-        managed_domain::parse_action, CreateManagedDomainRequest, ManagedDomainQuery,
-        ManagedDomainResponse, PaginatedManagedDomains, UpdateManagedDomainRequest,
+        managed_domain::parse_action, BulkCreateManagedDomainsRequest,
+        BulkCreateManagedDomainsResponse, BulkEntryResponse, CreateManagedDomainRequest,
+        ManagedDomainQuery, ManagedDomainResponse, PaginatedManagedDomains,
+        UpdateManagedDomainRequest,
     },
     errors::ApiError,
     state::AppState,
@@ -21,9 +24,13 @@ use crate::{
 /// Upper bound on how many managed domains a single listing request may return.
 const MAX_MANAGED_DOMAINS_LIMIT: u32 = 1_000;
 
+/// Upper bound on how many domains a single bulk request may add.
+const MAX_BULK_MANAGED_DOMAINS: usize = 10_000;
+
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_all_managed_domains, create_managed_domain))
+        .routes(routes!(bulk_create_managed_domains))
         .routes(routes!(
             get_managed_domain_by_id,
             update_managed_domain,
@@ -130,6 +137,49 @@ async fn create_managed_domain(
         StatusCode::CREATED,
         Json(ManagedDomainResponse::from_domain(domain)),
     ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/managed-domains/bulk",
+    tag = "blocking",
+    request_body = BulkCreateManagedDomainsRequest,
+    responses(
+        (status = 200, description = "One result per domain, in request order", body = BulkCreateManagedDomainsResponse),
+        (status = 400, description = "Invalid action or comment, or no domains or more than 10000"),
+        (status = 404, description = "Group not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
+async fn bulk_create_managed_domains(
+    State(state): State<AppState>,
+    Json(req): Json<BulkCreateManagedDomainsRequest>,
+) -> Result<Json<BulkCreateManagedDomainsResponse>, ApiError> {
+    let action = parse_action(&req.action)?;
+    if req.domains.is_empty() || req.domains.len() > MAX_BULK_MANAGED_DOMAINS {
+        return Err(ApiError(DomainError::InvalidInput(format!(
+            "domains must list 1 to {MAX_BULK_MANAGED_DOMAINS} entries"
+        ))));
+    }
+
+    let results = state
+        .blocking
+        .bulk_create_managed_domains
+        .execute(BulkNewManagedDomains {
+            domains: req.domains,
+            action,
+            group_id: req.group_id.unwrap_or(1),
+            comment: req.comment,
+            enabled: req.enabled.unwrap_or(true),
+        })
+        .await?;
+
+    Ok(Json(BulkCreateManagedDomainsResponse {
+        results: results
+            .into_iter()
+            .map(BulkEntryResponse::from_result)
+            .collect(),
+    }))
 }
 
 #[utoipa::path(
