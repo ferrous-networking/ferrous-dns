@@ -8,6 +8,7 @@ use axum::{
 use helpers::ftl::{self, assert_ftl_shape};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use std::sync::atomic::Ordering;
 use tower::ServiceExt;
 
 /// Status and body; an empty body comes back as `null`.
@@ -172,6 +173,53 @@ async fn create_lowercases_exact_domains() {
     let reply = create(&app, "deny/exact", json!({ "domain": "Ads.Example.COM" })).await;
 
     assert_eq!(names(&reply.domains), ["ads.example.com"]);
+}
+
+#[tokio::test]
+async fn create_with_array_rebuilds_the_block_filter_once() {
+    let (app, reloads) =
+        helpers::create_pihole_test_app_counting_reloads(helpers::create_test_db().await).await;
+
+    create(
+        &app,
+        "deny/exact",
+        json!({ "domain": ["a.com", "b.com", "c.com"] }),
+    )
+    .await;
+
+    assert_eq!(
+        reloads.load(Ordering::SeqCst),
+        1,
+        "one rebuild for the whole array"
+    );
+}
+
+#[tokio::test]
+async fn create_allow_beside_a_deny_of_the_same_domain_keeps_both_like_ftl() {
+    // gravity.db: domainlist is UNIQUE(domain, type), so one domain can sit
+    // in the allow and the deny list at once.
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "both.example.com" })).await;
+
+    let reply = create(&app, "allow/exact", json!({ "domain": "both.example.com" })).await;
+
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["both.example.com"]);
+    assert!(reply.processed.errors.is_empty());
+    let types: Vec<ftl::DomainType> = list(&app, "/domains")
+        .await
+        .into_iter()
+        .filter(|d| d.domain == "both.example.com")
+        .map(|d| d.domain_type)
+        .collect();
+    assert_eq!(types.len(), 2, "{types:?}");
+    assert!(types.contains(&ftl::DomainType::Allow), "{types:?}");
+    assert!(types.contains(&ftl::DomainType::Deny), "{types:?}");
 }
 
 #[tokio::test]

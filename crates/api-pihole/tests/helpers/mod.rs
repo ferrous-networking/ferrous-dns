@@ -46,7 +46,7 @@ use ferrous_dns_infrastructure::repositories::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -142,6 +142,8 @@ impl DnsCachePort for StubDnsCache {
 /// - anything else → allowed
 struct MockBlockFilterEngine {
     blocking_enabled: AtomicBool,
+    /// How many times the block filter was rebuilt.
+    reloads: Arc<AtomicUsize>,
 }
 
 #[async_trait]
@@ -244,6 +246,7 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
 
     async fn reload(&self) -> Result<(), DomainError> {
+        self.reloads.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -476,13 +479,17 @@ pub async fn create_pihole_test_app_with_auth(
     pool: sqlx::SqlitePool,
     totp_enrolled: bool,
 ) -> Router {
-    create_pihole_router_with_openapi(build_pihole_state(pool, true, totp_enrolled).await).0
+    create_pihole_router_with_openapi(
+        build_pihole_state(pool, true, totp_enrolled, Arc::default()).await,
+    )
+    .0
 }
 
 async fn build_pihole_state(
     pool: sqlx::SqlitePool,
     auth_enabled: bool,
     totp_enrolled: bool,
+    reloads: Arc<AtomicUsize>,
 ) -> PiholeAppState {
     let db_config = DatabaseConfig::default();
     let client_repo = Arc::new(SqliteClientRepository::new(pool.clone(), &db_config));
@@ -506,6 +513,7 @@ async fn build_pihole_state(
 
     let block_filter_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(MockBlockFilterEngine {
         blocking_enabled: AtomicBool::new(true),
+        reloads,
     });
 
     let mut config = Config::default();
@@ -676,7 +684,17 @@ async fn build_pihole_state(
 /// App with `[auth]` disabled, so every route is open — the routes' own tests
 /// don't have to log in first.
 pub async fn create_pihole_test_app(pool: sqlx::SqlitePool) -> Router {
-    create_pihole_router_with_openapi(build_pihole_state(pool, false, false).await).0
+    create_pihole_router_with_openapi(build_pihole_state(pool, false, false, Arc::default()).await)
+        .0
+}
+
+/// [`create_pihole_test_app`], and a count of the block filter rebuilds.
+pub async fn create_pihole_test_app_counting_reloads(
+    pool: sqlx::SqlitePool,
+) -> (Router, Arc<AtomicUsize>) {
+    let reloads = Arc::new(AtomicUsize::new(0));
+    let state = build_pihole_state(pool, false, false, reloads.clone()).await;
+    (create_pihole_router_with_openapi(state).0, reloads)
 }
 
 /// [`create_pihole_test_app`] with `configure` applied to its live config.
@@ -684,7 +702,7 @@ pub async fn create_pihole_test_app_with_config(
     pool: sqlx::SqlitePool,
     configure: impl FnOnce(&mut Config),
 ) -> Router {
-    let state = build_pihole_state(pool, false, false).await;
+    let state = build_pihole_state(pool, false, false, Arc::default()).await;
     configure(&mut *state.system.config.write().await);
     create_pihole_router_with_openapi(state).0
 }
@@ -724,7 +742,8 @@ pub async fn send(
 
 /// The OpenAPI document served next to [`create_pihole_test_app`].
 pub async fn create_pihole_test_openapi(pool: sqlx::SqlitePool) -> utoipa::openapi::OpenApi {
-    create_pihole_router_with_openapi(build_pihole_state(pool, false, false).await).1
+    create_pihole_router_with_openapi(build_pihole_state(pool, false, false, Arc::default()).await)
+        .1
 }
 
 pub async fn insert_query(

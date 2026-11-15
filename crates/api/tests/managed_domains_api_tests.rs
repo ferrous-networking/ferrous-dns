@@ -334,6 +334,9 @@ async fn send_json(app: axum::Router, method: &str, uri: &str, body: Value) -> (
         .unwrap();
     let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    if bytes.is_empty() {
+        return (status, Value::Null);
+    }
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
@@ -621,4 +624,50 @@ async fn test_list_search_matches_like_wildcards_literally() {
 
     let underscore = get_json(app, "/managed-domains?search=_").await;
     assert_eq!(names(&underscore), vec!["snake_case"]);
+}
+
+#[tokio::test]
+async fn test_bulk_create_answers_a_result_per_entry_in_order() {
+    let app = test_app().await.router;
+    let (status, existing) = send_json(
+        app.clone(),
+        "POST",
+        "/managed-domains",
+        json!({ "name": "Shop", "domain": "shop.example.com", "action": "allow" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{existing}");
+
+    let (status, json) = send_json(
+        app.clone(),
+        "POST",
+        "/managed-domains/bulk",
+        json!({
+            "domains": [" Ads.Example.COM ", "x..com", "shop.example.com", "ads.example.com", "*.cdn.example.net"],
+            "action": "allow",
+            "comment": "bulk import"
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(
+        json,
+        json!({ "results": [
+            { "domain": "ads.example.com", "status": "added" },
+            { "domain": "x..com", "status": "invalid",
+              "error": "Invalid managed domain: Domain cannot contain an empty label" },
+            { "domain": "shop.example.com", "status": "existing" },
+            { "domain": "ads.example.com", "status": "existing" },
+            { "domain": "*.cdn.example.net", "status": "added" },
+        ]})
+    );
+    let listed = get_json(app, "/managed-domains?search=ads.example.com").await;
+    assert_eq!(listed["total"], 1, "{listed}");
+    let rule = &listed["data"][0];
+    assert_eq!(rule["name"], "ads.example.com");
+    assert_eq!(rule["action"], "allow");
+    assert_eq!(rule["group_id"], 1);
+    assert_eq!(rule["comment"], "bulk import");
+    assert_eq!(rule["enabled"], true);
 }
