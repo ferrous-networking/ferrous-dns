@@ -2,7 +2,8 @@
 mod db;
 
 use ferrous_dns_application::ports::{
-    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+    BulkManagedDomain, CreateManyOutcome, ManagedDomainRepository, ManagedDomainUpdate,
+    NewManagedDomain,
 };
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
 use ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository;
@@ -436,4 +437,243 @@ async fn test_delete_by_service_scopes_to_group() {
     assert_eq!(repo.delete_by_service("svc", 1).await.unwrap(), 1);
     assert_eq!(repo.delete_all_by_service("svc").await.unwrap(), 1);
     assert!(repo.get_all().await.unwrap().is_empty());
+}
+
+/// `rule` with no fallback name.
+fn bulk(rule: NewManagedDomain) -> BulkManagedDomain {
+    BulkManagedDomain {
+        rule,
+        fallback_name: None,
+    }
+}
+
+/// A rule named after its domain, falling back to `"<domain> (<action>)"`.
+fn bulk_named_after(domain: &str, action: DomainAction) -> BulkManagedDomain {
+    BulkManagedDomain {
+        rule: new_domain(domain, domain, action),
+        fallback_name: Some(ManagedDomain::fallback_name(domain, action)),
+    }
+}
+
+fn created(outcome: &CreateManyOutcome) -> &ManagedDomain {
+    match outcome {
+        CreateManyOutcome::Created(rule) => rule,
+        other => panic!("expected a created rule, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_create_many_inserts_every_row() {
+    let (repo, _pool) = repo().await;
+
+    let outcomes = repo
+        .create_many(vec![
+            bulk(new_domain("a.com", "a.com", DomainAction::Allow)),
+            bulk(new_domain("*.b.com", "*.b.com", DomainAction::Deny)),
+        ])
+        .await
+        .unwrap();
+
+    assert_eq!(created(&outcomes[0]).domain.as_ref(), "a.com");
+    assert_eq!(created(&outcomes[1]).action, DomainAction::Deny);
+    assert!(created(&outcomes[0]).id.is_some());
+    assert_eq!(repo.get_all().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_create_many_reports_same_domain_group_action_as_already_present() {
+    let (repo, _pool) = repo().await;
+    repo.create(new_domain("Shop", "shop.com", DomainAction::Allow))
+        .await
+        .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![bulk_named_after("shop.com", DomainAction::Allow)])
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(outcomes[0], CreateManyOutcome::AlreadyPresent),
+        "{outcomes:?}"
+    );
+    assert_eq!(repo.get_all().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_create_many_matches_a_legacy_uppercase_rule_as_already_present() {
+    let (repo, _pool) = repo().await;
+    repo.create(new_domain("Legacy", "Shop.COM", DomainAction::Allow))
+        .await
+        .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![bulk_named_after("shop.com", DomainAction::Allow)])
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(outcomes[0], CreateManyOutcome::AlreadyPresent),
+        "{outcomes:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_create_many_does_not_count_a_temporary_or_differently_enabled_rule() {
+    let (repo, _pool) = repo().await;
+    repo.create(NewManagedDomain {
+        expires_in: Some(Duration::from_secs(3600)),
+        ..new_domain("qlog-allow-for-a.com", "a.com", DomainAction::Allow)
+    })
+    .await
+    .unwrap();
+    repo.create(NewManagedDomain {
+        enabled: false,
+        ..new_domain("Off", "b.com", DomainAction::Allow)
+    })
+    .await
+    .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![
+            bulk_named_after("a.com", DomainAction::Allow),
+            bulk_named_after("b.com", DomainAction::Allow),
+        ])
+        .await
+        .unwrap();
+
+    assert!(created(&outcomes[0]).expires_at.is_none());
+    assert!(created(&outcomes[1]).enabled);
+}
+
+#[tokio::test]
+async fn test_create_many_treats_a_repeat_in_the_batch_as_already_present() {
+    let (repo, _pool) = repo().await;
+
+    let outcomes = repo
+        .create_many(vec![
+            bulk_named_after("a.com", DomainAction::Allow),
+            bulk_named_after("a.com", DomainAction::Allow),
+        ])
+        .await
+        .unwrap();
+
+    created(&outcomes[0]);
+    assert!(
+        matches!(outcomes[1], CreateManyOutcome::AlreadyPresent),
+        "{outcomes:?}"
+    );
+    assert_eq!(repo.get_all().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_create_many_adds_the_opposite_action() {
+    let (repo, _pool) = repo().await;
+    repo.create(new_domain("Ads", "ads.com", DomainAction::Deny))
+        .await
+        .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![bulk_named_after("ads.com", DomainAction::Allow)])
+        .await
+        .unwrap();
+
+    let rule = created(&outcomes[0]);
+    assert_eq!(rule.name.as_ref(), "ads.com");
+    assert_eq!(rule.action, DomainAction::Allow);
+}
+
+#[tokio::test]
+async fn test_create_many_uses_the_fallback_name_when_the_name_is_taken() {
+    let (repo, _pool) = repo().await;
+    repo.create_many(vec![bulk_named_after("both.com", DomainAction::Deny)])
+        .await
+        .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![bulk_named_after("both.com", DomainAction::Allow)])
+        .await
+        .unwrap();
+
+    let rule = created(&outcomes[0]);
+    assert_eq!(rule.name.as_ref(), "both.com (allow)");
+    assert_eq!(rule.domain.as_ref(), "both.com");
+    assert_eq!(repo.get_all().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_create_many_reports_name_taken_when_both_names_are_taken() {
+    let (repo, _pool) = repo().await;
+    repo.create(new_domain("both.com", "other.com", DomainAction::Deny))
+        .await
+        .unwrap();
+    repo.create(new_domain(
+        "both.com (allow)",
+        "else.com",
+        DomainAction::Deny,
+    ))
+    .await
+    .unwrap();
+
+    let outcomes = repo
+        .create_many(vec![
+            bulk_named_after("both.com", DomainAction::Allow),
+            bulk(new_domain("both.com", "both.com", DomainAction::Allow)),
+        ])
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(outcomes[0], CreateManyOutcome::NameTaken),
+        "{outcomes:?}"
+    );
+    assert!(
+        matches!(outcomes[1], CreateManyOutcome::NameTaken),
+        "{outcomes:?}"
+    );
+    assert_eq!(repo.get_all().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_create_many_keeps_comment_enabled_and_expiry() {
+    let (repo, _pool) = repo().await;
+
+    let outcomes = repo
+        .create_many(vec![bulk(NewManagedDomain {
+            comment: Some("bulk import".to_string()),
+            enabled: false,
+            expires_in: Some(Duration::from_secs(3600)),
+            ..new_domain("a.com", "a.com", DomainAction::Allow)
+        })])
+        .await
+        .unwrap();
+
+    let stored = repo
+        .get_by_id(created(&outcomes[0]).id.unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.comment.as_deref(), Some("bulk import"));
+    assert!(!stored.enabled);
+    assert!(stored.expires_at.is_some());
+}
+
+#[tokio::test]
+async fn test_create_many_unknown_group_writes_nothing() {
+    let (repo, _pool) = repo().await;
+
+    let result = repo
+        .create_many(vec![
+            bulk(new_domain("a.com", "a.com", DomainAction::Allow)),
+            bulk(NewManagedDomain {
+                group_id: 999,
+                ..new_domain("b.com", "b.com", DomainAction::Allow)
+            }),
+        ])
+        .await;
+
+    assert!(
+        matches!(result, Err(DomainError::GroupNotFound(999))),
+        "got {result:?}"
+    );
+    assert!(repo.get_all().await.unwrap().is_empty(), "rolled back");
 }

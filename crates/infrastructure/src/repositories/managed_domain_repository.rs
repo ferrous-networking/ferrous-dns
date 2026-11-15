@@ -5,10 +5,12 @@ use crate::repositories::{
 use async_trait::async_trait;
 use chrono::Utc;
 use ferrous_dns_application::ports::{
-    ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+    BulkManagedDomain, CreateManyOutcome, ManagedDomainRepository, ManagedDomainUpdate,
+    NewManagedDomain,
 };
 use ferrous_dns_domain::{DomainError, ManagedDomain};
-use sqlx::SqlitePool;
+use sqlx::{Sqlite, SqlitePool, Transaction};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::instrument;
@@ -29,6 +31,10 @@ type ManagedDomainRow = (
 
 const COLUMNS: &str =
     "id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at, expires_at";
+
+/// A permanent rule as `create_many` compares it: lowercased domain, action
+/// and enabled state.
+type HeldRule = (String, &'static str, bool);
 
 pub struct SqliteManagedDomainRepository {
     pool: SqlitePool,
@@ -78,6 +84,66 @@ fn expiry_after(expires_in: Duration) -> Result<String, DomainError> {
         .ok_or_else(|| DomainError::InvalidManagedDomain("Expiry is out of range".to_string()))
 }
 
+/// The permanent rules of `group_id`, which a temporary rule does not stand in for.
+async fn held_rules(
+    tx: &mut Transaction<'_, Sqlite>,
+    group_id: i64,
+) -> Result<HashSet<HeldRule>, DomainError> {
+    let rows: Vec<(String, String, bool)> = sqlx::query_as(
+        "SELECT domain, action, enabled FROM managed_domains
+         WHERE group_id = ? AND expires_at IS NULL",
+    )
+    .bind(group_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(db_err("Failed to read managed domains for bulk create"))?;
+    Ok(rows
+        .into_iter()
+        .map(|(domain, action, enabled)| {
+            (
+                domain.to_ascii_lowercase(),
+                parse_db_action(&action).to_str(),
+                enabled,
+            )
+        })
+        .collect())
+}
+
+/// Inserts `rule` under `name`, or returns `None` when the group already has
+/// a rule by that name.
+async fn insert_unless_named(
+    tx: &mut Transaction<'_, Sqlite>,
+    rule: &NewManagedDomain,
+    name: &str,
+    now: &str,
+    expires_at: Option<&str>,
+) -> Result<Option<ManagedDomainRow>, DomainError> {
+    sqlx::query_as::<_, ManagedDomainRow>(&format!(
+        "INSERT INTO managed_domains (name, domain, action, group_id, comment, enabled, created_at, updated_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (name, group_id) DO NOTHING
+         RETURNING {COLUMNS}"
+    ))
+    .bind(name)
+    .bind(&rule.domain)
+    .bind(rule.action.to_str())
+    .bind(rule.group_id)
+    .bind(&rule.comment)
+    .bind(rule.enabled)
+    .bind(now)
+    .bind(now)
+    .bind(expires_at)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|e| {
+        if is_fk_violation(&e) {
+            DomainError::GroupNotFound(rule.group_id)
+        } else {
+            db_err("Failed to bulk create managed domain")(e)
+        }
+    })
+}
+
 #[async_trait]
 impl ManagedDomainRepository for SqliteManagedDomainRepository {
     #[instrument(skip(self))]
@@ -123,6 +189,66 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         })?;
 
         Ok(Self::row_to_domain(row))
+    }
+
+    #[instrument(skip(self, entries), fields(count = entries.len()))]
+    async fn create_many(
+        &self,
+        entries: Vec<BulkManagedDomain>,
+    ) -> Result<Vec<CreateManyOutcome>, DomainError> {
+        let now = sql_now();
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(db_err("Failed to begin transaction for bulk create"))?;
+
+        let mut held: HashMap<i64, HashSet<HeldRule>> = HashMap::new();
+        let mut outcomes = Vec::with_capacity(entries.len());
+        for BulkManagedDomain {
+            rule,
+            fallback_name,
+        } in &entries
+        {
+            let rules = match held.entry(rule.group_id) {
+                Entry::Occupied(rules) => rules.into_mut(),
+                Entry::Vacant(slot) => slot.insert(held_rules(&mut tx, rule.group_id).await?),
+            };
+            let key = (
+                rule.domain.to_ascii_lowercase(),
+                rule.action.to_str(),
+                rule.enabled,
+            );
+            if rules.contains(&key) {
+                outcomes.push(CreateManyOutcome::AlreadyPresent);
+                continue;
+            }
+
+            let expires_at = rule.expires_in.map(expiry_after).transpose()?;
+            let mut created = None;
+            for name in std::iter::once(rule.name.as_str()).chain(fallback_name.as_deref()) {
+                created =
+                    insert_unless_named(&mut tx, rule, name, &now, expires_at.as_deref()).await?;
+                if created.is_some() {
+                    break;
+                }
+            }
+            match created {
+                Some(row) => {
+                    if expires_at.is_none() {
+                        rules.insert(key);
+                    }
+                    outcomes.push(CreateManyOutcome::Created(Self::row_to_domain(row)));
+                }
+                None => outcomes.push(CreateManyOutcome::NameTaken),
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(db_err("Failed to commit bulk create transaction"))?;
+
+        Ok(outcomes)
     }
 
     #[instrument(skip(self))]

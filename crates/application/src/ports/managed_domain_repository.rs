@@ -28,9 +28,35 @@ pub struct NewManagedDomain {
     pub expires_in: Option<Duration>,
 }
 
+/// A managed domain to create in a batch. `fallback_name` is tried when the
+/// group already has a rule named `rule.name`.
+#[derive(Debug, Clone)]
+pub struct BulkManagedDomain {
+    pub rule: NewManagedDomain,
+    pub fallback_name: Option<String>,
+}
+
+/// What became of one [`BulkManagedDomain`].
+#[derive(Debug, Clone)]
+pub enum CreateManyOutcome {
+    Created(ManagedDomain),
+    /// The group already has a permanent rule for the domain with the same
+    /// action and enabled state.
+    AlreadyPresent,
+    /// The group already has a rule under each name.
+    NameTaken,
+}
+
 #[async_trait]
 pub trait ManagedDomainRepository: Send + Sync {
     async fn create(&self, new: NewManagedDomain) -> Result<ManagedDomain, DomainError>;
+
+    /// Creates the rules in one transaction, and returns each one's outcome at
+    /// its index. A rule the batch already created counts as present.
+    async fn create_many(
+        &self,
+        entries: Vec<BulkManagedDomain>,
+    ) -> Result<Vec<CreateManyOutcome>, DomainError>;
 
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError>;
 

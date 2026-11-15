@@ -20,6 +20,18 @@ fn test_validate_name_too_long() {
 }
 
 #[test]
+fn test_fallback_name_appends_the_action() {
+    assert_eq!(
+        ManagedDomain::fallback_name("ads.example.com", DomainAction::Allow),
+        "ads.example.com (allow)"
+    );
+    assert_eq!(
+        ManagedDomain::fallback_name("*.ads.example.com", DomainAction::Deny),
+        "*.ads.example.com (deny)"
+    );
+}
+
+#[test]
 fn test_validate_name_exactly_200_chars() {
     let name = "a".repeat(200);
     assert!(ManagedDomain::validate_name(&name).is_ok());
