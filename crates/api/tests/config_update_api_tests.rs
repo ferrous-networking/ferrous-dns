@@ -406,6 +406,20 @@ async fn test_get_config_reports_bind_address_auto() {
 }
 
 #[tokio::test]
+async fn test_get_config_reports_doh_enabled() {
+    let pool = create_test_db().await;
+    let (TestApp { router, config, .. }, _path) = test_app(pool).await;
+
+    let (status, json) = get_config(router.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["server"]["encrypted_dns"]["doh_enabled"], false);
+
+    config.write().await.server.encrypted_dns.doh_enabled = true;
+    let (_, json) = get_config(router).await;
+    assert_eq!(json["server"]["encrypted_dns"]["doh_enabled"], true);
+}
+
+#[tokio::test]
 async fn test_get_config_reports_mdns_enabled() {
     let pool = create_test_db().await;
     let app = test_app(pool).await.0.router;

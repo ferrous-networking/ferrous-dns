@@ -310,6 +310,10 @@ Returns recent DNS queries with filtering support, newest first, as a [page](#pa
 | `protocol` | string | Transport the client used: `udp`, `tcp`, `dot`, `doh` or `doq`. Case-insensitive; any other value returns `400` |
 | `cookie` | string | The query's [DNS Cookie](features/security.md#dns-cookies): `any` (it carried one), `valid`, `client`, `invalid`, or `none` (it carried none, which includes rows logged before cookies were recorded). Case-insensitive; any other value returns `400` |
 
+Each entry carries its query-log `id`: stable across reads, and higher for newer
+rows. A client that polls the log can match rows by it, and a `next_cursor` is
+one of these ids.
+
 Each entry carries a `protocol` field with the same values in lowercase, or
 `null` for internally generated queries and for rows logged before the
 transport was recorded.
@@ -1464,7 +1468,7 @@ Returns the managed domains sorted by name, then by group, as a [page](#paginati
 POST /ferrous/api/v1/managed-domains
 ```
 
-**Auth:** session or API key · **Returns:** `201` `ManagedDomainResponse` · **Errors:** `400` invalid name, domain, comment or action, `404` unknown group, `409` name taken in the group
+**Auth:** session or API key · **Returns:** `201` `ManagedDomainResponse` · **Errors:** `400` invalid name, domain, comment, action or expiry, `404` unknown group, `409` name taken in the group
 
 ```json
 {
@@ -1476,6 +1480,8 @@ POST /ferrous/api/v1/managed-domains
 ```
 
 `action` is `deny` (block) or `allow`. `group_id` defaults to the default group, `enabled` to `true`.
+
+`expires_in_secs` (60 to 2592000, i.e. 30 days) makes a temporary rule: it stops applying when it expires and is deleted at most 30 seconds later. The response's `expires_at` holds that time in UTC (`YYYY-MM-DD HH:MM:SS`), or `null` for a rule that never expires; `PUT` leaves it as it is.
 
 ### Get / Update / Delete
 
@@ -1555,6 +1561,8 @@ POST /ferrous/api/v1/block-filter/test
 **Auth:** session or API key · **Returns:** `200` `FilterTestResponse` · **Errors:** `400` `client` is not an IP address
 
 Evaluates one domain against the compiled filter for a group, without sending a query, and names every rule involved: `blocked`, the `block_matches` and the `allow_reasons`, each with its `kind` (`blocklist`, `manual`, `managed_domain`, `regex` or `allowlist`), its source and its `match_type`. The group is `group_id`, else the group of the `client` IP, else the default group.
+
+A `managed_domain` block match is one per rule: `source_id` is the managed domain's `id` and `name` its name, and each parent with a `*.` rule of its own adds one.
 
 ```json
 {

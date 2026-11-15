@@ -47,6 +47,7 @@ pub struct ServerConfigResponse {
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct EncryptedDnsConfigResponse {
+    pub doh_enabled: bool,
     pub doh_allow_unregistered_ids: bool,
 }
 
