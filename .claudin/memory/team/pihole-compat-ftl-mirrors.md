@@ -16,4 +16,5 @@ Every Pi-hole compat route answers with Pi-hole FTL's exact response shape, whic
 - When the spec and the C code differ, follow the C code and leave a one-line comment.
 - Fields Ferrous cannot fill keep FTL's key with a neutral value, listed in the Limitations section of `docs/features/pihole-compat.md`.
 - Request bodies go through `extract::PiholeJson`, never `axum::Json`, because Homarr sends JSON as `text/plain`.
+- The compat tests build their own schema by hand: `create_test_db` in `crates/api-pihole/tests/helpers/mod.rs`, not the migrations. A migration that changes a constraint has to be copied there too. On 2026-11-15 the helper still had the global `name UNIQUE` that `20260924000200` had replaced with `UNIQUE (name, group_id)`. An `ON CONFLICT (name, group_id)` that is correct in production then failed 29 compat tests with a 500.
 - The mirrors only know what the YAML says. Before merging, diff against a live Pi-hole too ([[pihole-compat-live-validation]]). Which routes stay unserved, and why: [[pihole-compat-scope]].

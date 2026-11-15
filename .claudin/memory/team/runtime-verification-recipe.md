@@ -1,6 +1,6 @@
 ---
 name: runtime-verification-recipe
-description: Minimal standalone config and steps to run ferrous-dns locally for runtime verification, including the required TOML sections, TOML enum casing, the admin-username gotcha, killing instances safely, and driving cache load with a fake upstream
+description: Minimal standalone config and steps to run ferrous-dns locally for runtime verification — required TOML tables, enum casing, migrations symlink, main×branch, stopping instances safely, auth-off curl, a local list source; links to the UI-session and fake-upstream recipes
 type: project
 ---
 
@@ -32,59 +32,29 @@ path = "/tmp/<workdir>/ferrous.db"
 enabled = true
 ```
 
-Run it from a directory containing a `migrations` symlink to the repo's `migrations/` — the app resolves `./migrations` relative to the working directory, not the config path.
-
-**A live UI session on the shipped config** (2026-11-14):
-- **Setup:** copy `ferrous-dns.toml` into a scratch dir next to a `migrations` symlink. Run `target/debug/ferrous-dns --config ferrous-dns.toml --dns-port 25353 --web-port 8080 --bind 127.0.0.1`. On a dev host, systemd-resolved and Docker already hold port 53.
-- **Not from the repo root:** the auth setup and Settings saves rewrite the tracked `ferrous-dns.toml`, and the `lists/` dir created beside the DB is not gitignored.
-- **Iterating:** the web assets are `include_str!`'d, so every UI tweak needs a rebuild and a restart. An asset-only debug rebuild takes about 2 s.
-- **Traffic for Query Log and Clients:** loop `dig -b 127.0.0.N` over a list of names. Loopback accepts any 127/8 source, and each source address shows up as its own client. About 5 qps, with about 10% random NXDOMAIN subdomains, stays far under the shipped rate limit (1000 qps per /24, 50 NXDOMAIN/s).
-- **Blocking screens:** the shipped config has no blocklist, so they stay empty.
-- **Rate-limited rows on the first page:** set `[dns.rate_limit] queries_per_second = 5` and `burst_size = 5` on the verification instance. Then most of 25 concurrent digs from one 127.x source come back `RATE_LIMITED`; the bucket is per /24, so every 127.0.0.x shares it.
-- **Burst first:** fire that burst before the normal names, or the Query Log's 25-row first page holds only burst rows.
-- **Clear leftovers before seeding:** a rule an earlier run created, such as a still-live temporary allow, flips the next run's verdicts.
-- **Expected console noise:** right after a restart the cache is empty, so the UI's "Remove from cache" logs a 404 in the console.
-- **UI-wide change check** (used 2026-11-14 for the standardization round):
-  - Drive playwright-core over all 11 pages at 1920, 1440, 1280, 1024, 768 and 390px in light, plus 1920 in dark.
-  - Collect `pageerror` and console errors.
-  - Flag any element under `main` whose right edge passes `clientWidth` with no `overflow` auto/scroll/hidden ancestor.
-  - Save a full-page screenshot per page.
-  - It runs in about 2 minutes.
-- **Outcomes are toasts since that round:** read `.toast`, not `page.on('dialog')`. A dialog listener now sees only `confirm()`.
-- **Checking an animation:** in the page, sample every row's `getBoundingClientRect().top` on `requestAnimationFrame` for a few seconds while traffic flows, then per frame take the median move of rows present in both frames. Count one-frame jumps (|move| > 20 px) and still frames. This caught a FLIP flash and transition-start stalls that screenshots and timing logs missed (2026-11-15).
-- **After a host reboot** the scratchpad is empty (it is tmpfs): the instance dir, its database, start and traffic scripts are gone, and the next start shows the auth setup screen again (seen 2026-11-15).
+Run it from a directory containing a `migrations` symlink to the repo's `migrations/`. The app resolves `./migrations` relative to the working directory, not the config path.
 
 **Stop that instance before running `make ci`, or pick another DNS port** (25353 worked on 2026-10-16). `crates/infrastructure/tests/helpers/dns_server_mock.rs:104` binds port **15353**, the same port as the config above. A verification instance still running there makes `test_mock_server_starts` fail with a bare `assertion failed: result.is_ok()`, which looks nothing like a port conflict.
 
-**Main × branch side by side:** before the first edit, build `main` and copy `target/debug/ferrous-dns` to the scratchpad. Then run it and the branch build on different web/DNS ports, each in its own directory with its own `migrations` symlink, and diff the same curl script's output.
+**Main × branch side by side:** before the first edit, build `main` and copy `target/debug/ferrous-dns` to the scratchpad. Later on, build it from a detached `git worktree` with its own target dir ([[shared-target-dir-across-checkouts]]); a debug build of the binary alone took 3 m 39 s at half the cores on 2026-11-15. Run main and the branch on different web and DNS ports, each in its own directory with its own `migrations` symlink, and diff the same curl script's output.
 
 **Stopping instances:** a plain `pkill -f` pattern also matches the shell running it. So does `kill $(pgrep -f ...)`, which on 2026-10-16 killed the calling shell with exit 144. Bracket one character instead: `pkill -f "[f]errous-dns-fix --config"`. The bracket does not help when the same Bash call also starts the binary: the unbracketed `…/ferrous-dns-main --config` text further down that command line still matches, and the shell dies with exit 144. Start instances from a script file, and stop them in a separate call.
 
-**Driving cache load with a fake upstream** (used 2026-10-16 for the cache-removal A/B):
-- **The responder:** a ~20-line Python UDP script that copies the question and answers `A 192.0.2.1` for every name works as the only upstream.
-- **Turn malware detection off.** Set `malware_detection_enabled = false` in `[dns]`. Otherwise the NXDomain hijack detector sees the catch-all answer its `.invalid` probes and turns every answer into NXDOMAIN, and DGA may flag the random names.
-- **Pick a non-reserved domain.** Names under `.test` come back NXDOMAIN locally, so use something like `n123.live-ab.ferrous-bench.net`.
-- **Watch the cache:** `GET /ferrous/api/v1/cache/metrics` has `total_entries`, `evictions` and `compactions`.
-- **Compare memory with `RssAnon`, not `VmRSS`.** With the DB on tmpfs (the scratchpad), the mmapped database counts as `RssShmem` and swamps the difference.
+**Scripting the API without a session:** with `[auth] enabled = false` every `/ferrous/api/v1/*` route answers plain curl. With `pihole_compat = true`, the Pi-hole `/api/*` routes answer without a SID too (2026-11-15). That is the quickest way to run a request matrix. Expected noise in the browser console then: a 401 on `/ferrous/api/v1/auth/2fa/status`.
 
-**Watching renewals live:** set `cache_min_ttl = 60` and `cache_max_ttl = 60` in `[dns]`, and every entry renews about every 45 s for as long as it is inside `cache_access_window_secs`. Don't go below 60. A TTL under `REFRESH_LEAD_SECS` (60) only renews if a client asked for the entry since the last renewal (`is_worth_renewing` in `refresh.rs`), so a 20 s clamp with no traffic leaves an empty cache within 40 s (seen 2026-10-17). Each renewal writes a `cache_refresh = 1` row to `query_log`, and those rows match the per-entry `refreshes` in `GET /ferrous/api/v1/cache/entries` one to one.
+**To reach an authenticated session:** `POST /ferrous/api/v1/auth/setup {"password": "..."}` returns 204 and writes the Argon2 hash into the config file. The running process keeps its startup snapshot of `[auth]`, so **restart before logging in**. Since PR #251 (`e75ba8c`), a config with no `[auth.admin]` table logs in as `admin`. Older builds need `username = "admin"` set by hand, or every login returns 401.
 
-To reach an authenticated session: `POST /ferrous/api/v1/auth/setup {"password": "..."}` returns 204 and writes the Argon2 hash into the config file, but the running process keeps its startup snapshot of `[auth]`, so **restart before logging in**.
+**API base by build:** since v0.10.0 the Ferrous API is at `/ferrous/api/v1` in every mode, and the old bases answer a 307 (use `curl -L`). Builds before it serve `/api`, or `/ferrous/api` with `pihole_compat = true`. Mind this in a main × branch diff across that release.
 
-**Admin username:** since PR #251 (merged 2026-09-25 as `e75ba8c`), `AdminConfig` has a hand-written `Default` with `username = "admin"` (`domain/src/config/auth.rs:121-124`). A config with no `[auth.admin]` table now logs in as `admin`. Before #251 the username came out empty and every login returned 401, so only builds older than `e75ba8c` still need `username = "admin"` set by hand.
-
-**Verifying blocklist behaviour:** query with `dig @127.0.0.1 -p 15353 <domain>`; under the default `block_mode = "null_ip"` a blocked name answers `0.0.0.0` with `EDE 15 (Blocked)`. The trustworthy "my list actually loaded" signal is the `Fetched blocklist source url=…` log line, **not** the `exact=` count in `Block index compiled` — a 224k-entry HaGeZi list logs `exact=0` because its entries parse as wildcards. A source whose URL 404s is only `warn!`-logged and the reload still reports success, so always check for the fetch line per URL. See [[issue-216-blocklist-sync]].
-
-**Scripting the API without a session:** with `[auth] enabled = false` every `/ferrous/api/v1/*` route answers plain curl, which is the quickest way to run a request matrix. Expected noise in the browser console then: a 401 on `/ferrous/api/v1/auth/2fa/status`. The Tailwind CDN warning went away with #271, which vendored every asset.
-
-**API base by build:** since v0.10.0 the Ferrous API is at `/ferrous/api/v1` in every mode, and the old bases answer a 307 (use `curl -L`). Builds before it serve `/api`, or `/ferrous/api` with `pihole_compat = true` — mind this in a main × branch diff across that release.
-
-**Saving pools from the Settings UI on this minimal config** (the pool editor is on the **DNS Advanced** tab) returns "Restart the server for the changes to take effect" on the first save. The form sends every `dns` field, and they differ from the stub file. Once the file has been written, later pool-only saves report "applied immediately" (seen 2026-10-16). To confirm the pool went live, check `GET /ferrous/api/v1/upstream/health/detail` or the `/ferrous/api/v1/config` pools.
+**Verifying blocklist behaviour:**
+- Query with `dig @127.0.0.1 -p 15353 <domain>`. Under the default `block_mode = "null_ip"`, a blocked name answers `0.0.0.0` with `EDE 15 (Blocked)`.
+- The trustworthy "my list actually loaded" signal is the `Fetched blocklist source url=…` log line, **not** the `exact=` count in `Block index compiled`. A 224k-entry HaGeZi list logs `exact=0`, because its entries parse as wildcards.
+- A source whose URL 404s is only `warn!`-logged, and the reload still reports success. Always check for the fetch line per URL. See [[issue-216-blocklist-sync]].
+- **A list with no internet:** serve a generated hosts file with `python3 -m http.server <port> --bind 127.0.0.1` and add it with `POST /ferrous/api/v1/blocklist-sources {"name","url","group_ids":[1],"enabled":true}`. On 2026-11-15 a debug build compiled 200k entries in about 0.5 s.
+- Each rebuild logs `Block filter reload completed`, so counting that line in each instance's log compares rebuilds main × branch.
 
 **Docs check:** `mkdocs build --strict` (`site/` is gitignored; pull requests that touch the docs run the same build in `docs.yml`).
 
-**Faking this machine's resolver without root:** run the binary under `unshare -rm` with a `resolv.conf` and an `nsswitch.conf` (`hosts: files dns`) bind-mounted over `/etc`. Mounting only `resolv.conf` does nothing here, because nss-resolve goes straight to systemd-resolved. The full recipe is in [[upstream-hostname-startup-only-resolution]]. Watch out for `pkill -f <pattern>`: the pattern also matches the shell running it, which kills your own command.
-
-**IPv6 socket behaviour without root:** under `unshare -rn`, run `ip link set lo up` and `echo 1 > /proc/sys/net/ipv6/bindv6only`. A `[::]` listener that leaves `IPV6_V6ONLY` to the sysctl then refuses IPv4 clients. #385's red proof for the web listeners ran this way on 2026-11-09 ([[bind-address-auto-dual-stack]]). CI cannot run it, because Ubuntu 24.04 runners restrict unprivileged user namespaces.
-
-**Secure-cookie behaviour cannot be reproduced on loopback:** curl and browsers both treat `127.0.0.1` as a secure context and accept a `Secure` cookie over plain HTTP. Bind to the host's LAN address (`--bind <lan-ip>`) to observe the real rejection. This is why [[web-tls-secure-cookie-invariant]] went unnoticed in local development.
+**More recipes:**
+- A live dashboard session, UI-wide audits, animation checks and Settings saves: [[runtime-live-ui-session]].
+- Cache load with a fake upstream, watching renewals, faking the resolver without root, IPv6 socket behaviour, and the Secure cookie on loopback: [[runtime-fake-upstream-and-network]].
