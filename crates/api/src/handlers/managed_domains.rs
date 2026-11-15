@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::StatusCode,
     response::Json,
 };
@@ -27,10 +27,19 @@ const MAX_MANAGED_DOMAINS_LIMIT: u32 = 1_000;
 /// Upper bound on how many domains a single bulk request may add.
 const MAX_BULK_MANAGED_DOMAINS: usize = 10_000;
 
+/// Body size a bulk request may take: room for `MAX_BULK_MANAGED_DOMAINS`
+/// domains of 253 characters, past axum's 2 MB default.
+const MAX_BULK_BODY_BYTES: usize = 3 * 1024 * 1024;
+
 pub fn routes() -> OpenApiRouter<AppState> {
+    let (schemas, paths, bulk) = routes!(bulk_create_managed_domains);
     OpenApiRouter::new()
         .routes(routes!(get_all_managed_domains, create_managed_domain))
-        .routes(routes!(bulk_create_managed_domains))
+        .routes((
+            schemas,
+            paths,
+            bulk.layer(DefaultBodyLimit::max(MAX_BULK_BODY_BYTES)),
+        ))
         .routes(routes!(
             get_managed_domain_by_id,
             update_managed_domain,

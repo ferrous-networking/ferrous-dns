@@ -1500,7 +1500,7 @@ POST /ferrous/api/v1/managed-domains/bulk
 }
 ```
 
-Adds every domain as a permanent rule with the same `action`, group, `comment` and `enabled` state, in one write, and rebuilds the block filter once. `group_id` defaults to the default group, `enabled` to `true`. Each domain is trimmed, lowercased and checked as [Create Domain](#create-domain) checks it; one invalid domain does not stop the others.
+Adds every domain as a permanent rule with the same `action`, group, `comment` and `enabled` state, in one write, and rebuilds the block filter once. The body may take up to 3 MB, room for 10000 domains of any valid length. `group_id` defaults to the default group, `enabled` to `true`. Each domain is trimmed, lowercased and checked as [Create Domain](#create-domain) checks it; one invalid domain does not stop the others.
 
 A rule is named after its domain. When the group already has a rule by that name, such as a deny of the same domain, the rule is named `<domain> (<action>)` instead.
 
