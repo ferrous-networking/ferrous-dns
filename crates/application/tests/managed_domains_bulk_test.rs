@@ -49,7 +49,7 @@ fn statuses(results: &[BulkEntryResult]) -> Vec<&'static str> {
         .map(|r| match &r.outcome {
             Ok(CreateManyOutcome::Created(_)) => "added",
             Ok(CreateManyOutcome::AlreadyPresent) => "present",
-            Ok(CreateManyOutcome::NameTaken) => "name taken",
+            Ok(CreateManyOutcome::NameTaken(_)) => "name taken",
             Err(_) => "invalid",
         })
         .collect()

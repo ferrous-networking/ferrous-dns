@@ -43,8 +43,9 @@ pub enum CreateManyOutcome {
     /// The group already has a permanent rule for the domain with the same
     /// action and enabled state, other than a blocked service's rule.
     AlreadyPresent,
-    /// The group already has a rule under each name.
-    NameTaken,
+    /// The group already has a rule under each of these names, the ones
+    /// tried in order.
+    NameTaken(Vec<String>),
 }
 
 #[async_trait]

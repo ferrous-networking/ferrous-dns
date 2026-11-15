@@ -826,3 +826,26 @@ async fn test_bulk_create_accepts_a_full_list_of_long_domains() {
     assert_eq!(status, StatusCode::OK, "{json}");
     assert_eq!(json["results"].as_array().unwrap().len(), 10_000);
 }
+
+#[tokio::test]
+async fn test_bulk_create_names_the_rules_an_entry_clashed_with() {
+    let app = test_app().await.router;
+    create_domain(&app, "clash.example.com", "other.example.com", 1).await;
+    create_domain(&app, "clash.example.com (allow)", "else.example.com", 1).await;
+
+    let (status, json) = post_bulk(
+        &app,
+        json!({ "domains": ["clash.example.com"], "action": "allow" }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(
+        json["results"][0],
+        json!({
+            "domain": "clash.example.com",
+            "status": "existing",
+            "error": "Other rules in this group are named 'clash.example.com' and 'clash.example.com (allow)'"
+        })
+    );
+}

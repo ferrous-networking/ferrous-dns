@@ -310,7 +310,7 @@ async fn create_exact_entries(
         .into_iter()
         .map(|result| match result.outcome {
             Ok(CreateManyOutcome::Created(_)) => Ok(()),
-            Ok(CreateManyOutcome::AlreadyPresent | CreateManyOutcome::NameTaken) => {
+            Ok(CreateManyOutcome::AlreadyPresent | CreateManyOutcome::NameTaken(_)) => {
                 Err(DomainError::AlreadyExists(result.domain))
             }
             Err(err) => Err(err),

@@ -139,13 +139,17 @@ impl BulkEntryResponse {
         let (status, error) = match result.outcome {
             Ok(CreateManyOutcome::Created(_)) => (BulkEntryStatus::Added, None),
             Ok(CreateManyOutcome::AlreadyPresent) => (BulkEntryStatus::Existing, None),
-            Ok(CreateManyOutcome::NameTaken) => (
-                BulkEntryStatus::Existing,
-                Some(format!(
-                    "Another rule in this group is named '{}'",
-                    result.domain
-                )),
-            ),
+            Ok(CreateManyOutcome::NameTaken(names)) => {
+                let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+                let message = match quoted.as_slice() {
+                    [one] => format!("Another rule in this group is named {one}"),
+                    _ => format!(
+                        "Other rules in this group are named {}",
+                        quoted.join(" and ")
+                    ),
+                };
+                (BulkEntryStatus::Existing, Some(message))
+            }
             Err(e) => (BulkEntryStatus::Invalid, Some(e.to_string())),
         };
         Self {

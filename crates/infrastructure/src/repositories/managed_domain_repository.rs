@@ -230,8 +230,11 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
             }
 
             let expires_at = rule.expires_in.map(expiry_after).transpose()?;
+            let names: Vec<&str> = std::iter::once(rule.name.as_str())
+                .chain(fallback_name.as_deref())
+                .collect();
             let mut created = None;
-            for name in std::iter::once(rule.name.as_str()).chain(fallback_name.as_deref()) {
+            for name in &names {
                 created =
                     insert_unless_named(&mut tx, rule, name, &now, expires_at.as_deref()).await?;
                 if created.is_some() {
@@ -245,7 +248,9 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
                     }
                     outcomes.push(CreateManyOutcome::Created(Self::row_to_domain(row)));
                 }
-                None => outcomes.push(CreateManyOutcome::NameTaken),
+                None => outcomes.push(CreateManyOutcome::NameTaken(
+                    names.into_iter().map(String::from).collect(),
+                )),
             }
         }
 

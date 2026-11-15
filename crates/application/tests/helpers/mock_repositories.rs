@@ -1345,20 +1345,30 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
                 outcomes.push(CreateManyOutcome::AlreadyPresent);
                 continue;
             }
+            let names: Vec<String> = std::iter::once(rule.name.clone())
+                .chain(fallback_name)
+                .collect();
             let mut created = None;
-            for name in std::iter::once(rule.name.clone()).chain(fallback_name) {
-                if let Ok(managed) = self
+            for name in &names {
+                match self
                     .create(NewManagedDomain {
-                        name,
+                        name: name.clone(),
                         ..rule.clone()
                     })
                     .await
                 {
-                    created = Some(managed);
-                    break;
+                    Ok(managed) => {
+                        created = Some(managed);
+                        break;
+                    }
+                    Err(DomainError::AlreadyExists(_)) => {}
+                    Err(e) => return Err(e),
                 }
             }
-            outcomes.push(created.map_or(CreateManyOutcome::NameTaken, CreateManyOutcome::Created));
+            outcomes.push(created.map_or(
+                CreateManyOutcome::NameTaken(names),
+                CreateManyOutcome::Created,
+            ));
         }
         Ok(outcomes)
     }

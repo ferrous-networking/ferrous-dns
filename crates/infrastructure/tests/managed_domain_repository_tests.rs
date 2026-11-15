@@ -624,14 +624,13 @@ async fn test_create_many_reports_name_taken_when_both_names_are_taken() {
         .await
         .unwrap();
 
-    assert!(
-        matches!(outcomes[0], CreateManyOutcome::NameTaken),
-        "{outcomes:?}"
-    );
-    assert!(
-        matches!(outcomes[1], CreateManyOutcome::NameTaken),
-        "{outcomes:?}"
-    );
+    match (&outcomes[0], &outcomes[1]) {
+        (CreateManyOutcome::NameTaken(both), CreateManyOutcome::NameTaken(one)) => {
+            assert_eq!(both, &["both.com", "both.com (allow)"]);
+            assert_eq!(one, &["both.com"], "no fallback name to try");
+        }
+        other => panic!("expected two name clashes, got {other:?}"),
+    }
     assert_eq!(repo.get_all().await.unwrap().len(), 2);
 }
 
