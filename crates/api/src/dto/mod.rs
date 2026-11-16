@@ -37,8 +37,9 @@ pub use custom_service::{
 };
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 pub use managed_domain::{
-    CreateManagedDomainRequest, ManagedDomainQuery, ManagedDomainResponse, PaginatedManagedDomains,
-    UpdateManagedDomainRequest,
+    BulkCreateManagedDomainsRequest, BulkCreateManagedDomainsResponse, BulkEntryResponse,
+    BulkEntryStatus, CreateManagedDomainRequest, ManagedDomainQuery, ManagedDomainResponse,
+    PaginatedManagedDomains, UpdateManagedDomainRequest,
 };
 pub use regex_filter::{CreateRegexFilterRequest, RegexFilterResponse, UpdateRegexFilterRequest};
 

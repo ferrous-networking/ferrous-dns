@@ -8,6 +8,7 @@ use axum::{
 use helpers::ftl::{self, assert_ftl_shape};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use std::sync::atomic::Ordering;
 use tower::ServiceExt;
 
 /// Status and body; an empty body comes back as `null`.
@@ -172,6 +173,222 @@ async fn create_lowercases_exact_domains() {
     let reply = create(&app, "deny/exact", json!({ "domain": "Ads.Example.COM" })).await;
 
     assert_eq!(names(&reply.domains), ["ads.example.com"]);
+}
+
+#[tokio::test]
+async fn create_with_array_rebuilds_the_block_filter_once() {
+    let (app, reloads) =
+        helpers::create_pihole_test_app_counting_reloads(helpers::create_test_db().await).await;
+
+    create(
+        &app,
+        "deny/exact",
+        json!({ "domain": ["a.com", "b.com", "c.com"] }),
+    )
+    .await;
+
+    assert_eq!(
+        reloads.load(Ordering::SeqCst),
+        1,
+        "one rebuild for the whole array"
+    );
+}
+
+#[tokio::test]
+async fn create_allow_beside_a_deny_of_the_same_domain_keeps_both_like_ftl() {
+    // gravity.db: domainlist is UNIQUE(domain, type), so one domain can sit
+    // in the allow and the deny list at once.
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "both.example.com" })).await;
+
+    let reply = create(&app, "allow/exact", json!({ "domain": "both.example.com" })).await;
+
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["both.example.com"]);
+    assert!(reply.processed.errors.is_empty());
+    let types: Vec<ftl::DomainType> = list(&app, "/domains")
+        .await
+        .into_iter()
+        .filter(|d| d.domain == "both.example.com")
+        .map(|d| d.domain_type)
+        .collect();
+    assert_eq!(types.len(), 2, "{types:?}");
+    assert!(types.contains(&ftl::DomainType::Allow), "{types:?}");
+    assert!(types.contains(&ftl::DomainType::Deny), "{types:?}");
+}
+
+#[tokio::test]
+async fn a_domain_in_both_lists_reads_allow_first_like_ftl() {
+    // FTL reads one domain through the UNIQUE(domain, type) index, so its
+    // entries come in type order whatever order they were added in.
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "both.example.com" })).await;
+    create(&app, "allow/exact", json!({ "domain": "both.example.com" })).await;
+
+    let types: Vec<ftl::DomainType> = list(&app, "/domains/both.example.com")
+        .await
+        .into_iter()
+        .map(|d| d.domain_type)
+        .collect();
+
+    assert_eq!(types, [ftl::DomainType::Allow, ftl::DomainType::Deny]);
+}
+
+#[tokio::test]
+async fn replace_creating_an_allow_beside_a_deny_keeps_both() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "both.example.com" })).await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/domains/allow/exact/both.example.com", json!({})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_eq!(
+        names(&list(&app, "/domains/allow/exact").await),
+        ["both.example.com"]
+    );
+    assert_eq!(
+        names(&list(&app, "/domains/deny/exact").await),
+        ["both.example.com"]
+    );
+}
+
+#[tokio::test]
+async fn create_with_array_keeps_processed_order_with_present_and_new_items() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "dup.com" })).await;
+
+    let reply = create(
+        &app,
+        "deny/exact",
+        json!({ "domain": ["new1.com", "dup.com", "new2.com", "new1.com"] }),
+    )
+    .await;
+
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["new1.com", "new2.com"]);
+    let errors: Vec<(&str, &str)> = reply
+        .processed
+        .errors
+        .iter()
+        .map(|e| (e.item.as_str(), e.error.as_str()))
+        .collect();
+    assert_eq!(
+        errors,
+        [
+            ("dup.com", "The item is already present"),
+            ("new1.com", "The item is already present"),
+        ]
+    );
+    assert_eq!(names(&reply.domains), ["new1.com"]);
+}
+
+#[tokio::test]
+async fn create_with_array_unknown_group_errors_each_item_as_before() {
+    let (app, reloads) =
+        helpers::create_pihole_test_app_counting_reloads(helpers::create_test_db().await).await;
+
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "POST",
+            "/domains/deny/exact",
+            json!({ "domain": ["a.com", "b.com"], "groups": [42] }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    let error = assert_ftl_shape::<ftl::ErrorReply>(&reply).error;
+    assert_eq!(error.key, "database_error");
+    assert_eq!(error.hint.as_deref(), Some("Group not found: 42"));
+    assert!(list(&app, "/domains").await.is_empty());
+    assert_eq!(reloads.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn create_regex_array_still_writes_each_item() {
+    let (app, reloads) =
+        helpers::create_pihole_test_app_counting_reloads(helpers::create_test_db().await).await;
+
+    let reply = create(
+        &app,
+        "deny/regex",
+        json!({ "domain": ["^a\\.", "^b\\.", "^a\\."] }),
+    )
+    .await;
+
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["^a\\.", "^b\\."]);
+    assert_eq!(reply.processed.errors.len(), 1);
+    assert_eq!(reply.processed.errors[0].item, "^a\\.");
+    assert_eq!(
+        names(&list(&app, "/domains/deny/regex").await),
+        ["^a\\.", "^b\\."]
+    );
+    assert_eq!(
+        reloads.load(Ordering::SeqCst),
+        2,
+        "one rebuild per regex written"
+    );
+}
+
+#[tokio::test]
+async fn listing_every_domain_keeps_insertion_order() {
+    // Only a one-domain lookup reads in type order; FTL lists the table in
+    // insertion order.
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "first.example.com" })).await;
+    create(
+        &app,
+        "allow/exact",
+        json!({ "domain": "second.example.com" }),
+    )
+    .await;
+
+    assert_eq!(
+        names(&list(&app, "/domains").await),
+        ["first.example.com", "second.example.com"]
+    );
+}
+
+#[tokio::test]
+async fn a_domain_lookup_lists_exact_before_regex() {
+    let app = app().await;
+    create(&app, "allow/regex", json!({ "domain": "same.example.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "same.example.com" })).await;
+
+    let entries: Vec<(ftl::DomainType, ftl::DomainKind)> = list(&app, "/domains/same.example.com")
+        .await
+        .into_iter()
+        .map(|d| (d.domain_type, d.kind))
+        .collect();
+
+    assert_eq!(
+        entries,
+        [
+            (ftl::DomainType::Deny, ftl::DomainKind::Exact),
+            (ftl::DomainType::Allow, ftl::DomainKind::Regex),
+        ]
+    );
 }
 
 #[tokio::test]

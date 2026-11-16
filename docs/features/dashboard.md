@@ -96,7 +96,7 @@ Multi-tab filtering management:
 
 - **Blocklist Sources** — add, enable/disable and remove external blocklist URLs; each row carries a refresh action that re-downloads it on demand
 - **Whitelist Sources** — add external allowlist URLs
-- **Managed Domains** — individual block/allow domains
+- **Managed Domains** — individual block/allow domains, added one at a time or pasted in bulk, one per line
 - **Regex Filters** — pattern-based blocking rules
 
 Both source tabs carry a **Last Sync** column recording when each URL was last

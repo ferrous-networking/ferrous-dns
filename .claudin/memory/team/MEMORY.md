@@ -7,7 +7,9 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Cache refresh maximizes coverage](cache-refresh-maximize-coverage.md) — never cap total refresh throughput with a fixed rate; bound concurrency instead
 - [Web TLS Secure-cookie invariant](web-tls-secure-cookie-invariant.md) — the cookie's `Secure` flag follows the live transport, never the config flag
 - [DnsResolution wire-data invariant](dns-resolution-wire-data-invariant.md) — no `upstream_wire_data` means every non-A/AAAA answer reaches the client empty
-- [Runtime verification recipe](runtime-verification-recipe.md) — minimal config to run the binary; enum casing, main×branch, pkill, auth-off curl, UI-save, fake-upstream load, live UI session
+- [Runtime verification recipe](runtime-verification-recipe.md) — minimal config to run the binary; enum casing, main×branch, pkill, auth-off curl, local list source
+- [Live UI session recipe](runtime-live-ui-session.md) — shipped config in a scratch dir, dig traffic, toasts, scoped form selectors, UI-wide audit, per-frame animation check
+- [Fake upstream + network tricks](runtime-fake-upstream-and-network.md) — fake UDP upstream for cache load, renewals at TTL 60, resolver/IPv6 via unshare, Secure cookie off loopback
 - [Issue #216 blocklist sync](issue-216-blocklist-sync.md) — three defects behind "blocklists not syncing", now fixed; plus why there is no per-source refresh
 - [Deadlock tests need a timeout guard](deadlock-tests-need-timeout-guard.md) — run the suspect call on a thread behind `recv_timeout`, so a hang fails CI instead of blocking it
 - [`/verify` name collision](verify-skill-name-collision.md) — the Skill tool loads the bundled runtime skill, not this repo's CI gate; run the steps or use `/pre-pr`
@@ -17,12 +19,13 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Container CVE triage](container-cve-triage.md) — the alpine tag lags its own repo; runtime stages need `apk upgrade`, and the binary never loads the image's libssl
 - [Pi-hole compat auth](pihole-compat-auth.md) — read commit `81c1b7b` before changing auth in `crates/api-pihole`
 - [Upstream URL parser has a JS mirror](upstream-url-parser-js-mirror.md) — change `DnsProtocol::from_str` and `settings.js` together; stricter parsing needs a legacy.rs pass
-- [Pi-hole compat matches FTL exactly](pihole-compat-ftl-mirrors.md) — strict FTL mirror structs in tests/helpers/ftl.rs; C code wins over the YAML; bodies via PiholeJson
+- [Pi-hole compat matches FTL exactly](pihole-compat-ftl-mirrors.md) — strict FTL mirror structs in tests/helpers/ftl.rs; C code wins over the YAML; PiholeJson; hand-written test schema
 - [Don't share target/ across checkouts](shared-target-dir-across-checkouts.md) — building a worktree into the main `target/` leaves stale workspace rlibs; own CARGO_TARGET_DIR on disk (~18 GB, not tmpfs /tmp)
 - [Pi-hole compat live validation](pihole-compat-live-validation.md) — diff against a live Pi-hole v6 + run the real integrations in Docker; Homarr :3000 clash, Glance cache traps
 - [rg skips CoreResolver](rg-skips-core-rs.md) — `.gitignore` has `core.*`, so Grep/rg never search `resolver/core.rs`; use `no_ignore`
 - [Strict docs build vs uncommitted pages](mkdocs-strict-uncommitted-pages.md) — git-revision plugin warns on new uncommitted pages; check with a search-only INHERIT config; serve is under /ferrous-dns/
 - [Malware settings have a JS mirror](malware-settings-js-mirror.md) — settings.js re-checks Config::validate's malware limits; change both, and pair stricter limits with a legacy.rs rewrite
+- [Managed-domain validation has a JS mirror](managed-domain-validation-js-mirror.md) — the bulk form's mDomainError mirrors validate_domain + validate_name; JS flags ⊆ backend, rerun the parity check
 - [CI Success "abandoned"](ci-success-abandoned-jobs.md) — a needed job missing from the run = GitHub Actions incident; `gh run rerun --failed` (~10 min, skips the ~2 h coverage)
 
 ## Decisions
@@ -47,6 +50,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Upgrades keep existing behaviour](decisions/upgrades-keep-existing-behaviour.md) — v1.0.0 rule: new behaviour is opt-in; why the Docker DB stays at /data/ferrous-dns.db, import keeps a full restore
 - [Startup hold + list cache](decisions/startup-hold-and-list-cache.md) — #365: no port opens until the first block build (≤30 s); lists kept in lists/ beside the DB, re-downloaded after
 - [Web UI shared components](decisions/web-ui-shared-components.md) — 11-14: one component set in shared.css + showToast; h2 24px, 24px cards, .table/.table-dense, pills, switches, no alert()
+- [Bulk add of managed domains](decisions/managed-domains-bulk-add.md) — #353 (branch, 11-15): one write + one rebuild, partial apply, "<domain> (<action>)" name; compat exact goes through it
 
 ## Bugs
 

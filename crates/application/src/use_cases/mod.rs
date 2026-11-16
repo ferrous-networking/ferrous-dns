@@ -74,6 +74,7 @@ pub use local_records::{
     CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
 };
 pub use managed_domains::{
+    BulkCreateManagedDomainsUseCase, BulkEntryResult, BulkNewManagedDomains,
     CreateManagedDomainUseCase, DeleteManagedDomainUseCase, GetManagedDomainsUseCase,
     PurgeExpiredManagedDomainsUseCase, UpdateManagedDomainUseCase,
 };

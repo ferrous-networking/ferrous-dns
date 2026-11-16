@@ -383,6 +383,11 @@ impl TestAppBuilder {
                     group_repo.clone(),
                     null_engine.clone(),
                 )),
+                bulk_create_managed_domains: Arc::new(BulkCreateManagedDomainsUseCase::new(
+                    managed_domain_repo.clone(),
+                    group_repo.clone(),
+                    null_engine.clone(),
+                )),
                 update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(
                     managed_domain_repo.clone(),
                     group_repo.clone(),

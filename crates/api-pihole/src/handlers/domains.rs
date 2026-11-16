@@ -4,7 +4,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use ferrous_dns_application::ports::{ManagedDomainUpdate, NewManagedDomain, RegexFilterUpdate};
+use ferrous_dns_application::ports::{CreateManyOutcome, ManagedDomainUpdate, RegexFilterUpdate};
+use ferrous_dns_application::use_cases::BulkNewManagedDomains;
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain, RegexFilter};
 
 use crate::{
@@ -18,6 +19,7 @@ use crate::{
         CreateDomainRequest, DomainsListResponse, DomainsWriteResponse, PiholeDomainEntry,
         UpdateDomainRequest,
     },
+    errors::is_server_error,
     extract::PiholeJson,
     handlers::require_id,
     state::PiholeAppState,
@@ -214,7 +216,9 @@ impl StoredEntry {
 }
 
 /// The entries of the selected lists, filtered to `item` when it is set,
-/// each list in insertion order like FTL's table.
+/// each list in insertion order like FTL's table. An `item` lookup reads
+/// FTL's `UNIQUE(domain, type)` index, so the lists come in type order:
+/// allow before deny, exact before regex.
 async fn stored_entries(
     state: &PiholeAppState,
     selector: ListSelector,
@@ -235,6 +239,12 @@ async fn stored_entries(
         let (action, kind) = e.list();
         selector.selects(action, kind) && (item.is_empty() || e.item() == item)
     });
+    if !item.is_empty() {
+        entries.sort_by_key(|e| {
+            let (action, kind) = e.list();
+            (kind == DomainKind::Regex, action == DomainAction::Deny)
+        });
+    }
     Ok(entries)
 }
 
@@ -261,37 +271,117 @@ async fn find_entry(
         .next())
 }
 
-async fn create_entry(
+/// A write that came back without a result for one of its items.
+fn missing_result() -> DomainError {
+    DomainError::DatabaseError("a domain write returned no result".to_string())
+}
+
+/// Writes exact domains in one transaction with one block filter rebuild,
+/// each result at its item's index. Each rule is named after its domain, or
+/// `<domain> (<action>)` beside a rule of the other list, which gravity.db's
+/// `UNIQUE(domain, type)` allows. A write refused as a whole, such as for an
+/// unknown group, fails every item, as writing them one by one did.
+async fn create_exact_entries(
     state: &PiholeAppState,
-    item: &str,
+    items: Vec<String>,
+    action: DomainAction,
+    group_id: i64,
+    comment: Option<String>,
+    enabled: bool,
+) -> Result<Vec<Result<(), DomainError>>, DomainError> {
+    let count = items.len();
+    let written = state
+        .blocking
+        .bulk_create_managed_domains
+        .execute(BulkNewManagedDomains {
+            domains: items,
+            action,
+            group_id,
+            comment,
+            enabled,
+        })
+        .await;
+    let results = match written {
+        Ok(results) => results,
+        Err(err) if is_server_error(&err) => return Err(err),
+        Err(err) => return Ok(vec![Err(err); count]),
+    };
+    Ok(results
+        .into_iter()
+        .map(|result| match result.outcome {
+            Ok(CreateManyOutcome::Created(_)) => Ok(()),
+            Ok(CreateManyOutcome::AlreadyPresent | CreateManyOutcome::NameTaken(_)) => {
+                Err(DomainError::AlreadyExists(result.domain))
+            }
+            Err(err) => Err(err),
+        })
+        .collect())
+}
+
+/// Writes `items` to `list`, each result at its item's index. A repeat of an
+/// item already written is already present, as it is to FTL.
+async fn create_entries(
+    state: &PiholeAppState,
+    items: Vec<String>,
     (action, kind): DomainList,
     group_id: i64,
     comment: Option<String>,
     enabled: bool,
-) -> Result<(), DomainError> {
-    let item = item.to_string();
-    match kind {
-        DomainKind::Exact => state
-            .blocking
-            .create_managed_domain
-            .execute(NewManagedDomain {
-                name: item.clone(),
-                domain: item,
-                action,
-                group_id,
-                comment,
-                enabled,
-                expires_in: None,
-            })
-            .await
-            .map(drop),
-        DomainKind::Regex => state
-            .blocking
-            .create_regex_filter
-            .execute(item.clone(), item, action, group_id, comment, enabled)
-            .await
-            .map(drop),
+) -> Result<Vec<Result<(), DomainError>>, DomainError> {
+    if kind == DomainKind::Exact {
+        return create_exact_entries(state, items, action, group_id, comment, enabled).await;
     }
+    let mut written = HashSet::new();
+    let mut results = Vec::with_capacity(items.len());
+    for item in items {
+        let result = if written.contains(&item) {
+            Err(DomainError::AlreadyExists(item.clone()))
+        } else {
+            state
+                .blocking
+                .create_regex_filter
+                .execute(
+                    item.clone(),
+                    item.clone(),
+                    action,
+                    group_id,
+                    comment.clone(),
+                    enabled,
+                )
+                .await
+                .map(drop)
+        };
+        match result {
+            Err(err) if is_server_error(&err) => return Err(err),
+            Ok(()) => {
+                written.insert(item);
+                results.push(Ok(()));
+            }
+            Err(err) => results.push(Err(err)),
+        }
+    }
+    Ok(results)
+}
+
+async fn create_entry(
+    state: &PiholeAppState,
+    item: &str,
+    list: DomainList,
+    group_id: i64,
+    comment: Option<String>,
+    enabled: bool,
+) -> Result<(), DomainError> {
+    create_entries(
+        state,
+        vec![item.to_string()],
+        list,
+        group_id,
+        comment,
+        enabled,
+    )
+    .await?
+    .pop()
+    .unwrap_or_else(|| Err(missing_result()))
 }
 
 async fn delete_entry(state: &PiholeAppState, entry: &StoredEntry) -> Result<(), DomainError> {
@@ -537,21 +627,26 @@ pub async fn create_domain(
     let comment = request_comment(body.comment);
     let enabled = body.enabled.unwrap_or(true);
 
-    let mut present: HashSet<String> = stored_entries(&state, ListSelector::of(list), "")
+    let present: HashSet<String> = stored_entries(&state, ListSelector::of(list), "")
         .await?
         .iter()
         .map(|e| e.item().to_string())
         .collect();
+    let fresh = items
+        .iter()
+        .filter(|item| !present.contains(*item))
+        .cloned()
+        .collect();
+    let mut written = create_entries(&state, fresh, list, group_id, comment, enabled)
+        .await?
+        .into_iter();
     let mut processed = Processed::default();
     for item in &items {
         let result = if present.contains(item) {
             Err(DomainError::AlreadyExists(item.clone()))
         } else {
-            create_entry(&state, item, list, group_id, comment.clone(), enabled).await
+            written.next().unwrap_or_else(|| Err(missing_result()))
         };
-        if result.is_ok() {
-            present.insert(item.clone());
-        }
         record(&mut processed, item, result)?;
     }
 

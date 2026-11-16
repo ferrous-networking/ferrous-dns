@@ -1,3 +1,5 @@
+use ferrous_dns_application::ports::CreateManyOutcome;
+use ferrous_dns_application::use_cases::BulkEntryResult;
 use ferrous_dns_domain::{DomainAction, DomainError, ManagedDomain};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -93,4 +95,73 @@ pub struct UpdateManagedDomainRequest {
     #[serde(default, deserialize_with = "crate::dto::source_common::double_option")]
     pub comment: Option<Option<String>>,
     pub enabled: Option<bool>,
+}
+
+/// Domains to add as permanent rules that share an action, a group, a
+/// comment and an enabled state.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct BulkCreateManagedDomainsRequest {
+    /// 1 to 10000 exact domains or `*.` wildcards. Each becomes a rule named
+    /// after its domain, or `<domain> (<action>)` when the group already has
+    /// a rule by that name.
+    pub domains: Vec<String>,
+    pub action: String,
+    pub group_id: Option<i64>,
+    pub comment: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BulkEntryStatus {
+    /// A rule was created.
+    Added,
+    /// The group already has a permanent rule for the domain with the same
+    /// action and enabled state (a blocked service's rule does not count), or
+    /// every name the rule could take is used.
+    Existing,
+    /// The domain is not valid; `error` says why.
+    Invalid,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct BulkEntryResponse {
+    /// The domain as stored: trimmed and lowercased.
+    pub domain: String,
+    pub status: BulkEntryStatus,
+    /// Why the entry is `invalid`, or the name clash that kept it `existing`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl BulkEntryResponse {
+    pub fn from_result(result: BulkEntryResult) -> Self {
+        let (status, error) = match result.outcome {
+            Ok(CreateManyOutcome::Created(_)) => (BulkEntryStatus::Added, None),
+            Ok(CreateManyOutcome::AlreadyPresent) => (BulkEntryStatus::Existing, None),
+            Ok(CreateManyOutcome::NameTaken(names)) => {
+                let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+                let message = match quoted.as_slice() {
+                    [one] => format!("Another rule in this group is named {one}"),
+                    _ => format!(
+                        "Other rules in this group are named {}",
+                        quoted.join(" and ")
+                    ),
+                };
+                (BulkEntryStatus::Existing, Some(message))
+            }
+            Err(e) => (BulkEntryStatus::Invalid, Some(e.to_string())),
+        };
+        Self {
+            domain: result.domain,
+            status,
+            error,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct BulkCreateManagedDomainsResponse {
+    /// One result per requested domain, in request order.
+    pub results: Vec<BulkEntryResponse>,
 }

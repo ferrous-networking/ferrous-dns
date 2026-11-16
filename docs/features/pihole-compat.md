@@ -121,6 +121,8 @@ As on Pi-hole, the timer works both ways: `{"blocking": true, "timer": N}` enabl
 | `DELETE` | `/api/domains/{type}/{kind}/{domain}` | Delete a domain entry |
 | `POST` | `/api/domains:batchDelete` | Batch delete: `[{"item": "<domain>", "type": "deny", "kind": "exact"}]` |
 
+An array of exact domains is written in one transaction and rebuilds the block filter once, however long it is; regex entries are still written one by one. As in FTL, a domain can be in the allow list and the deny list at the same time. The second entry is stored under the name `<domain> (allow)` or `<domain> (deny)`, which only the Ferrous dashboard and API show.
+
 ### Replies of the CRUD endpoints
 
 Domains, groups, clients and lists share FTL's conventions:

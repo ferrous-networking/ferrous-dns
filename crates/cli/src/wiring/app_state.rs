@@ -203,6 +203,7 @@ pub async fn build_app_state(
             delete_whitelist_source: use_cases.delete_whitelist_source,
             get_managed_domains: use_cases.get_managed_domains,
             create_managed_domain: use_cases.create_managed_domain,
+            bulk_create_managed_domains: use_cases.bulk_create_managed_domains,
             update_managed_domain: use_cases.update_managed_domain,
             delete_managed_domain: use_cases.delete_managed_domain,
             get_regex_filters: use_cases.get_regex_filters,

@@ -445,22 +445,43 @@
     <div x-show="activeTab === 'managed'">
         <div style="margin-bottom:var(--gap)">
             <div class="card">
-                <h2 class="card-title"
-                    x-text="mEditingDomain ? 'Edit Managed Domain' : 'Add Managed Domain'">Add Managed Domain</h2>
-
-                <form @submit.prevent="mSaveDomain()">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                        <div class="form-group">
-                            <label class="form-label">Name <span class="req">*</span></label>
-                            <input type="text" class="input" x-model="mForm.name"
-                                   placeholder="e.g. Block Ads" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Domain <span class="req">*</span></label>
-                            <input type="text" class="input" x-model="mForm.domain"
-                                   placeholder="e.g. ads.example.com or *.x.com" required>
-                        </div>
+                <div class="card-header">
+                    <h2 class="card-title"
+                        x-text="mEditingDomain ? 'Edit Managed Domain' : 'Add Managed Domain'">Add Managed Domain</h2>
+                    <div class="segmented" role="group" aria-label="Add one domain or many" x-show="!mEditingDomain">
+                        <button type="button" :class="{active: !mBulk}" :aria-pressed="String(!mBulk)"
+                                @click="mSetBulk(false)">Single</button>
+                        <button type="button" :class="{active: mBulk}" :aria-pressed="String(mBulk)"
+                                @click="mSetBulk(true)">Bulk</button>
                     </div>
+                </div>
+
+                <form @submit.prevent="mBulk ? mSaveBulk() : mSaveDomain()">
+                    <template x-if="!mBulk">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                            <div class="form-group">
+                                <label class="form-label">Name <span class="req">*</span></label>
+                                <input type="text" class="input" x-model="mForm.name"
+                                       placeholder="e.g. Block Ads" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Domain <span class="req">*</span></label>
+                                <input type="text" class="input" x-model="mForm.domain"
+                                       placeholder="e.g. ads.example.com or *.x.com" required>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="mBulk">
+                        <div class="form-group">
+                            <label class="form-label" for="md-bulk-domains">Domains <span class="req">*</span></label>
+                            <textarea id="md-bulk-domains" class="input md-bulk-input" rows="10" spellcheck="false"
+                                      x-model="mBulkText" required
+                                      placeholder="ads.example.com&#10;*.tracker.example.net&#10;# text after # is a comment"></textarea>
+                            <p class="form-hint">One domain per line, or *.domain for its subdomains. Each rule is named after its domain; blank lines and text after # are skipped.</p>
+                            <p class="form-hint" :class="{'md-bulk-warning': mBulkHasProblem()}" x-show="mBulkSummary()" x-text="mBulkSummary()"></p>
+                        </div>
+                    </template>
 
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
                         <div class="form-group">
@@ -493,12 +514,29 @@
                     </div>
 
                     <div style="display:flex;gap:12px">
-                        <button type="submit" class="btn btn-primary" x-text="mEditingDomain ? 'Update Domain' : 'Add Domain'"></button>
+                        <button type="submit" class="btn btn-primary" :disabled="mSaving"
+                                x-text="mEditingDomain ? 'Update Domain' : (mBulk ? mBulkButtonLabel() : 'Add Domain')"></button>
                         <button type="button" class="btn btn-secondary" @click="mCancelForm()">Cancel</button>
                     </div>
 
                     <div x-show="mFormError" x-text="mFormError"
                          class="notice notice-error" style="margin-top:12px"></div>
+
+                    <template x-if="mBulk && mBulkReport">
+                        <div class="notice" :class="mBulkReport.failed.length ? 'notice-warning' : 'notice-success'"
+                             style="margin-top:12px">
+                            <div class="md-bulk-report">
+                                <p x-text="mBulkReport.summary"></p>
+                                <template x-if="mBulkReport.failed.length">
+                                    <ul class="md-bulk-failures">
+                                        <template x-for="(entry, i) in mBulkReport.failed" :key="i">
+                                            <li><code x-text="entry.text"></code> — <span x-text="entry.reason"></span></li>
+                                        </template>
+                                    </ul>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </form>
             </div>
         </div>

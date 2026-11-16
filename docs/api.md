@@ -1483,6 +1483,47 @@ POST /ferrous/api/v1/managed-domains
 
 `expires_in_secs` (60 to 2592000, i.e. 30 days) makes a temporary rule: it stops applying when it expires and is deleted at most 30 seconds later. The response's `expires_at` holds that time in UTC (`YYYY-MM-DD HH:MM:SS`), or `null` for a rule that never expires; `PUT` leaves it as it is.
 
+### Create Domains in Bulk
+
+```http
+POST /ferrous/api/v1/managed-domains/bulk
+```
+
+**Auth:** session or API key · **Returns:** `200` `BulkCreateManagedDomainsResponse` · **Errors:** `400` invalid action or comment, or `domains` empty or longer than 10000 entries, `404` unknown group
+
+```json
+{
+  "domains": ["ads.example.com", "*.tracker.example.net", "x..com"],
+  "action": "allow",
+  "group_id": 1,
+  "comment": "bulk import"
+}
+```
+
+Adds every domain as a permanent rule with the same `action`, group, `comment` and `enabled` state, in one write, and rebuilds the block filter once. The body may take up to 3 MB, room for 10000 domains of any valid length. `group_id` defaults to the default group, `enabled` to `true`. Each domain is trimmed, lowercased and checked as [Create Domain](#create-domain) checks it; one invalid domain does not stop the others.
+
+A rule is named after its domain. When the group already has a rule by that name, such as a deny of the same domain, the rule is named `<domain> (<action>)` instead.
+
+The reply holds one result per domain, in request order:
+
+```json
+{
+  "results": [
+    { "domain": "ads.example.com", "status": "added" },
+    { "domain": "*.tracker.example.net", "status": "existing" },
+    { "domain": "x..com", "status": "invalid", "error": "Invalid managed domain: Domain cannot contain an empty label" }
+  ]
+}
+```
+
+| `status` | Meaning |
+|:---------|:--------|
+| `added` | The rule was created |
+| `existing` | The group already has a permanent rule for the domain with the same action and enabled state, so nothing was written. A blocked service's rule does not count, since it goes when the service is unblocked. With an `error`, every name the rule could take is used by other rules |
+| `invalid` | The domain is not valid; `error` says why |
+
+A temporary rule, such as an allow from the query log, does not count as existing: the bulk rule is added beside it and outlasts it. Sending the same list again adds nothing twice.
+
 ### Get / Update / Delete
 
 ```http

@@ -105,4 +105,11 @@ impl ManagedDomain {
         }
         Ok(())
     }
+
+    /// The name a rule takes when its domain is already a rule name in its
+    /// group, as when the rule allows a domain that a rule named after it
+    /// denies.
+    pub fn fallback_name(domain: &str, action: DomainAction) -> String {
+        format!("{domain} ({})", action.to_str())
+    }
 }

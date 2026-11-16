@@ -543,6 +543,36 @@ textarea.input {
 .switch-sm::after { width: 16px; height: 16px }
 .switch-sm.on::after { transform: translateX(16px) }
 
+/* Mutually exclusive modes of one form: <div class="segmented" role="group"> with a
+   <button type="button" :class="{active: …}" :aria-pressed="…"> per mode. */
+.segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius);
+    background: var(--bg-tertiary)
+}
+
+.segmented button {
+    padding: 4px 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s
+}
+
+.segmented button:hover { color: var(--text-primary) }
+.segmented button.active { background: var(--bg-secondary); color: var(--text-primary); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) }
+
+.segmented button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px
+}
+
 /* The controls above a table: a label beside each control, on one wrapping row. */
 .filter-bar {
     display: flex;

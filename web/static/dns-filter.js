@@ -52,6 +52,13 @@
                 enabled: true
             },
             mFormError: '',
+            mSaving: false,
+            // Bulk mode: one domain per line, added by POST /managed-domains/bulk.
+            mBulk: false,
+            mBulkText: '',
+            mBulkReport: null,
+            // The backend's MAX_BULK_MANAGED_DOMAINS.
+            mBulkMax: 10000,
 
             // --- REGEX FILTERS ---
             rgFilters: [],
@@ -510,6 +517,8 @@
             },
 
             mEditDomain(domain) {
+                this.mBulk = false;
+                this.mBulkReport = null;
                 this.mEditingDomain = domain;
                 this.mForm = {
                     name: domain.name,
@@ -526,6 +535,8 @@
             mCancelForm() {
                 this.mEditingDomain = null;
                 this.mFormError = '';
+                this.mBulkText = '';
+                this.mBulkReport = null;
                 this.mForm = {
                     name: '',
                     domain: '',
@@ -574,6 +585,127 @@
                 } catch (e) {
                     console.error('Error saving managed domain:', e);
                     this.mFormError = 'Network error: ' + e.message;
+                }
+            },
+
+            mSetBulk(on) {
+                this.mBulk = on;
+                this.mFormError = '';
+                this.mBulkReport = null;
+            },
+
+            // Mirrors ManagedDomain::validate_domain and, as a bulk rule is named after its domain,
+            // validate_name (crates/domain/src/entities/managed_domain.rs). Flag only what the backend
+            // rejects too: it validates every entry again and reports each one.
+            mDomainError(domain) {
+                if (!domain) return 'Domain cannot be empty';
+                if (domain.length > 253) return 'Domain cannot exceed 253 characters';
+                if (domain.includes('*') && !domain.startsWith('*.')) {
+                    return "Wildcard must be a prefix: use '*.example.com' format";
+                }
+                const check = domain.startsWith('*.') ? domain.slice(2) : domain;
+                if (!check || check.startsWith('.') || check.includes('..')) return 'Domain cannot contain an empty label';
+                if (!/^[A-Za-z0-9._-]+$/.test(check)) return 'Domain contains invalid characters';
+                if (domain.length > 200) return 'Managed domain name cannot exceed 200 characters';
+                return '';
+            },
+
+            // The pasted lines that hold a domain, with their line number and what is wrong with them.
+            mBulkParse() {
+                const entries = [];
+                this.mBulkText.split('\n').forEach((raw, i) => {
+                    const text = raw.split('#')[0].trim();
+                    if (text) entries.push({line: i + 1, text, error: this.mDomainError(text.toLowerCase())});
+                });
+                return entries;
+            },
+
+            mBulkSummary() {
+                const entries = this.mBulkParse();
+                if (!entries.length) return '';
+                const count = `${entries.length} ${entries.length === 1 ? 'domain' : 'domains'}`;
+                if (entries.length > this.mBulkMax) return `${count}: at most ${this.mBulkMax} per add`;
+                const invalid = entries.filter(e => e.error);
+                if (!invalid.length) return count;
+                const lines = invalid.slice(0, 5).map(e => e.line).join(', ') + (invalid.length > 5 ? ', …' : '');
+                return `${count} · ${invalid.length} invalid (${invalid.length === 1 ? 'line' : 'lines'} ${lines})`;
+            },
+
+            mBulkHasProblem() {
+                const entries = this.mBulkParse();
+                return entries.length > this.mBulkMax || entries.some(e => e.error);
+            },
+
+            mBulkButtonLabel() {
+                const n = this.mBulkParse().length;
+                return n ? `Add ${n} ${n === 1 ? 'Domain' : 'Domains'}` : 'Add Domains';
+            },
+
+            async mSaveBulk() {
+                this.mFormError = '';
+                this.mBulkReport = null;
+                const entries = this.mBulkParse();
+                if (!entries.length) {
+                    this.mFormError = 'Add at least one domain';
+                    return;
+                }
+                if (entries.length > this.mBulkMax) {
+                    this.mFormError = `At most ${this.mBulkMax} domains per add`;
+                    return;
+                }
+
+                this.mSaving = true;
+                try {
+                    const res = await fetch(`${API_BASE}/managed-domains/bulk`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            domains: entries.map(e => e.text),
+                            action: this.mForm.action,
+                            group_id: parseInt(this.mForm.group_id),
+                            comment: this.mForm.comment.trim() || null,
+                            enabled: this.mForm.enabled
+                        })
+                    });
+                    if (!res.ok) {
+                        const body = await res.json().catch(() => null);
+                        this.mFormError = body?.error || 'Failed to add domains';
+                        return;
+                    }
+
+                    const {results} = await res.json();
+                    let added = 0, present = 0, invalid = 0, clashes = 0;
+                    const failed = [];
+                    results.forEach((result, i) => {
+                        if (result.status === 'added') {
+                            added++;
+                        } else if (result.status === 'existing' && !result.error) {
+                            present++;
+                        } else {
+                            if (result.status === 'invalid') invalid++; else clashes++;
+                            failed.push({
+                                text: entries[i].text,
+                                reason: result.error.replace(/^Invalid managed domain: /, ''),
+                                invalid: result.status === 'invalid'
+                            });
+                        }
+                    });
+                    const parts = [added ? `Added ${added}` : 'Nothing added'];
+                    if (present) parts.push(`${present} already present`);
+                    if (invalid) parts.push(`${invalid} invalid`);
+                    if (clashes) parts.push(`${clashes} name taken`);
+                    this.mBulkReport = {summary: parts.join(' · '), failed};
+                    // What is left to fix: a name clash does not go away by editing the line.
+                    this.mBulkText = failed.filter(f => f.invalid).map(f => f.text).join('\n');
+                    if (added) {
+                        showToast(`Added ${added} ${added === 1 ? 'domain' : 'domains'}`, 'success');
+                        await this.loadManagedDomains();
+                    }
+                } catch (e) {
+                    console.error('Error adding managed domains:', e);
+                    this.mFormError = 'Network error: ' + e.message;
+                } finally {
+                    this.mSaving = false;
                 }
             },
 

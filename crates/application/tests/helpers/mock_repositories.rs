@@ -3,10 +3,10 @@
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
-    FilterDecision, GroupRepository, MalwareExemptionPort, ManagedDomainRepository,
-    ManagedDomainUpdate, NewManagedDomain, QueryLogRepository, TimeGranularity,
-    WhitelistSourceRepository,
+    BlockFilterEnginePort, BlocklistSourceRepository, BulkManagedDomain, ClientRepository,
+    CreateManyOutcome, DnsResolution, DnsResolver, FilterDecision, GroupRepository,
+    MalwareExemptionPort, ManagedDomainRepository, ManagedDomainUpdate, NewManagedDomain,
+    QueryLogRepository, TimeGranularity, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
     BlockSource, BlocklistSource, Client, ClientStats, DnsQuery, DnssecStats, DomainAction,
@@ -1321,6 +1321,56 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
 
         domains.push(managed.clone());
         Ok(managed)
+    }
+
+    async fn create_many(
+        &self,
+        entries: Vec<BulkManagedDomain>,
+    ) -> Result<Vec<CreateManyOutcome>, DomainError> {
+        let mut outcomes = Vec::with_capacity(entries.len());
+        for BulkManagedDomain {
+            rule,
+            fallback_name,
+        } in entries
+        {
+            let present = self.domains.read().await.iter().any(|d| {
+                d.group_id == rule.group_id
+                    && d.expires_at.is_none()
+                    && d.service_id.is_none()
+                    && d.domain.eq_ignore_ascii_case(&rule.domain)
+                    && d.action == rule.action
+                    && d.enabled == rule.enabled
+            });
+            if present {
+                outcomes.push(CreateManyOutcome::AlreadyPresent);
+                continue;
+            }
+            let names: Vec<String> = std::iter::once(rule.name.clone())
+                .chain(fallback_name)
+                .collect();
+            let mut created = None;
+            for name in &names {
+                match self
+                    .create(NewManagedDomain {
+                        name: name.clone(),
+                        ..rule.clone()
+                    })
+                    .await
+                {
+                    Ok(managed) => {
+                        created = Some(managed);
+                        break;
+                    }
+                    Err(DomainError::AlreadyExists(_)) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            outcomes.push(created.map_or(
+                CreateManyOutcome::NameTaken(names),
+                CreateManyOutcome::Created,
+            ));
+        }
+        Ok(outcomes)
     }
 
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError> {
