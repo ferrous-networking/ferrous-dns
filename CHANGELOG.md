@@ -4,6 +4,55 @@ All notable changes to Ferrous DNS, newest first. Each entry links the pull requ
 
 <!-- --8<-- [start:releases] -->
 
+## [1.0.0](https://github.com/ferrous-networking/ferrous-dns/compare/v0.10.0...v1.0.0) - 2026-11-16
+
+### ✨ Features
+
+- **breaking:** **dns:** manage malware detection exemptions through groups and the allowlist by @andersonviudes in [#356](https://github.com/ferrous-networking/ferrous-dns/pull/356)
+- show DNS cookies in the Query Log and retire dead config keys by @andersonviudes in [#361](https://github.com/ferrous-networking/ferrous-dns/pull/361)
+- add an operations guide, rcode metrics and online backups by @andersonviudes in [#363](https://github.com/ferrous-networking/ferrous-dns/pull/363)
+- **metrics:** add DNS listener and TLS certificate expiry gauges by @andersonviudes in [#376](https://github.com/ferrous-networking/ferrous-dns/pull/376)
+- **clients:** add a registry and dashboard page for DoH client IDs by @dongsu8142 in [#374](https://github.com/ferrous-networking/ferrous-dns/pull/374)
+- **config:** add web_bind_address and keep host settings on import by @andersonviudes in [#372](https://github.com/ferrous-networking/ferrous-dns/pull/372)
+- **dns:** route and attribute DoH queries by /dns-query/<ClientID> path by @dongsu8142 in [#378](https://github.com/ferrous-networking/ferrous-dns/pull/378)
+- **config:** default bind_address to "auto" for dual-stack listening by @andersonviudes in [#385](https://github.com/ferrous-networking/ferrous-dns/pull/385)
+- **dns:** serve IPv4 on kernels without IPv6 by @andersonviudes in [#387](https://github.com/ferrous-networking/ferrous-dns/pull/387)
+- **web:** add query log row actions and standardize every page by @andersonviudes in [#391](https://github.com/ferrous-networking/ferrous-dns/pull/391)
+- **block-filter:** add managed domains in bulk from a pasted list by @andersonviudes in [#394](https://github.com/ferrous-networking/ferrous-dns/pull/394)
+
+### 🐛 Bug Fixes
+
+- **dns:** make CNAME cloaking work on real and cached answers by @andersonviudes in [#354](https://github.com/ferrous-networking/ferrous-dns/pull/354)
+- **dns:** give stream transports their own rate-limit budget by @andersonviudes in [#355](https://github.com/ferrous-networking/ferrous-dns/pull/355)
+- **cache:** evict down to capacity and rotate the eviction sample by @andersonviudes in [#360](https://github.com/ferrous-networking/ferrous-dns/pull/360)
+- **docker:** document the database path the image really uses by @andersonviudes in [#371](https://github.com/ferrous-networking/ferrous-dns/pull/371)
+- **web:** keep query log rows on one line and match cache hit rates by @andersonviudes in [#377](https://github.com/ferrous-networking/ferrous-dns/pull/377)
+- **web:** page and search every managed domain on the DNS Filter tab by @andersonviudes in [#384](https://github.com/ferrous-networking/ferrous-dns/pull/384)
+- **clients:** make disabling a group apply the default group's rules by @andersonviudes in [#388](https://github.com/ferrous-networking/ferrous-dns/pull/388)
+- **block-filter:** answer no query until the blocklists are in force by @andersonviudes in [#389](https://github.com/ferrous-networking/ferrous-dns/pull/389)
+- **auth:** harden setup, login and import, and model the HTTP side by @andersonviudes in [#390](https://github.com/ferrous-networking/ferrous-dns/pull/390)
+
+### 📚 Documentation
+
+- **security:** point the planned external review at its own issue by @andersonviudes in [#393](https://github.com/ferrous-networking/ferrous-dns/pull/393)
+
+### ⬆️ Dependencies
+
+- bump the pip-minor-patch group with 2 updates by @dependabot[bot] in [#359](https://github.com/ferrous-networking/ferrous-dns/pull/359)
+- bump fancy-regex from 0.19.2 to 0.20.0 by @dependabot[bot] in [#358](https://github.com/ferrous-networking/ferrous-dns/pull/358)
+- bump the cargo-minor-patch group with 2 updates by @dependabot[bot] in [#357](https://github.com/ferrous-networking/ferrous-dns/pull/357)
+- bump the cargo-minor-patch group with 2 updates by @dependabot[bot] in [#379](https://github.com/ferrous-networking/ferrous-dns/pull/379)
+- bump mkdocs-git-revision-date-localized-plugin from 1.6.2 to 1.6.3 in the pip-minor-patch group by @dependabot[bot] in [#381](https://github.com/ferrous-networking/ferrous-dns/pull/381)
+- bump webauthn-rs from 0.5.5 to 0.6.2 by @dependabot[bot] in [#380](https://github.com/ferrous-networking/ferrous-dns/pull/380)
+
+### 📋 Other
+
+- Merge commit from fork by @andersonviudes
+
+### 🎉 New contributors
+
+- @dongsu8142 made their first contribution in [#378](https://github.com/ferrous-networking/ferrous-dns/pull/378)
+
 ## [0.10.0](https://github.com/ferrous-networking/ferrous-dns/compare/v0.9.24...v0.10.0) - 2026-10-29
 
 ### ✨ Features
