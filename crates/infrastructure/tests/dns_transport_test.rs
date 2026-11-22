@@ -3,6 +3,7 @@ use ferrous_dns_domain::{DomainError, UpstreamAddr};
 use ferrous_dns_infrastructure::dns::fast_path;
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
 use ferrous_dns_infrastructure::dns::transport::tcp::TcpTransport;
+use ferrous_dns_infrastructure::dns::transport::tls::TlsTransport;
 use ferrous_dns_infrastructure::dns::wire_response;
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -80,6 +81,47 @@ async fn tcp_transport_reconnect_stays_within_the_query_timeout() {
     assert!(
         elapsed < timeout * 2,
         "a stalled pooled connection plus the reconnect took {elapsed:?}"
+    );
+}
+
+/// A loopback address nothing listens on.
+async fn closed_port() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    listener.local_addr().unwrap()
+}
+
+#[tokio::test]
+async fn tcp_connect_error_names_the_cause_without_calling_it_a_refusal() {
+    let addr = closed_port().await;
+    let transport = TcpTransport::new(UpstreamAddr::Resolved(addr));
+
+    let error = transport
+        .send(&TCP_QUERY, Duration::from_secs(2))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains(&format!("Could not connect to TCP server {addr}: ")),
+        "{error}"
+    );
+    assert!(error.contains("os error"), "{error}");
+}
+
+#[tokio::test]
+async fn tls_connect_error_names_the_cause_without_calling_it_a_refusal() {
+    let addr = closed_port().await;
+    let transport = TlsTransport::new(UpstreamAddr::Resolved(addr), "localhost").unwrap();
+
+    let error = transport
+        .send(&TCP_QUERY, Duration::from_secs(2))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(
+        error.contains(&format!("Could not connect to TLS server {addr}: ")),
+        "{error}"
     );
 }
 
