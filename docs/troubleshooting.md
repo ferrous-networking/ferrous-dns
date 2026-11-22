@@ -103,6 +103,7 @@ Check the dashboard at **Settings > System Status > Upstream Health**. If all up
 - Check network connectivity from the server: `dig @8.8.8.8 example.com`
 - If using DoH/DoT/DoQ upstreams, ensure outbound ports 443/853 are open
 - If only upstreams written as hostnames are unhealthy, see [An Upstream Hostname Never Comes Up](#hostname-upstream-never-comes-up)
+- Rows marked **No route** are addresses this host cannot reach at all, usually IPv6 addresses on a host or Docker container without IPv6. They are left out on purpose and do not make their server Partial. A server written as an IPv6 address reads Unhealthy there: enable IPv6 for the container, or use the server's IPv4 address
 
 ---
 
