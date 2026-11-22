@@ -8,6 +8,7 @@ Ferrous DNS uses [Conventional Commits](https://www.conventionalcommits.org/) an
 
 | Version | Highlights | Status |
 |:--------|:-----------|:------:|
+| v1.0.x | Dual-stack listening by default (`bind_address = "auto"`), DoH client IDs (`/dns-query/<ClientID>`), malware exemptions through groups and the allowlist, no answers until the blocklists are in force, CNAME cloaking on real and cached answers, a separate rate-limit budget for stream transports, rcode, listener and TLS expiry metrics, online backups, bulk add of managed domains | Released |
 | v0.10.x | API v1 freeze (`/ferrous/api/v1`, public JSON `/health`, one pagination envelope, error statuses for failed config saves, a reference for every route), Docker healthcheck on the running server, mDNS client names, query-log disk reclaim + hourly rollups, upstream NXDOMAIN budget | Released |
 | v0.9.x | Upstream anti-spoofing (0x20, DNS Cookies, response validation), DNSSEC validation enforcement + DS denial proofs, DoQ server listener, DNS64, TOTP/2FA + passkeys, custom sinkhole IP, conditional forwarding per client group, DNS Filter what-if backtest, Cache Control page + per-entry cache refresh, overload shedding, Pi-hole v6 conformance, offline web UI | Released |
 | v0.8.x | Config export/import, Prometheus metrics, OpenAPI docs, Extended DNS Errors (RFC 8914), DNS Cookies (RFC 7873), optimistic prefetch, configurable block response, hot-reload of upstream pools | Released |
