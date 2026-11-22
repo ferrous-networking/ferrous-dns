@@ -91,6 +91,36 @@ impl DnsProtocol {
         }
     }
 
+    /// The addresses this protocol dials: its resolved address, every
+    /// pre-resolved one of an HTTPS/H3 URL, or the IP an HTTPS/H3 URL names.
+    /// Empty while a hostname is unresolved.
+    pub fn addresses(&self) -> Vec<SocketAddr> {
+        match self {
+            DnsProtocol::Https {
+                hostname,
+                port,
+                resolved_addrs,
+                ..
+            }
+            | DnsProtocol::H3 {
+                hostname,
+                port,
+                resolved_addrs,
+                ..
+            } => {
+                if !resolved_addrs.is_empty() {
+                    return resolved_addrs.clone();
+                }
+                hostname
+                    .parse::<IpAddr>()
+                    .map(|ip| SocketAddr::new(ip, *port))
+                    .into_iter()
+                    .collect()
+            }
+            other => other.socket_addr().into_iter().collect(),
+        }
+    }
+
     pub fn hostname(&self) -> Option<&str> {
         match self {
             DnsProtocol::Tls { hostname, .. }

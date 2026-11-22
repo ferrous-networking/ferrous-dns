@@ -1,3 +1,4 @@
+use super::health::no_route_error;
 use super::{HealthChecker, PoolManager, ServerStatus};
 use ferrous_dns_application::ports::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
@@ -54,8 +55,11 @@ impl UpstreamHealthPort for UpstreamHealthAdapter {
                             health.last_check_latency_ms,
                             health.last_error,
                             health.consecutive_failures,
+                            &health.unroutable,
                         ),
-                        None => expand_endpoint_health(p, UpstreamStatus::Unknown, None, None, 0),
+                        None => {
+                            expand_endpoint_health(p, UpstreamStatus::Unknown, None, None, 0, &[])
+                        }
                     })
                     .collect();
 
@@ -76,6 +80,7 @@ impl UpstreamHealthPort for UpstreamHealthAdapter {
 /// For HTTPS/H3, the protocol stores multiple pre-resolved `SocketAddr`s internally.
 /// Each is surfaced as a separate entry — all sharing the same health status, since
 /// the health checker tracks health per-URL (not per-IP) for these transports.
+/// The exception is an address this host has no route to, which reads as such.
 /// For UDP/TCP/TLS/Quic, the protocol maps to a single resolved socket address.
 fn expand_endpoint_health(
     p: &DnsProtocol,
@@ -83,18 +88,33 @@ fn expand_endpoint_health(
     latency_ms: Option<u64>,
     last_error: Option<String>,
     consecutive_failures: u16,
+    unroutable: &[SocketAddr],
 ) -> Vec<ResolvedEndpointHealth> {
     let pre_resolved = https_resolved_addrs(p);
     if !pre_resolved.is_empty() {
         return pre_resolved
             .iter()
-            .map(|addr| ResolvedEndpointHealth {
-                address: addr.to_string(),
-                family: addr_family(*addr),
-                status,
-                latency_ms,
-                last_error: last_error.clone(),
-                consecutive_failures,
+            .map(|addr| {
+                if unroutable.contains(addr) {
+                    return ResolvedEndpointHealth {
+                        address: addr.to_string(),
+                        family: addr_family(*addr),
+                        status: UpstreamStatus::Unhealthy,
+                        latency_ms: None,
+                        last_error: Some(no_route_error(&[*addr])),
+                        consecutive_failures: 0,
+                        no_route: true,
+                    };
+                }
+                ResolvedEndpointHealth {
+                    address: addr.to_string(),
+                    family: addr_family(*addr),
+                    status,
+                    latency_ms,
+                    last_error: last_error.clone(),
+                    consecutive_failures,
+                    no_route: false,
+                }
             })
             .collect();
     }
@@ -106,6 +126,7 @@ fn expand_endpoint_health(
         latency_ms,
         last_error,
         consecutive_failures,
+        no_route: !unroutable.is_empty(),
     }]
 }
 
@@ -143,25 +164,31 @@ fn addr_family(addr: SocketAddr) -> IpFamily {
 fn map_server_status(s: ServerStatus) -> UpstreamStatus {
     match s {
         ServerStatus::Healthy => UpstreamStatus::Healthy,
-        ServerStatus::Unhealthy => UpstreamStatus::Unhealthy,
+        ServerStatus::Unhealthy | ServerStatus::NoRoute => UpstreamStatus::Unhealthy,
         ServerStatus::Unknown => UpstreamStatus::Unknown,
     }
 }
 
+/// The status of a server from the endpoints this host has a route to. With
+/// a route to none, the server cannot answer at all.
 fn aggregate_status(resolved: &[ResolvedEndpointHealth]) -> AggregateStatus {
     if resolved.is_empty() {
         return AggregateStatus::Unknown;
     }
-    let healthy = resolved
+    let routable: Vec<&ResolvedEndpointHealth> = resolved.iter().filter(|r| !r.no_route).collect();
+    if routable.is_empty() {
+        return AggregateStatus::Unhealthy;
+    }
+    let healthy = routable
         .iter()
         .filter(|r| matches!(r.status, UpstreamStatus::Healthy))
         .count();
-    let unhealthy = resolved
+    let unhealthy = routable
         .iter()
         .filter(|r| matches!(r.status, UpstreamStatus::Unhealthy))
         .count();
 
-    match (healthy, unhealthy, resolved.len()) {
+    match (healthy, unhealthy, routable.len()) {
         (0, 0, _) => AggregateStatus::Unknown,
         (h, 0, total) if h == total => AggregateStatus::Healthy,
         (0, _, _) => AggregateStatus::Unhealthy,

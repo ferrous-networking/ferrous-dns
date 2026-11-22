@@ -45,6 +45,7 @@ fn sample_upstreams() -> Vec<UpstreamGroupHealth> {
             latency_ms: Some(12),
             last_error: None,
             consecutive_failures: 0,
+            no_route: false,
         }],
         pool_name: "main".to_string(),
         strategy: UpstreamStrategy::Parallel,

@@ -15,6 +15,10 @@ pub struct ResolvedEndpointResponse {
     pub latency_ms: Option<u64>,
     pub last_error: Option<String>,
     pub consecutive_failures: u16,
+    /// This host has no route to the address, as in a container without
+    /// IPv6. It is never dialed, reads `Unhealthy`, and does not count
+    /// toward the server's `status`.
+    pub no_route: bool,
 }
 
 impl From<ResolvedEndpointHealth> for ResolvedEndpointResponse {
@@ -26,6 +30,7 @@ impl From<ResolvedEndpointHealth> for ResolvedEndpointResponse {
             latency_ms: r.latency_ms,
             last_error: r.last_error,
             consecutive_failures: r.consecutive_failures,
+            no_route: r.no_route,
         }
     }
 }
@@ -34,7 +39,8 @@ impl From<ResolvedEndpointHealth> for ResolvedEndpointResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UpstreamGroupResponse {
     pub address: String,
-    /// `Healthy`, `Partial`, `Unhealthy` or `Unknown`.
+    /// `Healthy`, `Partial`, `Unhealthy` or `Unknown`, over the endpoints
+    /// this host has a route to.
     #[schema(value_type = String)]
     pub status: &'static str,
     pub resolved: Vec<ResolvedEndpointResponse>,

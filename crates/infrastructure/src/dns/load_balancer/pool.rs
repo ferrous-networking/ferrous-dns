@@ -25,12 +25,7 @@ fn addresses_of(group: &ServerGroup) -> BTreeSet<SocketAddr> {
     group
         .protocols
         .iter()
-        .flat_map(|protocol| match &**protocol {
-            DnsProtocol::Https { resolved_addrs, .. } | DnsProtocol::H3 { resolved_addrs, .. } => {
-                resolved_addrs.clone()
-            }
-            other => other.socket_addr().into_iter().collect(),
-        })
+        .flat_map(|protocol| protocol.addresses())
         .collect()
 }
 

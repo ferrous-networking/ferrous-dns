@@ -5,6 +5,8 @@
 
 #[path = "support/refresh.rs"]
 mod refresh;
+#[path = "support/router.rs"]
+mod router;
 
 use ferrous_dns_domain::UpstreamPool;
 use ferrous_dns_infrastructure::dns::forwarding::HardeningOpts;
@@ -13,14 +15,10 @@ use ferrous_dns_infrastructure::dns::load_balancer::{
 };
 use ferrous_dns_infrastructure::dns::transport::resolver::UpstreamHostResolver;
 use ferrous_dns_infrastructure::dns::PoolManager;
-use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
-use hickory_proto::rr::rdata::A;
-use hickory_proto::rr::{RData, Record, RecordType as WireType};
-use std::collections::{HashMap, VecDeque};
+use router::Router;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::UdpSocket;
 
 const OLD_IP: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 const NEW_IP: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 2);
@@ -38,79 +36,6 @@ const TIMES: HostnameRefreshTimes = HostnameRefreshTimes {
     retry: Duration::from_millis(100),
     max_retry: Duration::from_secs(1),
 };
-
-/// A name's addresses, handed out in turn, and their TTL.
-type Answers = HashMap<String, (VecDeque<Ipv4Addr>, u32)>;
-
-/// A LAN router whose A answers can be changed mid-test: a name maps to its
-/// addresses, handed out one per query in turn, and their TTL; a name it
-/// does not know gets NXDOMAIN. AAAA queries get an empty answer.
-#[derive(Clone, Default)]
-struct Router {
-    answers: Arc<Mutex<Answers>>,
-}
-
-impl Router {
-    fn set(&self, name: &str, ip: Ipv4Addr, ttl: u32) {
-        self.rotate(name, &[ip], ttl);
-    }
-
-    /// Answers each A query for `name` with the next of `ips`.
-    fn rotate(&self, name: &str, ips: &[Ipv4Addr], ttl: u32) {
-        self.answers
-            .lock()
-            .unwrap()
-            .insert(format!("{name}."), (ips.iter().copied().collect(), ttl));
-    }
-
-    fn forget(&self, name: &str) {
-        self.answers.lock().unwrap().remove(&format!("{name}."));
-    }
-
-    async fn spawn(&self) -> SocketAddr {
-        let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let addr = socket.local_addr().unwrap();
-        let answers = Arc::clone(&self.answers);
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 1500];
-            while let Ok((len, peer)) = socket.recv_from(&mut buf).await {
-                let Ok(req) = Message::from_vec(&buf[..len]) else {
-                    continue;
-                };
-                let Some(q) = req.queries.first().cloned() else {
-                    continue;
-                };
-                let mut resp = Message::new(req.id, MessageType::Response, OpCode::Query);
-                resp.metadata.recursion_desired = req.metadata.recursion_desired;
-                resp.metadata.recursion_available = true;
-                resp.add_query(q.clone());
-                let name = q.name().to_ascii().to_ascii_lowercase();
-                let answer = answers.lock().unwrap().get_mut(&name).map(|(ips, ttl)| {
-                    let ip = ips[0];
-                    if q.query_type() == WireType::A {
-                        ips.rotate_left(1);
-                    }
-                    (ip, *ttl)
-                });
-                match answer {
-                    None => resp.metadata.response_code = ResponseCode::NXDomain,
-                    Some((ip, ttl)) => {
-                        resp.metadata.response_code = ResponseCode::NoError;
-                        if q.query_type() == WireType::A {
-                            resp.add_answer(Record::from_rdata(
-                                q.name().clone(),
-                                ttl,
-                                RData::A(A(ip)),
-                            ));
-                        }
-                    }
-                }
-                let _ = socket.send_to(&resp.to_vec().unwrap(), peer).await;
-            }
-        });
-        addr
-    }
-}
 
 fn pool(servers: &[&str]) -> UpstreamPool {
     named_pool("only", servers)
