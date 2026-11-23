@@ -1055,6 +1055,8 @@ GET /ferrous/api/v1/upstream/health/detail
 
 Returns detailed health information per upstream: pool name, strategy, latency metrics, failure counts.
 
+Each entry in `resolved` has `no_route`, `true` for an address this host has no route to, as in a container without IPv6. Such an entry reads `Unhealthy`, is never dialed, and does not count toward the server's `status`.
+
 ---
 
 ## Clients

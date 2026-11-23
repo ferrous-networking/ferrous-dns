@@ -246,6 +246,10 @@
     <div class="box-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr))">
         <div class="card">
             <h3 class="card-title">Upstream</h3>
+            <div x-show="upstreamNoRouteNotice(upstreamHealth)" class="notice notice-info" style="margin-bottom:12px">
+                <i data-lucide="info"></i>
+                <p x-text="upstreamNoRouteNotice(upstreamHealth)"></p>
+            </div>
             <p x-show="upstreamHealth.length === 0" class="empty-state">No upstream servers configured</p>
             <div x-show="upstreamHealth.length > 0">
                 <template x-for="(pool, poolIdx) in groupUpstreamsByPool(upstreamHealth)" :key="pool.pool_name">
@@ -289,14 +293,18 @@
                                                     <template x-if="ep.latency_ms != null">
                                                         <span style="font-size:10px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
                                                     </template>
-                                                    <span class="badge" :class="upstreamStatusBadge(ep.status)" style="font-size:9px;padding:2px 8px"
-                                                          x-text="ep.status"></span>
+                                                    <span class="badge" :class="upstreamStatusBadge(upstreamEndpointStatus(ep))" style="font-size:9px;padding:2px 8px"
+                                                          x-text="upstreamEndpointStatus(ep)"></span>
                                                 </div>
                                             </div>
-                                            <p x-show="ep.last_error && ep.status !== 'Healthy'" x-text="ep.last_error"
+                                            <p x-show="ep.last_error && ep.status !== 'Healthy' && !ep.no_route" x-text="ep.last_error"
                                                style="margin:4px 0 0 24px;font-size:10px;line-height:1.5;color:var(--color-error);overflow-wrap:anywhere"></p>
                                         </div>
                                     </template>
+                                    <p x-show="group.resolved.some(ep => ep.no_route)"
+                                       style="margin:2px 0 0 44px;font-size:10px;line-height:1.5;color:var(--text-tertiary)">
+                                        Skipped: this host has no route to these addresses. Not used for queries; checked again at every health check.
+                                    </p>
                                 </div>
                             </div>
                         </template>

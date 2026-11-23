@@ -103,9 +103,7 @@ pub(crate) async fn connect_tcp(
             DomainError::IoError(format!("Timeout connecting to {label} server {server}"))
         })?
         .map_err(|e| {
-            DomainError::IoError(format!(
-                "Connection refused by {label} server {server}: {e}"
-            ))
+            DomainError::IoError(format!("Could not connect to {label} server {server}: {e}"))
         })?;
 
     stream

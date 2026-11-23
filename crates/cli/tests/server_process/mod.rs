@@ -359,6 +359,17 @@ impl TestConfig {
         config
     }
 
+    /// A server whose `[dns]` table is `dns`, with blocking and auth off.
+    pub fn with_dns(dns: &str) -> Self {
+        Self::with_tables(
+            Some("127.0.0.1"),
+            "",
+            dns,
+            "enabled = false",
+            "enabled = false",
+        )
+    }
+
     /// A server that forwards to `upstream`, with blocking on, so a test can
     /// drive filtering end to end. The malware detectors are off, and so is
     /// DNSSEC: a fake upstream proves nothing, and an unvalidated answer is
