@@ -8,7 +8,7 @@ use axum::{
     Router,
 };
 use ferrous_dns_infrastructure::dns::load_balancer::{Route, UpstreamRouter};
-use helpers::TestApp;
+use helpers::{empty_config_file, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -19,18 +19,7 @@ mod helpers;
 const OFFICE_A: i64 = 2;
 
 async fn test_app() -> TestApp {
-    let config_path = std::env::temp_dir()
-        .join(format!(
-            "ferrous_cfg_routing_test_{}_{}.toml",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-        .to_string_lossy()
-        .into_owned();
-    std::fs::write(&config_path, "").unwrap();
+    let config_path = empty_config_file("ferrous_cfg_routing_test");
     TestApp::builder()
         .config_path(&config_path)
         .groups(&["Office A", "Office B"])
