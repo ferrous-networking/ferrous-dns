@@ -43,7 +43,7 @@ argon2 = { version = "0.5", features = ["std"] }
 
 # Auth (TOTP / 2FA + WebAuthn passkeys)
 totp-rs = { version = "5.7", features = ["gen_secret", "otpauth"] }
-qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+qrcode = { version = "0.15", default-features = false, features = ["svg"] }
 # `danger-allow-state-serialisation` lets us persist the short-lived ceremony
 # state server-side (in the mfa_challenges row), as WebAuthn requires.
 # `conditional-ui` unlocks the discoverable-credential (usernameless) auth API
