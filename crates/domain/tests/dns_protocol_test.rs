@@ -693,3 +693,60 @@ fn test_with_resolved_addrs_on_non_https_h3_returns_clone() {
     let resolved = protocol.with_resolved_addrs(vec!["1.1.1.1:53".parse().unwrap()]);
     assert_eq!(protocol, resolved);
 }
+
+#[test]
+fn test_addresses_of_a_resolved_protocol_is_its_address() {
+    for (input, address) in [
+        ("udp://9.9.9.9:53", "9.9.9.9:53"),
+        ("tcp://9.9.9.9:53", "9.9.9.9:53"),
+        ("tls://9.9.9.9:853", "9.9.9.9:853"),
+        ("doq://[2620:fe::fe]:853", "[2620:fe::fe]:853"),
+    ] {
+        let protocol: DnsProtocol = input.parse().unwrap();
+        assert_eq!(
+            protocol.addresses(),
+            vec![address.parse().unwrap()],
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn test_addresses_of_an_unresolved_hostname_is_empty() {
+    for input in [
+        "tls://dns.quad9.net:853",
+        "https://dns.quad9.net/dns-query",
+        "h3://dns.quad9.net/dns-query",
+    ] {
+        let protocol: DnsProtocol = input.parse().unwrap();
+        assert!(protocol.addresses().is_empty(), "{input}");
+    }
+}
+
+#[test]
+fn test_addresses_of_https_and_h3_are_every_pre_resolved_one() {
+    let addrs: Vec<std::net::SocketAddr> = vec![
+        "1.1.1.2:443".parse().unwrap(),
+        "[2606:4700:4700::1112]:443".parse().unwrap(),
+    ];
+    for input in [
+        "https://security.cloudflare-dns.com/dns-query",
+        "h3://security.cloudflare-dns.com/dns-query",
+    ] {
+        let protocol: DnsProtocol = input.parse().unwrap();
+        assert_eq!(
+            protocol.with_resolved_addrs(addrs.clone()).addresses(),
+            addrs,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn test_addresses_of_https_named_by_ip_is_that_ip() {
+    let protocol: DnsProtocol = "https://[2606:4700:4700::1111]/dns-query".parse().unwrap();
+    assert_eq!(
+        protocol.addresses(),
+        vec!["[2606:4700:4700::1111]:443".parse().unwrap()]
+    );
+}

@@ -9,7 +9,7 @@ use ferrous_dns_application::tls_certificates::TlsListener;
 use ferrous_dns_application::use_cases::{ConfigOverrides, ReloadConfigUseCase};
 use ferrous_dns_domain::{BindAddress, Config, DomainError, UpstreamPool};
 use ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence;
-use helpers::{create_test_db, TestApp};
+use helpers::{create_test_db, empty_config_file, TestApp};
 use http_body_util::BodyExt;
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -23,18 +23,7 @@ mod helpers;
 /// The update handler resolves a config path up front and refuses to run
 /// without one, so each app gets a unique writable temp file (returned too).
 async fn test_app(pool: SqlitePool) -> (TestApp, String) {
-    let config_path = std::env::temp_dir()
-        .join(format!(
-            "ferrous_cfg_update_test_{}_{}.toml",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-        .to_string_lossy()
-        .into_owned();
-    std::fs::write(&config_path, "").unwrap();
+    let config_path = empty_config_file("ferrous_cfg_update_test");
     let app = TestApp::builder()
         .pool(pool)
         .config_path(&config_path)

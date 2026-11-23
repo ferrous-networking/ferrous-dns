@@ -4,6 +4,7 @@ use dashmap::DashMap;
 use ferrous_dns_domain::{DnsProtocol, RecordType};
 use rustc_hash::FxBuildHasher;
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -13,6 +14,9 @@ use tracing::{debug, info, warn};
 pub enum ServerStatus {
     Healthy,
     Unhealthy,
+    /// This host has no route to any of the server's addresses, as in a
+    /// container without IPv6. Out of rotation, like `Unhealthy`.
+    NoRoute,
     #[default]
     Unknown,
 }
@@ -24,12 +28,24 @@ pub struct ServerHealth {
     pub consecutive_successes: u16,
     pub last_check_latency_ms: Option<u64>,
     pub last_error: Option<String>,
+    /// The server's addresses this host had no route to at the last check.
+    pub unroutable: Vec<SocketAddr>,
+}
+
+/// Whether this host has a route to an address.
+pub type RouteProbe = Arc<dyn Fn(SocketAddr) -> bool + Send + Sync>;
+
+/// The error shown for addresses this host has no route to.
+pub fn no_route_error(addresses: &[SocketAddr]) -> String {
+    let addresses: Vec<String> = addresses.iter().map(SocketAddr::to_string).collect();
+    format!("No route from this host to {}", addresses.join(", "))
 }
 
 pub struct HealthChecker {
     health_map: DashMap<Arc<DnsProtocol>, ServerHealth, FxBuildHasher>,
     failure_threshold: u8,
     success_threshold: u8,
+    route_probe: RouteProbe,
 }
 
 /// A server to probe, and the zone it answers when it answers only some
@@ -45,7 +61,15 @@ impl HealthChecker {
             health_map: DashMap::with_hasher(FxBuildHasher),
             failure_threshold,
             success_threshold,
+            route_probe: Arc::new(transport::route::has_route),
         }
+    }
+
+    /// Replaces [`transport::route::has_route`], so a test can take an
+    /// address family away.
+    pub fn with_route_probe(mut self, probe: RouteProbe) -> Self {
+        self.route_probe = probe;
+        self
     }
 
     /// Runs the periodic probe loop. `protocols_provider` is called once per tick
@@ -142,6 +166,18 @@ impl HealthChecker {
     }
 
     async fn check_server(&self, protocol: &Arc<DnsProtocol>, query_bytes: &[u8], timeout_ms: u64) {
+        let addresses = protocol.addresses();
+        let unroutable: Vec<SocketAddr> = addresses
+            .iter()
+            .copied()
+            .filter(|addr| !(self.route_probe)(*addr))
+            .collect();
+        if !addresses.is_empty() && unroutable.len() == addresses.len() {
+            self.mark_no_route(protocol, unroutable);
+            return;
+        }
+        self.record_routes(protocol, unroutable);
+
         let start = std::time::Instant::now();
         let timeout_duration = Duration::from_millis(timeout_ms);
 
@@ -188,6 +224,34 @@ impl HealthChecker {
         }
     }
 
+    /// Nothing can be sent: the server leaves rotation at once, since a probe
+    /// could only fail the same way, and is checked again next tick.
+    fn mark_no_route(&self, protocol: &Arc<DnsProtocol>, unroutable: Vec<SocketAddr>) {
+        let mut entry = self.health_map.entry(Arc::clone(protocol)).or_default();
+        if entry.status == ServerStatus::NoRoute {
+            debug!(server = %protocol, "Health check: no route from this host");
+        } else {
+            info!(server = %protocol, "No route from this host to the server; left out until it has one");
+        }
+        *entry = ServerHealth {
+            status: ServerStatus::NoRoute,
+            last_error: Some(no_route_error(&unroutable)),
+            unroutable,
+            ..ServerHealth::default()
+        };
+    }
+
+    /// Keeps which of the server's addresses have no route, for display. A
+    /// server whose route is back starts over, as a newly added one does.
+    fn record_routes(&self, protocol: &Arc<DnsProtocol>, unroutable: Vec<SocketAddr>) {
+        let mut entry = self.health_map.entry(Arc::clone(protocol)).or_default();
+        if entry.status == ServerStatus::NoRoute {
+            info!(server = %protocol, "Route to the server is back");
+            *entry = ServerHealth::default();
+        }
+        entry.unroutable = unroutable;
+    }
+
     fn mark_healthy(&self, protocol: &Arc<DnsProtocol>, latency_ms: u64) {
         let mut entry = self.health_map.entry(Arc::clone(protocol)).or_default();
         entry.consecutive_failures = 0;
@@ -222,7 +286,7 @@ impl HealthChecker {
             .get(protocol)
             .map(|h| match h.status {
                 ServerStatus::Healthy | ServerStatus::Unknown => true,
-                ServerStatus::Unhealthy => false,
+                ServerStatus::Unhealthy | ServerStatus::NoRoute => false,
             })
             .unwrap_or(true)
     }

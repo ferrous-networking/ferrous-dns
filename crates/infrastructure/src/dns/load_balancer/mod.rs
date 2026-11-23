@@ -10,7 +10,7 @@ pub mod strategy;
 pub mod upstream_health_adapter;
 pub mod upstream_reload_adapter;
 
-pub use health::{HealthChecker, HealthProbe, ServerHealth, ServerStatus};
+pub use health::{HealthChecker, HealthProbe, RouteProbe, ServerHealth, ServerStatus};
 pub use hostname_refresh::{run_hostname_refresh, HostnameRefreshTimes};
 pub use pool::{PoolGroupEntry, PoolManager, Resolution};
 pub use routes::{Route, UpstreamRouter};

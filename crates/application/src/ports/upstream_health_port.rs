@@ -74,6 +74,9 @@ pub struct ResolvedEndpointHealth {
     pub latency_ms: Option<u64>,
     pub last_error: Option<String>,
     pub consecutive_failures: u16,
+    /// This host has no route to the address, as in a container without
+    /// IPv6: it is never dialed and does not count toward the server's status.
+    pub no_route: bool,
 }
 
 /// Grouped health for one configured upstream server, with per-IP endpoint breakdown.
@@ -81,7 +84,8 @@ pub struct ResolvedEndpointHealth {
 pub struct UpstreamGroupHealth {
     /// Original configured address (e.g. "doq://dns.alidns.com:853").
     pub address: String,
-    /// Aggregate status computed from all resolved endpoints.
+    /// Aggregate status computed from the resolved endpoints this host has a
+    /// route to; `Unhealthy` when it has a route to none.
     pub status: AggregateStatus,
     /// One entry per resolved IP address.
     pub resolved: Vec<ResolvedEndpointHealth>,

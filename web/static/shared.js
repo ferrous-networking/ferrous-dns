@@ -361,6 +361,29 @@ function upstreamStatusColor(status) {
     return 'var(--text-tertiary)';
 }
 
+// An address this host has no route to (a container without IPv6) is never
+// dialed and leaves its server's status alone, so it reads "No route".
+function upstreamEndpointStatus(ep) {
+    return ep.no_route ? 'No route' : ep.status;
+}
+
+// The card's notice when some upstream addresses have no route from this host.
+function upstreamNoRouteNotice(upstreams) {
+    const skipped = { ipv4: new Set(), ipv6: new Set() };
+    for (const group of upstreams) {
+        for (const ep of group.resolved || []) {
+            if (ep.no_route && skipped[ep.family]) skipped[ep.family].add(ep.address);
+        }
+    }
+    const v4 = skipped.ipv4.size;
+    const v6 = skipped.ipv6.size;
+    const count = (n, family) => `${n} ${family} upstream address${n === 1 ? ' is' : 'es are'} skipped`;
+    if (v6 && !v4) return `No IPv6 route on this host: ${count(v6, 'IPv6')}. IPv4 is used.`;
+    if (v4 && !v6) return `No IPv4 route on this host: ${count(v4, 'IPv4')}. IPv6 is used.`;
+    if (v4 && v6) return `No route on this host to ${v4 + v6} upstream addresses: they are skipped.`;
+    return '';
+}
+
 // --- WebAuthn (passkey) helpers ---
 // webauthn-rs speaks base64url; the browser WebAuthn API wants ArrayBuffers.
 // These convert between the two for the create/get ceremonies.
