@@ -306,6 +306,64 @@ async fn test_get_stats_cache_hit_rate_matches_cache_stats() {
     assert_eq!(stats.cache_hit_rate, 75.0);
 }
 
+/// During an outage every query that found no upstream is logged with its whole
+/// wait; those waits are not the time upstreams take to answer.
+#[tokio::test]
+async fn test_get_stats_upstream_time_averages_upstream_answers_only() {
+    let pool = migrated_pool().await;
+    let repository = repo(&pool);
+    let queries = [
+        QueryLog {
+            response_time_us: Some(20_000),
+            upstream_server: Some(Arc::from("dns.google")),
+            upstream_pool: Some(Arc::from("pool1")),
+            ..client_query("answered.example.com", Some(ClientProtocol::Udp))
+        },
+        QueryLog {
+            response_time_us: Some(9_000_000),
+            response_status: Some("TIMEOUT"),
+            ..client_query("timeout.example.com", Some(ClientProtocol::Udp))
+        },
+        QueryLog {
+            response_time_us: Some(6_000_000),
+            response_status: Some("SERVFAIL"),
+            ..client_query("servfail.example.com", Some(ClientProtocol::Udp))
+        },
+        QueryLog {
+            response_time_us: Some(50),
+            cache_hit: true,
+            ..client_query("cached.example.com", Some(ClientProtocol::Udp))
+        },
+    ];
+    for query in &queries {
+        repository.log_query(query).await.unwrap();
+    }
+    let mut rows = 0i64;
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        rows = sqlx::query_scalar("SELECT COUNT(*) FROM query_log")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        if rows == 4 {
+            break;
+        }
+    }
+    assert_eq!(rows, 4, "the batched writes never reached the database");
+
+    let stats = repository.get_stats(24.0).await.unwrap();
+
+    assert_eq!(
+        stats.avg_upstream_time_ms, 20.0,
+        "a timeout or SERVFAIL got no upstream answer to time"
+    );
+    assert_eq!(
+        stats.avg_query_time_ms,
+        (20_000 + 9_000_000 + 6_000_000 + 50) as f64 / 4.0 / 1000.0,
+        "the end-to-end mean still counts what every client waited"
+    );
+}
+
 #[tokio::test]
 async fn test_get_stats_blocklist_breakdown() {
     let pool = migrated_pool().await;
