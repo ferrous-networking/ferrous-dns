@@ -177,6 +177,32 @@ async fn pragma(pool: &SqlitePool, name: &str) -> i64 {
 }
 
 #[tokio::test]
+async fn test_bundled_sqlite_includes_the_fix_for_rustsec_2026_0459() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let pool = create_write_pool(&url, &DatabaseConfig::default())
+        .await
+        .expect("write pool");
+
+    let (version,): (String,) = sqlx::query_as("SELECT sqlite_version()")
+        .fetch_one(&pool)
+        .await
+        .expect("read version");
+    let parts: Vec<u32> = version
+        .split('.')
+        .map(|part| part.parse().expect("numeric version part"))
+        .collect();
+
+    // Before 3.54.0, opening a database beside a `-wal` whose page size differs
+    // can return uninitialized page-cache memory.
+    assert!(
+        parts >= vec![3, 54, 0],
+        "bundled SQLite {version} predates the 3.54.0 fix"
+    );
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn test_a_new_database_gives_freed_pages_back_incrementally() {
     let dir = tempfile::tempdir().expect("tempdir");
     let url = format!("sqlite:{}", dir.path().join("test.db").display());
