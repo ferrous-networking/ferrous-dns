@@ -7,11 +7,13 @@ use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::SqlitePool;
 
-/// Clears every rollup, refills it from the raw rows with the production backfill and
-/// the hourly reference, and marks every minute and every past hour held.
+/// Clears every rollup, refills it from the raw rows with the production backfill, its
+/// upstream-time correction and the hourly reference, and marks every minute and every
+/// past hour held.
 pub const REBUILD_ROLLUPS: &str = concat!(
     include_str!("clear_rollups.sql"),
     include_str!("../../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+    include_str!("../../../../migrations/20261126000001_upstream_time_counts_answers_only.sql"),
     include_str!("hour_rollups.sql"),
     include_str!("hold_rollups.sql"),
 );

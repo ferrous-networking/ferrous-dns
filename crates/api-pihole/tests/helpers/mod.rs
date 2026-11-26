@@ -807,11 +807,13 @@ pub async fn insert_local_dns_query(pool: &sqlx::SqlitePool, domain: &str) {
 }
 
 /// Stats, top lists and counts read the rollups; rebuild them with the production
-/// backfill and the hourly reference, every past hour held.
+/// backfill, its upstream-time correction and the hourly reference, every past hour
+/// held.
 pub async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
     sqlx::raw_sql(concat!(
         include_str!("../../../infrastructure/tests/support/clear_rollups.sql"),
         include_str!("../../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+        include_str!("../../../../migrations/20261126000001_upstream_time_counts_answers_only.sql"),
         include_str!("../../../infrastructure/tests/support/hour_rollups.sql"),
         include_str!("../../../infrastructure/tests/support/hold_rollups.sql"),
     ))

@@ -37,7 +37,7 @@ impact: functional
 - **Renaming a fallback-named rule when a compat PUT moves it to the other list.** It keeps, say, `x (allow)` as a deny. That is cosmetic, because FTL never shows names, so it was left as a follow-up.
 
 **Evidence:**
-- Plan `.claudin/plans/resilient-wandering-noodle.md`. Branch `feat/managed-domains-bulk-add`, cut from `1c0c13dd`, committed on 2026-11-15 after Viudes's go-ahead. Commits:
+- Plan `.claudin/plans/resilient-wandering-noodle.md`. Branch `feat/managed-domains-bulk-add`, cut from `1c0c13dd`, committed on 2026-11-15 after Viudes's go-ahead, squash-merged as PR #394 (`7454d9e2`) and shipped in v1.0.0 (2026-11-16). Branch commits:
   - red tests `97cbca04`, core `418d3c35`, API `12000776`, compat `0c9efcc3`, web `a8d90e00`;
   - review round: red `6089400e`, then `052d571c` (IMMEDIATE + service rules), `3b9ff4f9` (body limit) and `ba753197` (clash names);
   - test gaps `db687aff` and `2bf3cd46`.

@@ -1,6 +1,7 @@
 //! Per-minute aggregates kept beside the raw `query_log` rows. Schema and the SQL
 //! reference definitions live in the `*_query_log_rollups` migrations; the hourly
-//! ones are in `hour_rollup`.
+//! ones are in `hour_rollup`. `*_upstream_time_counts_answers_only` narrows the
+//! reference's upstream response time.
 
 use super::writer::QueryLogEntry;
 use crate::repositories::unix_cutoff;
@@ -120,14 +121,20 @@ const UPSERT_UPSTREAM: &str = "INSERT INTO query_log_minute_upstream \
     (bucket, upstream_pool, upstream_server, count) VALUES (?, ?, ?, ?) \
     ON CONFLICT (bucket, upstream_pool, upstream_server) DO UPDATE SET count = count + excluded.count";
 
-/// Answered by an upstream: not served from cache, not blocked, not a local record.
+/// Not answered locally: not served from cache, not blocked, not a local record.
 fn is_upstream(e: &QueryLogEntry) -> bool {
     !e.cache_hit && !e.blocked && e.response_status != Some("LOCAL_DNS")
 }
 
+/// Answered by an upstream, which the log names. A timeout or SERVFAIL names
+/// none, so its wait stays out of the upstream response time.
+fn is_upstream_answer(e: &QueryLogEntry) -> bool {
+    is_upstream(e) && e.upstream_server.is_some()
+}
+
 impl MinuteCounters {
     fn add(&mut self, e: &QueryLogEntry) {
-        let upstream = is_upstream(e);
+        let upstream_answer = is_upstream_answer(e);
         self.total += 1;
         self.blocked += i64::from(e.blocked);
         self.cache_hits += i64::from(e.cache_hit);
@@ -156,7 +163,7 @@ impl MinuteCounters {
                 self.cache_timed += 1;
                 self.cache_response_us_sum += us;
             }
-            if upstream {
+            if upstream_answer {
                 self.upstream_timed += 1;
                 self.upstream_response_us_sum += us;
             }

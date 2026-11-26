@@ -115,9 +115,9 @@ These are derived from the SQLite query log over a **24-hour window**, not since
 | `queries_dnssec_bogus` | gauge | Answers that failed DNSSEC validation |
 | `dns64_synthesized` | gauge | AAAA answers synthesized by DNS64 |
 | `unique_clients` | gauge | Distinct clients seen |
-| `avg_query_time_ms` | gauge | Mean end-to-end query time |
+| `avg_query_time_ms` | gauge | Mean end-to-end query time, failed queries included |
 | `avg_cache_time_ms` | gauge | Mean time for cache-served answers |
-| `avg_upstream_time_ms` | gauge | Mean time for upstream-served answers |
+| `avg_upstream_time_ms` | gauge | Mean time for upstream-served answers; a query that timed out or failed on every upstream got no answer and is left out |
 | `uptime_seconds` | gauge | Process uptime |
 | `queries_by_type{record_type=…}` | gauge | Queries per record type |
 

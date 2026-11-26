@@ -10,11 +10,13 @@ use tower::ServiceExt;
 mod helpers;
 
 /// Stats, top lists and counts read the rollups; rebuild them from the raw fixture
-/// rows with the production backfill and the hourly reference, every past hour held.
+/// rows with the production backfill, its upstream-time correction and the hourly
+/// reference, every past hour held.
 async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
     sqlx::raw_sql(concat!(
         include_str!("../../infrastructure/tests/support/clear_rollups.sql"),
         include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+        include_str!("../../../migrations/20261126000001_upstream_time_counts_answers_only.sql"),
         include_str!("../../infrastructure/tests/support/hour_rollups.sql"),
         include_str!("../../infrastructure/tests/support/hold_rollups.sql"),
     ))
