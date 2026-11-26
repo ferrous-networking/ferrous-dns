@@ -1,7 +1,8 @@
 //! Differential test for the query-log rollups: whatever the writer maintains
 //! incrementally, flush by flush, must equal the backfill migration replayed over
-//! the raw rows it wrote. The backfill is the declarative reference for every
-//! counter, so this pins the Rust aggregation and the SQL to one definition.
+//! the raw rows it wrote, with the migration that narrowed its upstream response
+//! time. Together they are the declarative reference for every counter, so this
+//! pins the Rust aggregation and the SQL to one definition.
 
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_domain::config::DatabaseConfig;
@@ -80,6 +81,8 @@ fn random_query(rng: &mut fastrand::Rng) -> QueryLog {
                 Some("RATE_LIMITED"),
                 Some("RATE_LIMITED_TC"),
                 Some("BLOCKED"),
+                Some("TIMEOUT"),
+                Some("SERVFAIL"),
             ],
         ),
         timestamp: None,
@@ -166,8 +169,9 @@ async fn writer_rollups_equal_backfill_over_raw_rows() {
         .await
         .unwrap();
     }
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/20260923000002_backfill_query_log_rollups.sql"
+    sqlx::raw_sql(concat!(
+        include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+        include_str!("../../../migrations/20261126000001_upstream_time_counts_answers_only.sql"),
     ))
     .execute(&pool)
     .await
