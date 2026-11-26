@@ -27,6 +27,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Malware settings have a JS mirror](malware-settings-js-mirror.md) — settings.js re-checks Config::validate's malware limits; change both, and pair stricter limits with a legacy.rs rewrite
 - [Managed-domain validation has a JS mirror](managed-domain-validation-js-mirror.md) — the bulk form's mDomainError mirrors validate_domain + validate_name; JS flags ⊆ backend, rerun the parity check
 - [CI Success "abandoned"](ci-success-abandoned-jobs.md) — a needed job missing from the run = GitHub Actions incident; `gh run rerun --failed` (~10 min, skips the ~2 h coverage)
+- [Dependabot round checks](dependabot-round-checks.md) — source Dockerfile never built in CI; diff docs builds; adjacent pip bumps conflict; missing changelog row = all PRs red
 
 ## Decisions
 
@@ -50,7 +51,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Upgrades keep existing behaviour](decisions/upgrades-keep-existing-behaviour.md) — v1.0.0 rule: new behaviour is opt-in; why the Docker DB stays at /data/ferrous-dns.db, import keeps a full restore
 - [Startup hold + list cache](decisions/startup-hold-and-list-cache.md) — #365: no port opens until the first block build (≤30 s); lists kept in lists/ beside the DB, re-downloaded after
 - [Web UI shared components](decisions/web-ui-shared-components.md) — 11-14: one component set in shared.css + showToast; h2 24px, 24px cards, .table/.table-dense, pills, switches, no alert()
-- [Bulk add of managed domains](decisions/managed-domains-bulk-add.md) — #353 (branch, 11-15): one write + one rebuild, partial apply, "<domain> (<action>)" name; compat exact goes through it
+- [Bulk add of managed domains](decisions/managed-domains-bulk-add.md) — #353 (#394, 7454d9e2, v1.0.0): one write + one rebuild, partial apply, "<domain> (<action>)" name; compat exact goes through it
 
 ## Bugs
 
@@ -75,8 +76,9 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); labels (#326) by #361
 - [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — #324 fixed by #360 (776daeda, 11-03): overshoot + headroom, rotating cursor; open: `insert_permanent` pass overlap, `evict_if_full` bias
 - [Manual client names can't be cleared](bugs/manual-client-name-cannot-be-cleared.md) — since #343 a blank name changes nothing; pre-migration names (NULL source) still lose to PTR/mDNS
-- [Known test flakes](bugs/known-test-flakes.md) — UDP-pool race + TCP reconnect bound fixed by #377 (11-09); never time a live test from the spawn (tarpaulin: 9 s, #389); hour-boundary rollup, flush at :00, `free_port` AddrInUse open
+- [Known test flakes](bugs/known-test-flakes.md) — UDP-pool race + TCP reconnect bound fixed by #377 (11-09); never time a live test from the spawn (tarpaulin: 9 s, #389); no clock-only temp names (#406); hour-boundary rollup, flush at :00, `free_port` AddrInUse open
 - [Docker DB path vs the image default](bugs/docker-database-path-ignores-image-default.md) — DB stays at /data/ferrous-dns.db, docs fixed by #371 (d526ad3e, 11-08); env-equals-default skip is a trap
 - [Unfiltered window after a start](bugs/cold-start-unfiltered-window.md) — answers before the block index compiled (~0.2 s); #365 fixed by PR #389 (10a78b33, merged 11-12)
 - [Backup import overwrites host fields](bugs/backup-import-overwrites-host-fields.md) — fixed by #372 (b7904e7b, 11-08): opt-in `?keep_host_settings=true`; a missing snapshot key keeps the value
+- [Upstream addresses without a route (#402)](bugs/upstream-addresses-without-route.md) — no-IPv6 hosts showed Partial; health checker route probe → NoRoute + `no_route` API field (fixed by #406, 13e76d27, 11-23)
 - [Two cache hit rates](bugs/cache-hit-rate-two-definitions.md) — /stats + screens use query-log hits ÷ (hits+misses); /cache/metrics + the gauge count lookups; open, unfiled (11-09)
