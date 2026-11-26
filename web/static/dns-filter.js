@@ -914,13 +914,27 @@
             async runTest() {
                 this.testError = '';
                 this.testResult = null;
+                let domain = this.testForm.domain.trim();
+                if (domain.includes('://')) {
+                    try {
+                        const url = new URL(domain);
+                        domain = (url.protocol === 'http:' || url.protocol === 'https:') ? url.hostname : '';
+                    } catch {
+                        domain = '';
+                    }
+                }
+                if (!domain) {
+                    this.testError = 'Enter a valid domain or HTTP(S) URL';
+                    return;
+                }
+
                 this.testLoading = true;
                 try {
                     const res = await fetch(`${API_BASE}/block-filter/test`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
-                            domain: this.testForm.domain.trim(),
+                            domain,
                             group_id: parseInt(this.testForm.group_id)
                         })
                     });
