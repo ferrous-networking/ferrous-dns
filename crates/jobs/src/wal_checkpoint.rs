@@ -1,5 +1,5 @@
 use ferrous_dns_domain::DomainError;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::{AssertSqlSafe, SqliteConnection, SqlitePool};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -75,17 +75,21 @@ async fn truncate(
         .fetch_one(&mut *conn)
         .await
         .map_err(db_err)?;
-    sqlx::query(&format!("PRAGMA busy_timeout = {TRUNCATE_BUSY_TIMEOUT_MS}"))
-        .execute(&mut *conn)
-        .await
-        .map_err(db_err)?;
+    sqlx::query(AssertSqlSafe(format!(
+        "PRAGMA busy_timeout = {TRUNCATE_BUSY_TIMEOUT_MS}"
+    )))
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
     let row = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(TRUNCATE)")
         .fetch_one(&mut *conn)
         .await;
-    sqlx::query(&format!("PRAGMA busy_timeout = {busy_timeout_ms}"))
-        .execute(&mut *conn)
-        .await
-        .map_err(db_err)?;
+    sqlx::query(AssertSqlSafe(format!(
+        "PRAGMA busy_timeout = {busy_timeout_ms}"
+    )))
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
 
     Ok(match row.map_err(db_err)? {
         (0, _, _) => WalCheckpointOutcome::Truncated { frames: log_frames },

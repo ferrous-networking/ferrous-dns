@@ -4,7 +4,7 @@
 use chrono::Utc;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::borrow::Cow;
 
 const VERSION: i64 = 20261027000001;
@@ -32,14 +32,16 @@ async fn pool_before_the_migration() -> SqlitePool {
 }
 
 async fn state(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT {name} FROM query_log_rollup_state"))
-        .fetch_one(pool)
-        .await
-        .unwrap()
+    sqlx::query_scalar(AssertSqlSafe(format!(
+        "SELECT {name} FROM query_log_rollup_state"
+    )))
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }
 
 async fn rows(pool: &SqlitePool, table: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+    sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
         .fetch_one(pool)
         .await
         .unwrap()

@@ -50,7 +50,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
 anyhow = "1.0.102"
 clap = { version = "4", features = ["derive"] }
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"], default-features = false }
+sqlx = { version = "0.9.1", features = ["runtime-tokio", "sqlite", "migrate", "macros"], default-features = false }
 chrono = "0.4.44"
 hickory-server = "=0.26.3"
 hickory-proto = { version = "=0.26.3", features = ["dnssec-ring"] }

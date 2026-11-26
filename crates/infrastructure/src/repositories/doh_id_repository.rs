@@ -2,7 +2,7 @@ use crate::repositories::{db_err, is_fk_violation, is_unique_violation, sql_now}
 use async_trait::async_trait;
 use ferrous_dns_application::ports::DohIdRepository;
 use ferrous_dns_domain::{DohId, DomainError};
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::Arc;
 use tracing::instrument;
 
@@ -59,11 +59,11 @@ impl DohIdRepository for SqliteDohIdRepository {
     ) -> Result<DohId, DomainError> {
         let now = sql_now();
 
-        let row = sqlx::query_as::<_, DohIdRow>(&format!(
+        let row = sqlx::query_as::<_, DohIdRow>(AssertSqlSafe(format!(
             "INSERT INTO doh_ids (name, client_id, group_id, comment, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?)
              RETURNING {DOH_ID_COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(&client_id)
         .bind(group_id)
@@ -87,9 +87,9 @@ impl DohIdRepository for SqliteDohIdRepository {
 
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<DohId>, DomainError> {
-        let row = sqlx::query_as::<_, DohIdRow>(&format!(
+        let row = sqlx::query_as::<_, DohIdRow>(AssertSqlSafe(format!(
             "SELECT {DOH_ID_COLUMNS} FROM doh_ids WHERE id = ?"
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await
@@ -100,9 +100,9 @@ impl DohIdRepository for SqliteDohIdRepository {
 
     #[instrument(skip(self))]
     async fn get_by_client_id(&self, client_id: &str) -> Result<Option<DohId>, DomainError> {
-        let row = sqlx::query_as::<_, DohIdRow>(&format!(
+        let row = sqlx::query_as::<_, DohIdRow>(AssertSqlSafe(format!(
             "SELECT {DOH_ID_COLUMNS} FROM doh_ids WHERE client_id = ?"
-        ))
+        )))
         .bind(client_id)
         .fetch_optional(&self.pool)
         .await
@@ -113,9 +113,9 @@ impl DohIdRepository for SqliteDohIdRepository {
 
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<DohId>, DomainError> {
-        let rows = sqlx::query_as::<_, DohIdRow>(&format!(
+        let rows = sqlx::query_as::<_, DohIdRow>(AssertSqlSafe(format!(
             "SELECT {DOH_ID_COLUMNS} FROM doh_ids ORDER BY created_at DESC, id DESC"
-        ))
+        )))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to query all DoH IDs"))?;
@@ -132,7 +132,7 @@ impl DohIdRepository for SqliteDohIdRepository {
         group_id: i64,
         comment: Option<String>,
     ) -> Result<DohId, DomainError> {
-        let row = sqlx::query_as::<_, DohIdRow>(&format!(
+        let row = sqlx::query_as::<_, DohIdRow>(AssertSqlSafe(format!(
             "UPDATE doh_ids
              SET name = ?,
                  client_id = COALESCE(?, client_id),
@@ -141,7 +141,7 @@ impl DohIdRepository for SqliteDohIdRepository {
                  updated_at = ?
              WHERE id = ?
              RETURNING {DOH_ID_COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(&client_id)
         .bind(group_id)

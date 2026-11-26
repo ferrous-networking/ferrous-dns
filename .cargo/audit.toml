@@ -12,10 +12,8 @@ ignore = [
     # which only verifies RS256 passkey signatures with the credential's public
     # key; the server holds no RSA private key, so there is nothing to leak.
     # The fixed release, `rsa` 0.10.0, is out of reach until `crypto-glue`
-    # (0.2.2) stops asking for the `sha2` feature that release removed. `rsa`
-    # 0.9 is an optional dependency of `sqlx-mysql`, whose driver is never
-    # enabled (sqlx is built with the `sqlite` driver only, see workspace
-    # Cargo.toml). Not applicable here.
+    # (0.2.2) stops asking for the `sha2` feature that release removed. Not
+    # applicable here.
     "RUSTSEC-2023-0071",
 
     # RUSTSEC-2024-0436 — `paste` is unmaintained (informational, no CVE).

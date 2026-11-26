@@ -4,7 +4,7 @@ use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool,
     SqlitePoolOptions, SqliteSynchronous,
 };
-use sqlx::Connection;
+use sqlx::{AssertSqlSafe, Connection};
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -75,9 +75,15 @@ async fn apply_per_connection_pragmas(
     let cache_pragma = format!("PRAGMA cache_size = -{}", cache_size_kb);
     let mmap_pragma = format!("PRAGMA mmap_size = {}", mmap_size_mb as u64 * 1024 * 1024);
     let checkpoint_pragma = format!("PRAGMA wal_autocheckpoint = {}", wal_autocheckpoint);
-    sqlx::query(&cache_pragma).execute(&mut *conn).await?;
-    sqlx::query(&mmap_pragma).execute(&mut *conn).await?;
-    sqlx::query(&checkpoint_pragma).execute(&mut *conn).await?;
+    sqlx::query(AssertSqlSafe(cache_pragma))
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(AssertSqlSafe(mmap_pragma))
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(AssertSqlSafe(checkpoint_pragma))
+        .execute(&mut *conn)
+        .await?;
     sqlx::query("PRAGMA temp_store = MEMORY")
         .execute(&mut *conn)
         .await?;

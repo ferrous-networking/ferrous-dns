@@ -3,13 +3,13 @@
 use ferrous_dns_application::ports::WhitelistSourceRepository;
 use ferrous_dns_domain::DomainError;
 use ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 
 #[path = "support/db.rs"]
 mod db;
 
 async fn count(pool: &SqlitePool, table: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+    sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
         .fetch_one(pool)
         .await
         .unwrap()

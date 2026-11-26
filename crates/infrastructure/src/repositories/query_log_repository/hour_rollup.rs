@@ -6,7 +6,7 @@
 use super::rollup::{bucket_ts, ceil_bucket, hour_bucket, HOUR_SECS};
 use crate::repositories::sql_ts;
 use chrono::{DateTime, Utc};
-use sqlx::{Executor, Sqlite, SqliteConnection, SqlitePool};
+use sqlx::{AssertSqlSafe, Executor, Sqlite, SqliteConnection, SqlitePool};
 
 /// How long after an hour ends before the job aggregates it. A flush stamps its rows
 /// when it runs, so the last rows of an hour land just after the hour has closed.
@@ -179,10 +179,12 @@ async fn give_back_open_hours(
         return Ok(());
     }
     for table in ["query_log_hour_domain", "query_log_hour_client"] {
-        sqlx::query(&format!("DELETE FROM {table} WHERE bucket >= ?"))
-            .bind(first_open)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(AssertSqlSafe(format!(
+            "DELETE FROM {table} WHERE bucket >= ?"
+        )))
+        .bind(first_open)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await
 }
@@ -194,11 +196,11 @@ async fn aggregate(
     key_column: &str,
     hour: i64,
 ) -> Result<HourCounts, sqlx::Error> {
-    sqlx::query_as(&format!(
+    sqlx::query_as(AssertSqlSafe(format!(
         "SELECT {key_column}, blocked != 0, COUNT(*) FROM query_log
          WHERE query_source = 'client' AND created_at >= ? AND created_at < ?
          GROUP BY 1, 2"
-    ))
+    )))
     .bind(bucket_ts(hour)?)
     .bind(bucket_ts(hour + HOUR_SECS)?)
     .fetch_all(pool)
@@ -233,16 +235,18 @@ async fn store(
         ("query_log_hour_domain", "domain", domains),
         ("query_log_hour_client", "client_ip", clients),
     ] {
-        sqlx::query(&format!("DELETE FROM {table} WHERE bucket = ?"))
-            .bind(hour)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(AssertSqlSafe(format!(
+            "DELETE FROM {table} WHERE bucket = ?"
+        )))
+        .bind(hour)
+        .execute(&mut *tx)
+        .await?;
         for chunk in counts.chunks(ROWS_PER_INSERT) {
             let values = vec!["(?, ?, ?, ?)"; chunk.len()].join(", ");
             let sql = format!(
                 "INSERT INTO {table} (bucket, {key_column}, blocked, count) VALUES {values}"
             );
-            let mut q = sqlx::query(&sql);
+            let mut q = sqlx::query(AssertSqlSafe(sql));
             for (key, blocked, count) in chunk {
                 q = q.bind(hour).bind(key).bind(blocked).bind(count);
             }

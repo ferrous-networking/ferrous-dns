@@ -9,7 +9,7 @@ use ferrous_dns_infrastructure::repositories::{
 };
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::borrow::Cow;
 
 #[path = "support/db.rs"]
@@ -270,7 +270,7 @@ async fn rebuilds_never_hand_out_the_id_of_a_deleted_newest_row() {
                 .await
                 .unwrap();
         }
-        sqlx::query(&format!("DELETE FROM {table} WHERE id = ?"))
+        sqlx::query(AssertSqlSafe(format!("DELETE FROM {table} WHERE id = ?")))
             .bind(newest)
             .execute(&pool)
             .await
@@ -340,14 +340,16 @@ async fn rows_naming_a_deleted_group_or_source_do_not_stop_the_upgrade() {
         ("blocklist_sources", "blocklist_source_groups"),
         ("whitelist_sources", "whitelist_source_groups"),
     ] {
-        let ids: Vec<i64> = sqlx::query_scalar(&format!("SELECT id FROM {sources} ORDER BY id"))
-            .fetch_all(&pool)
-            .await
-            .unwrap();
+        let ids: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(format!(
+            "SELECT id FROM {sources} ORDER BY id"
+        )))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
         assert_eq!(ids, vec![1, 2], "{sources} keeps every source");
-        let memberships: Vec<(i64, i64)> = sqlx::query_as(&format!(
+        let memberships: Vec<(i64, i64)> = sqlx::query_as(AssertSqlSafe(format!(
             "SELECT source_id, group_id FROM {pivot} ORDER BY source_id, group_id"
-        ))
+        )))
         .fetch_all(&pool)
         .await
         .unwrap();

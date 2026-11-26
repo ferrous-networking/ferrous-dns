@@ -3,7 +3,7 @@ use crate::repositories::sql_ts;
 use chrono::Utc;
 use compact_str::{CompactString, ToCompactString};
 use ferrous_dns_domain::{BlockSource, DnssecStatus, QueryLog, QuerySource, RecordType};
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::fmt::Write as _;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -178,7 +178,7 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
                     .map(|addrs| format_answers(addrs.as_slice()))
             })
             .collect();
-        let mut q = sqlx::query(&sql);
+        let mut q = sqlx::query(AssertSqlSafe(sql));
         for (entry, answers) in chunk.iter().zip(&answers) {
             q = q
                 .bind(entry.domain.as_str())

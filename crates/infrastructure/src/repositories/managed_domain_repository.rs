@@ -9,7 +9,7 @@ use ferrous_dns_application::ports::{
     NewManagedDomain,
 };
 use ferrous_dns_domain::{DomainError, ManagedDomain};
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{AssertSqlSafe, Sqlite, SqlitePool, Transaction};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -120,12 +120,12 @@ async fn insert_unless_named(
     now: &str,
     expires_at: Option<&str>,
 ) -> Result<Option<ManagedDomainRow>, DomainError> {
-    sqlx::query_as::<_, ManagedDomainRow>(&format!(
+    sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(format!(
         "INSERT INTO managed_domains (name, domain, action, group_id, comment, enabled, created_at, updated_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (name, group_id) DO NOTHING
          RETURNING {COLUMNS}"
-    ))
+    )))
     .bind(name)
     .bind(&rule.domain)
     .bind(rule.action.to_str())
@@ -162,11 +162,11 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         let now = sql_now();
         let expires_at = expires_in.map(expiry_after).transpose()?;
 
-        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+        let row = sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(format!(
             "INSERT INTO managed_domains (name, domain, action, group_id, comment, enabled, created_at, updated_at, expires_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              RETURNING {COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(&domain)
         .bind(action.to_str())
@@ -263,9 +263,9 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
 
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError> {
-        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+        let row = sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(format!(
             "SELECT {COLUMNS} FROM managed_domains WHERE id = ?"
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await
@@ -276,9 +276,9 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
 
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError> {
-        let rows = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+        let rows = sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(format!(
             "SELECT {COLUMNS} FROM managed_domains ORDER BY name ASC"
-        ))
+        )))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to query all managed domains"))?;
@@ -302,7 +302,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         };
 
         let count_sql = format!("SELECT COUNT(*) FROM managed_domains{where_clause}");
-        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql);
+        let mut count_query = sqlx::query_as::<_, (i64,)>(AssertSqlSafe(count_sql));
         if let Some(pattern) = &pattern {
             count_query = count_query.bind(pattern).bind(pattern);
         }
@@ -318,7 +318,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
             "SELECT {COLUMNS}
              FROM managed_domains{where_clause} ORDER BY name ASC, group_id ASC LIMIT ? OFFSET ?"
         );
-        let mut page_query = sqlx::query_as::<_, ManagedDomainRow>(&page_sql);
+        let mut page_query = sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(page_sql));
         if let Some(pattern) = &pattern {
             page_query = page_query.bind(pattern).bind(pattern);
         }
@@ -348,7 +348,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         } = update;
         let replace_comment = comment.is_some();
         let comment = comment.flatten();
-        let row = sqlx::query_as::<_, ManagedDomainRow>(&format!(
+        let row = sqlx::query_as::<_, ManagedDomainRow>(AssertSqlSafe(format!(
             "UPDATE managed_domains
              SET name = COALESCE(?, name),
                  domain = COALESCE(?, domain),
@@ -359,7 +359,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
                  updated_at = ?
              WHERE id = ?
              RETURNING {COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(&domain)
         .bind(action.map(|a| a.to_str()))

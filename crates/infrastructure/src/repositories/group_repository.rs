@@ -3,7 +3,7 @@ use crate::repositories::{db_err, is_unique_violation, sql_now};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::GroupRepository;
 use ferrous_dns_domain::{Client, DomainError, Group};
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::sync::Arc;
 use tracing::instrument;
 
@@ -67,12 +67,12 @@ impl GroupRepository for SqliteGroupRepository {
     ) -> Result<Group, DomainError> {
         let now = sql_now();
 
-        let row = sqlx::query_as::<_, GroupRow>(&format!(
+        let row = sqlx::query_as::<_, GroupRow>(AssertSqlSafe(format!(
             "INSERT INTO groups
                  (name, enabled, comment, is_default, malware_detection_enabled, created_at, updated_at)
              VALUES (?, ?, ?, 0, ?, ?, ?)
              RETURNING {GROUP_COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(enabled)
         .bind(&comment)
@@ -94,9 +94,9 @@ impl GroupRepository for SqliteGroupRepository {
 
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<Group>, DomainError> {
-        let row = sqlx::query_as::<_, GroupRow>(&format!(
+        let row = sqlx::query_as::<_, GroupRow>(AssertSqlSafe(format!(
             "SELECT {GROUP_COLUMNS} FROM groups WHERE id = ?"
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await
@@ -107,9 +107,9 @@ impl GroupRepository for SqliteGroupRepository {
 
     #[instrument(skip(self))]
     async fn get_by_name(&self, name: &str) -> Result<Option<Group>, DomainError> {
-        let row = sqlx::query_as::<_, GroupRow>(&format!(
+        let row = sqlx::query_as::<_, GroupRow>(AssertSqlSafe(format!(
             "SELECT {GROUP_COLUMNS} FROM groups WHERE name = ?"
-        ))
+        )))
         .bind(name)
         .fetch_optional(&self.pool)
         .await
@@ -120,9 +120,9 @@ impl GroupRepository for SqliteGroupRepository {
 
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<Group>, DomainError> {
-        let rows = sqlx::query_as::<_, GroupRow>(&format!(
+        let rows = sqlx::query_as::<_, GroupRow>(AssertSqlSafe(format!(
             "SELECT {GROUP_COLUMNS} FROM groups ORDER BY is_default DESC, name ASC"
-        ))
+        )))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to query all groups"))?;
@@ -196,7 +196,7 @@ impl GroupRepository for SqliteGroupRepository {
         comment: Option<String>,
         malware_detection_enabled: Option<bool>,
     ) -> Result<Group, DomainError> {
-        let row = sqlx::query_as::<_, GroupRow>(&format!(
+        let row = sqlx::query_as::<_, GroupRow>(AssertSqlSafe(format!(
             "UPDATE groups
              SET name = COALESCE(?, name),
                  enabled = COALESCE(?, enabled),
@@ -205,7 +205,7 @@ impl GroupRepository for SqliteGroupRepository {
                  updated_at = ?
              WHERE id = ?
              RETURNING {GROUP_COLUMNS}"
-        ))
+        )))
         .bind(&name)
         .bind(enabled)
         .bind(&comment)

@@ -110,10 +110,10 @@ async fn raw_row_count(pool: &sqlx::SqlitePool) -> i64 {
 
 /// Rows in `a` missing from `b`, both directions, as a single count.
 async fn symmetric_difference(pool: &sqlx::SqlitePool, a: &str, b: &str) -> i64 {
-    sqlx::query_scalar(&format!(
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT (SELECT COUNT(*) FROM (SELECT * FROM {a} EXCEPT SELECT * FROM {b}))
               + (SELECT COUNT(*) FROM (SELECT * FROM {b} EXCEPT SELECT * FROM {a}))"
-    ))
+    )))
     .fetch_one(pool)
     .await
     .unwrap()
@@ -159,9 +159,9 @@ async fn writer_rollups_equal_backfill_over_raw_rows() {
     }
 
     for table in ROLLUP_TABLES {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "CREATE TABLE writer_{table} AS SELECT * FROM {table}; DELETE FROM {table};"
-        ))
+        )))
         .execute(&pool)
         .await
         .unwrap();
@@ -174,10 +174,11 @@ async fn writer_rollups_equal_backfill_over_raw_rows() {
     .unwrap();
 
     for table in ROLLUP_TABLES {
-        let rows: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let rows: i64 =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert!(rows > 0, "{table}: seeded data must populate every rollup");
         assert_eq!(
             symmetric_difference(&pool, table, &format!("writer_{table}")).await,

@@ -14,7 +14,7 @@ use ferrous_dns_domain::{DomainAction, DomainError, ListSyncStatus};
 use futures::{stream, StreamExt};
 use rayon::prelude::*;
 use rustc_hash::FxBuildHasher;
-use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, AssertSqlSafe, Row, SqlitePool};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 use tracing::{info, warn};
@@ -349,7 +349,7 @@ pub async fn mark_sources_synced(
         table.as_str()
     );
 
-    let mut query = sqlx::query(&sql).bind(at);
+    let mut query = sqlx::query(AssertSqlSafe(sql)).bind(at);
     for id in ids {
         query = query.bind(id);
     }
@@ -370,7 +370,7 @@ async fn record_list_status(
 ) -> Result<(), DomainError> {
     let sql = format!("UPDATE {} SET last_status = ? WHERE id = ?", table.as_str());
     for (id, status) in statuses {
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(sql.as_str()))
             .bind(status.code())
             .bind(id)
             .execute(pool)

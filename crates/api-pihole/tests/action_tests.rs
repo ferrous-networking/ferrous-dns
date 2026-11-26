@@ -118,7 +118,7 @@ async fn flush_logs_replies_ftl_success_body() {
 }
 
 async fn count_rows(pool: &sqlx::SqlitePool, table: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
         .fetch_one(pool)
         .await
         .expect("failed to count rows")

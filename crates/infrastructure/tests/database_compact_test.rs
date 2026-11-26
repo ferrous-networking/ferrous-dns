@@ -1,12 +1,12 @@
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::database::{compact_database, create_write_pool};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use sqlx::{Connection, SqliteConnection};
+use sqlx::{AssertSqlSafe, Connection, SqliteConnection};
 use std::path::Path;
 use std::str::FromStr;
 
 async fn pragma(conn: &mut SqliteConnection, name: &str) -> i64 {
-    sqlx::query_scalar(&format!("PRAGMA {name}"))
+    sqlx::query_scalar(AssertSqlSafe(format!("PRAGMA {name}")))
         .fetch_one(conn)
         .await
         .unwrap()

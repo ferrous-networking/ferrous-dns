@@ -10,7 +10,7 @@ use ferrous_dns_application::ports::{
     QueryLogStorageRepository,
 };
 use ferrous_dns_domain::QueryLogFilter;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 
 #[path = "support/db.rs"]
 mod db;
@@ -67,9 +67,9 @@ async fn set_coverage(pool: &SqlitePool, hour_since: i64, hour_until: i64, minut
     set_state(pool, "hour_until", hour_until).await;
     set_state(pool, "minute_since", minute_since).await;
     for table in ["query_log_hour_domain", "query_log_hour_client"] {
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "UPDATE {table} SET count = count + 1000 WHERE bucket < ? OR bucket >= ?"
-        ))
+        )))
         .bind(hour_since)
         .bind(hour_until)
         .execute(pool)
@@ -106,11 +106,11 @@ async fn raw_counts(
     hours: f32,
     verdict: &str,
 ) -> Vec<(String, u64)> {
-    let rows: Vec<(String, i64)> = sqlx::query_as(&format!(
+    let rows: Vec<(String, i64)> = sqlx::query_as(AssertSqlSafe(format!(
         "SELECT {column}, COUNT(*) FROM query_log
          WHERE query_source = 'client' AND created_at >= ?{verdict}
          GROUP BY {column}"
-    ))
+    )))
     .bind(cutoff(hours))
     .fetch_all(pool)
     .await
@@ -118,7 +118,7 @@ async fn raw_counts(
     sorted(rows.into_iter().map(|(k, n)| (k, n as u64)).collect())
 }
 
-async fn raw_scalar(pool: &SqlitePool, sql: &str, hours: f32) -> u64 {
+async fn raw_scalar(pool: &SqlitePool, sql: &'static str, hours: f32) -> u64 {
     let n: i64 = sqlx::query_scalar(sql)
         .bind(cutoff(hours))
         .fetch_one(pool)

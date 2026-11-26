@@ -5,7 +5,7 @@ use ferrous_dns_infrastructure::database::{
 };
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use sqlx::{Connection, SqliteConnection, SqlitePool};
+use sqlx::{AssertSqlSafe, Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -170,7 +170,7 @@ async fn test_write_pool_estimates_missing_query_log_stats_instead_of_counting_t
 }
 
 async fn pragma(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar(&format!("PRAGMA {name}"))
+    sqlx::query_scalar(AssertSqlSafe(format!("PRAGMA {name}")))
         .fetch_one(pool)
         .await
         .unwrap()
