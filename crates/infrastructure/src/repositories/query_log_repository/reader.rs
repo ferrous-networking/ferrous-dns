@@ -12,7 +12,7 @@ use ferrous_dns_domain::entities::query_log::{
 };
 use ferrous_dns_domain::{BlockResponseMode, DomainError, QueryLog, QueryStats};
 use sqlx::sqlite::SqliteRow;
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Row, SqlitePool};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, instrument};
 
@@ -97,7 +97,7 @@ async fn count_client_rows_since(
 /// coverage between them.
 async fn fetch_over_hour_split(
     pool: &SqlitePool,
-    sql: &str,
+    sql: &'static str,
     period_hours: f32,
     limit: Option<u32>,
 ) -> Result<Vec<SqliteRow>, sqlx::Error> {
@@ -330,7 +330,7 @@ pub(super) async fn get_recent_paged(
                         ),
                         filters = filters
                     );
-                    let q = sqlx::query(&sql)
+                    let q = sqlx::query(AssertSqlSafe(sql))
                         .bind(cursor_id)
                         .bind(cursor_id)
                         .bind(cursor_id)
@@ -347,7 +347,7 @@ pub(super) async fn get_recent_paged(
                         ),
                         filters = filters
                     );
-                    let q = sqlx::query(&sql).bind(&cutoff);
+                    let q = sqlx::query(AssertSqlSafe(sql)).bind(&cutoff);
                     bind_filters!(q)
                         .bind(fetch_limit)
                         .bind(i64::from(offset))
@@ -365,7 +365,9 @@ pub(super) async fn get_recent_paged(
                         ),
                         filters = filters
                     );
-                    let q = sqlx::query(&sql).bind(&cutoff).bind(newest_id);
+                    let q = sqlx::query(AssertSqlSafe(sql))
+                        .bind(&cutoff)
+                        .bind(newest_id);
                     bind_filters!(q)
                         .bind(fetch_limit)
                         .bind(i64::from(offset))
@@ -384,7 +386,7 @@ pub(super) async fn get_recent_paged(
                  LEFT JOIN doh_ids d ON q.doh_client_id = d.client_id
                  WHERE q.query_source = 'client' AND q.created_at >= ?{snapshot_clause}{filters}"
             );
-            let mut q = sqlx::query(&count_sql).bind(&cutoff);
+            let mut q = sqlx::query(AssertSqlSafe(count_sql)).bind(&cutoff);
             if let Some(newest_id) = newest_id {
                 q = q.bind(newest_id);
             }
@@ -998,9 +1000,9 @@ pub(super) async fn reclaim_free_pages(pool: &SqlitePool) -> Result<i64, sqlx::E
         let step_started = Instant::now();
         // Each result row of incremental_vacuum is one page moved; `execute` steps
         // through all of them.
-        sqlx::query(&format!(
+        sqlx::query(AssertSqlSafe(format!(
             "PRAGMA incremental_vacuum({RECLAIM_PAGES_PER_STEP})"
-        ))
+        )))
         .execute(pool)
         .await?;
         sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")

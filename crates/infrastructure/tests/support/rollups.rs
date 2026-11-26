@@ -5,7 +5,7 @@
 
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 
 /// Clears every rollup, refills it from the raw rows with the production backfill, its
 /// upstream-time correction and the hourly reference, and marks every minute and every
@@ -36,16 +36,20 @@ pub fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
 /// One column of `query_log_rollup_state`: `minute_since`, `hour_since`, `hour_until`
 /// or `hour_floor`.
 pub async fn rollup_state(pool: &SqlitePool, column: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT {column} FROM query_log_rollup_state"))
-        .fetch_one(pool)
-        .await
-        .unwrap()
+    sqlx::query_scalar(AssertSqlSafe(format!(
+        "SELECT {column} FROM query_log_rollup_state"
+    )))
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }
 
 pub async fn set_rollup_state(pool: &SqlitePool, column: &str, value: i64) {
-    sqlx::query(&format!("UPDATE query_log_rollup_state SET {column} = ?"))
-        .bind(value)
-        .execute(pool)
-        .await
-        .unwrap();
+    sqlx::query(AssertSqlSafe(format!(
+        "UPDATE query_log_rollup_state SET {column} = ?"
+    )))
+    .bind(value)
+    .execute(pool)
+    .await
+    .unwrap();
 }

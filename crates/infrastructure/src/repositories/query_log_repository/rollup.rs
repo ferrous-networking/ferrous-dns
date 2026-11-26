@@ -11,7 +11,7 @@ use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection};
 use sqlx::{Executor, SqlitePool};
 use std::sync::Arc;
 
-type SqliteQuery<'q> = Query<'q, Sqlite, SqliteArguments<'q>>;
+type SqliteQuery<'q> = Query<'q, Sqlite, SqliteArguments>;
 
 pub(super) const MINUTE_SECS: i64 = 60;
 pub(super) const HOUR_SECS: i64 = 3_600;

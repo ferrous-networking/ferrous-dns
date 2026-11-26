@@ -22,7 +22,7 @@ use ferrous_dns_infrastructure::dns::BlockFilterEngine;
 use ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository;
 use ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository;
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Row, SqlitePool};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -153,11 +153,13 @@ async fn downloads_are_bounded_and_only_successes_advance_sync_timestamps() {
         .await
         .unwrap();
     for table in ["blocklist_sources", "whitelist_sources"] {
-        sqlx::query(&format!("UPDATE {table} SET last_synced_at = ?"))
-            .bind(STAMP)
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(AssertSqlSafe(format!(
+            "UPDATE {table} SET last_synced_at = ?"
+        )))
+        .bind(STAMP)
+        .execute(&pool)
+        .await
+        .unwrap();
     }
 
     let reloader = engine.clone();
@@ -202,10 +204,12 @@ async fn downloads_are_bounded_and_only_successes_advance_sync_timestamps() {
         .unwrap();
 
     for table in ["blocklist_sources", "whitelist_sources"] {
-        let rows = sqlx::query(&format!("SELECT name, last_synced_at FROM {table}"))
-            .fetch_all(&pool)
-            .await
-            .unwrap();
+        let rows = sqlx::query(AssertSqlSafe(format!(
+            "SELECT name, last_synced_at FROM {table}"
+        )))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
         for row in rows {
             let name: String = row.get("name");
             let stamp: String = row.get("last_synced_at");

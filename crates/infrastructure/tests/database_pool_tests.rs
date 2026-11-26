@@ -5,7 +5,7 @@ use ferrous_dns_infrastructure::database::{
 };
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use sqlx::{Connection, SqliteConnection, SqlitePool};
+use sqlx::{AssertSqlSafe, Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -170,10 +170,36 @@ async fn test_write_pool_estimates_missing_query_log_stats_instead_of_counting_t
 }
 
 async fn pragma(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar(&format!("PRAGMA {name}"))
+    sqlx::query_scalar(AssertSqlSafe(format!("PRAGMA {name}")))
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn test_bundled_sqlite_includes_the_fix_for_rustsec_2026_0459() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let pool = create_write_pool(&url, &DatabaseConfig::default())
+        .await
+        .expect("write pool");
+
+    let (version,): (String,) = sqlx::query_as("SELECT sqlite_version()")
+        .fetch_one(&pool)
+        .await
+        .expect("read version");
+    let parts: Vec<u32> = version
+        .split('.')
+        .map(|part| part.parse().expect("numeric version part"))
+        .collect();
+
+    // Before 3.54.0, opening a database beside a `-wal` whose page size differs
+    // can return uninitialized page-cache memory.
+    assert!(
+        parts >= vec![3, 54, 0],
+        "bundled SQLite {version} predates the 3.54.0 fix"
+    );
+    pool.close().await;
 }
 
 #[tokio::test]

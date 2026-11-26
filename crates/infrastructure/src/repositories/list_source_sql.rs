@@ -2,7 +2,7 @@
 
 use super::{db_err, is_unique_violation, sql_now};
 use ferrous_dns_domain::{DomainError, ListSyncStatus};
-use sqlx::{SqliteExecutor, SqlitePool};
+use sqlx::{AssertSqlSafe, SqliteExecutor, SqlitePool};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::instrument;
@@ -87,10 +87,10 @@ async fn fetch_group_ids<'e>(
     t: &SourceTables,
     source_id: i64,
 ) -> Result<Vec<i64>, DomainError> {
-    sqlx::query_scalar(&format!(
+    sqlx::query_scalar(AssertSqlSafe(format!(
         "SELECT group_id FROM {} WHERE source_id = ? ORDER BY group_id",
         t.groups
-    ))
+    )))
     .bind(source_id)
     .fetch_all(exec)
     .await
@@ -108,7 +108,7 @@ async fn insert_group_ids(
         t.groups
     );
     for &gid in group_ids {
-        sqlx::query(&sql)
+        sqlx::query(AssertSqlSafe(sql.as_str()))
             .bind(source_id)
             .bind(gid)
             .execute(&mut *conn)
@@ -146,12 +146,12 @@ impl SourceStore {
             .await
             .map_err(db_err("Failed to begin transaction"))?;
 
-        let row = sqlx::query_as::<_, SourceRow>(&format!(
+        let row = sqlx::query_as::<_, SourceRow>(AssertSqlSafe(format!(
             "INSERT INTO {} (name, url, comment, enabled, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?)
              RETURNING {COLUMNS}",
             self.t.sources
-        ))
+        )))
         .bind(&name)
         .bind(&url)
         .bind(&comment)
@@ -182,10 +182,10 @@ impl SourceStore {
 
     #[instrument(skip(self), fields(table = self.t.sources))]
     pub(super) async fn get_by_id(&self, id: i64) -> Result<Option<SourceRecord>, DomainError> {
-        let row = sqlx::query_as::<_, SourceRow>(&format!(
+        let row = sqlx::query_as::<_, SourceRow>(AssertSqlSafe(format!(
             "SELECT {COLUMNS} FROM {} WHERE id = ?",
             self.t.sources
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await
@@ -202,18 +202,18 @@ impl SourceStore {
 
     #[instrument(skip(self), fields(table = self.t.sources))]
     pub(super) async fn get_all(&self) -> Result<Vec<SourceRecord>, DomainError> {
-        let rows = sqlx::query_as::<_, SourceRow>(&format!(
+        let rows = sqlx::query_as::<_, SourceRow>(AssertSqlSafe(format!(
             "SELECT {COLUMNS} FROM {} ORDER BY name ASC",
             self.t.sources
-        ))
+        )))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to query all sources"))?;
 
-        let pivot = sqlx::query_as::<_, (i64, i64)>(&format!(
+        let pivot = sqlx::query_as::<_, (i64, i64)>(AssertSqlSafe(format!(
             "SELECT source_id, group_id FROM {} ORDER BY source_id, group_id",
             self.t.groups
-        ))
+        )))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err("Failed to fetch source group_ids"))?;
@@ -257,7 +257,7 @@ impl SourceStore {
             .await
             .map_err(db_err("Failed to begin transaction"))?;
 
-        let row = sqlx::query_as::<_, SourceRow>(&format!(
+        let row = sqlx::query_as::<_, SourceRow>(AssertSqlSafe(format!(
             "UPDATE {}
              SET name = COALESCE(?, name),
                  url = CASE WHEN ? THEN ? ELSE url END,
@@ -267,7 +267,7 @@ impl SourceStore {
              WHERE id = ?
              RETURNING {COLUMNS}",
             self.t.sources
-        ))
+        )))
         .bind(&name)
         .bind(replace_url)
         .bind(&url)
@@ -288,10 +288,10 @@ impl SourceStore {
 
         let group_ids = match group_ids {
             Some(group_ids) => {
-                sqlx::query(&format!(
+                sqlx::query(AssertSqlSafe(format!(
                     "DELETE FROM {} WHERE source_id = ?",
                     self.t.groups
-                ))
+                )))
                 .bind(id)
                 .execute(&mut *tx)
                 .await
@@ -311,11 +311,14 @@ impl SourceStore {
 
     #[instrument(skip(self), fields(table = self.t.sources))]
     pub(super) async fn delete(&self, id: i64) -> Result<(), DomainError> {
-        let result = sqlx::query(&format!("DELETE FROM {} WHERE id = ?", self.t.sources))
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(db_err("Failed to delete source"))?;
+        let result = sqlx::query(AssertSqlSafe(format!(
+            "DELETE FROM {} WHERE id = ?",
+            self.t.sources
+        )))
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err("Failed to delete source"))?;
 
         if result.rows_affected() == 0 {
             return Err((self.t.not_found)(id));

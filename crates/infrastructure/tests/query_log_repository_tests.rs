@@ -5,7 +5,7 @@ use ferrous_dns_domain::{
     ClientProtocol, CoalescedRole, CookieFilter, CookieStatus, QueryCategory, QueryLog,
     QueryLogFilter, QuerySource, RecordType,
 };
-use sqlx::SqlitePool;
+use sqlx::{AssertSqlSafe, SqlitePool};
 use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -1576,9 +1576,9 @@ async fn test_get_recent_paged_until_and_excluded_types_narrow_the_page() {
         )
         .await;
         if let Some(created_at) = created_at {
-            sqlx::query(&format!(
+            sqlx::query(AssertSqlSafe(format!(
                 "UPDATE query_log SET created_at = {created_at} WHERE domain = ?"
-            ))
+            )))
             .bind(domain)
             .execute(&pool)
             .await

@@ -1008,9 +1008,9 @@ async fn summary_gravity_last_update_is_the_newest_list_download() {
         ("blocklist_sources", "older", "2026-10-01 10:00:00"),
         ("whitelist_sources", "newer", "2026-10-02 08:30:00"),
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "INSERT INTO {table} (name, url, last_synced_at) VALUES (?, ?, ?)"
-        ))
+        )))
         .bind(name)
         .bind(format!("https://lists.example/{name}.txt"))
         .bind(synced)
