@@ -115,3 +115,22 @@ fn test_web_asset_references_resolve_to_files() {
         missing.join("\n")
     );
 }
+
+#[test]
+fn test_settings_backup_picker_accepts_json_and_legacy_bin_files() {
+    let settings = fs::read_to_string(Path::new(STATIC_DIR).join("settings.html")).unwrap();
+    let picker = settings
+        .split('<')
+        .filter(|element| element.starts_with("input "))
+        .filter_map(|element| element.split('>').next())
+        .find(|element| element.contains("id=\"backup-import-input\""))
+        .expect("settings has a backup file picker");
+    let accept = value_after(picker, "accept=");
+    let extensions: Vec<_> = accept
+        .iter()
+        .flat_map(|value| value.split(',').map(str::trim))
+        .collect();
+
+    assert!(extensions.contains(&".json"), "accept: {accept:?}");
+    assert!(extensions.contains(&".bin"), "accept: {accept:?}");
+}
